@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T20:22:20.748Z",
+  "generatedAt": "2026-09-02T20:29:13.414Z",
   "collections": [
     {
       "name": "users",
@@ -43,6 +43,262 @@
         "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
         "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
       ]
+    },
+    {
+      "name": "employees",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "chapa",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "company",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "filial",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["CURSINO", "SAPOPEMBA"]
+        },
+        {
+          "name": "funcao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "situacao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Ativo", "Afastado", "Desligado"]
+        },
+        {
+          "name": "cnh_numero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cnh_categoria",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validade_cnh",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "situacao_cnh",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Válida", "A vencer", "Vencida"]
+        },
+        {
+          "name": "motivo_afastamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "inicio_afastamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "previsao_retorno",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documento_fiscal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validade_documento_fiscal",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_employees_chapa ON employees (chapa)",
+        "CREATE INDEX idx_employees_situacao_cnh ON employees (situacao_cnh)",
+        "CREATE INDEX idx_employees_situacao ON employees (situacao)",
+        "CREATE INDEX idx_employees_validade_cnh ON employees (validade_cnh)"
+      ]
+    },
+    {
+      "name": "movements",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "employee",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "employees"
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "Admissão",
+            "Afastamento",
+            "Retorno",
+            "Desligamento",
+            "Atualização fiscal"
+          ]
+        },
+        {
+          "name": "stage",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Documentação", "Exame médico", "Treinamento", "Integração"]
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_movements_employee ON movements (employee)",
+        "CREATE INDEX idx_movements_type ON movements (type)"
+      ]
+    },
+    {
+      "name": "notifications",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["info", "alert", "success"]
+        },
+        {
+          "name": "read",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_notifications_user ON notifications (user)"]
     }
   ]
 }

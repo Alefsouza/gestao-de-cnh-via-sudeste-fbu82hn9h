@@ -1,43 +1,79 @@
-import { useState } from 'react'
-import { Users, UserMinus, CreditCard, FileCheck2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { TrendingDown, TrendingUp } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
 
 interface StatCardProps {
-  title: string
+  label: string
   value: number
-  icon: 'users' | 'user-minus' | 'credit-card' | 'file-check'
-  tint: 'green' | 'amber' | 'red' | 'teal'
+  icon: LucideIcon
+  tone: 'green' | 'amber' | 'red' | 'teal'
   caption: string
+  trend?: 'up' | 'down'
+  delay?: number
 }
 
-const StatCard = ({ title, value, icon, tint, caption }: StatCardProps) => {
-  const icons = {
-    users: Users,
-    'user-minus': UserMinus,
-    'credit-card': CreditCard,
-    'file-check': FileCheck2,
-  }
-  const Icon = icons[icon]
-  const tints = {
-    green: 'bg-green-100 text-green-600',
-    amber: 'bg-amber-100 text-amber-600',
-    red: 'bg-red-100 text-red-600',
-    teal: 'bg-teal-100 text-teal-600',
-  }
+const TONES: Record<StatCardProps['tone'], { bg: string; text: string; caption: string }> = {
+  green: { bg: 'bg-green-100', text: 'text-green-700', caption: 'text-green-700' },
+  amber: { bg: 'bg-amber-100', text: 'text-amber-700', caption: 'text-amber-700' },
+  red: { bg: 'bg-red-100', text: 'text-red-700', caption: 'text-red-700' },
+  teal: { bg: 'bg-teal-100', text: 'text-teal-700', caption: 'text-teal-700' },
+}
+
+/** Conta de 0 até o valor final em ~700ms. */
+function useCountUp(target: number, duration = 700): number {
+  const [value, setValue] = useState(0)
+  const frameRef = useRef<number>(0)
+
+  useEffect(() => {
+    const start = performance.now()
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setValue(Math.round(target * eased))
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(tick)
+      }
+    }
+    frameRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frameRef.current)
+  }, [target, duration])
+
+  return value
+}
+
+export default function StatCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  caption,
+  trend,
+  delay = 0,
+}: StatCardProps) {
+  const display = useCountUp(value)
+  const toneStyles = TONES[tone]
+  const TrendIcon = trend === 'down' ? TrendingDown : TrendingUp
 
   return (
-    <div className="rounded-xl border bg-white p-6 shadow-sm">
-      <div className="flex items-center gap-4">
-        <div className={`rounded-lg p-3 ${tints[tint]}`}>
-          <Icon className="h-6 w-6" />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="text-2xl font-bold">{value}</p>
+    <div
+      className="animate-fade-up rounded-xl border bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="flex items-start justify-between">
+        <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${toneStyles.bg}`}>
+          <Icon className={`h-5 w-5 ${toneStyles.text}`} />
         </div>
       </div>
-      <p className="mt-4 text-xs text-gray-500">{caption}</p>
+      <p className="mt-4 text-[13px] text-muted-foreground">{label}</p>
+      <p className="tabular-nums mt-1 text-[32px] font-bold leading-none text-foreground">
+        {display}
+      </p>
+      <p className={`mt-2 flex items-center gap-1 text-xs font-medium ${toneStyles.caption}`}>
+        <TrendIcon className="h-3.5 w-3.5" />
+        {caption}
+      </p>
     </div>
   )
 }
-
-export default StatCard
