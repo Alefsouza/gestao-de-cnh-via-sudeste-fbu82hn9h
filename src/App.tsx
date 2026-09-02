@@ -10,6 +10,7 @@ import Funcionarios from './pages/Funcionarios'
 import Cnhs from './pages/Cnhs'
 import Afastados from './pages/Afastados'
 import AtualizacaoFiscal from './pages/AtualizacaoFiscal'
+import ProcessosSPTrans from './pages/ProcessosSPTrans'
 import ProcessosCadastrais from './pages/ProcessosCadastrais'
 import AssistenteIA from './pages/AssistenteIA'
 import PainelAcesso from './pages/PainelAcesso'
@@ -68,6 +69,7 @@ const App = () => (
             <Route path="/cnhs" element={<Cnhs />} />
             <Route path="/afastados" element={<Afastados />} />
             <Route path="/atualizacao-fiscal" element={<AtualizacaoFiscal />} />
+            <Route path="/processos-sptrans" element={<ProcessosSPTrans />} />
             <Route path="/processos-cadastrais" element={<ProcessosCadastrais />} />
             <Route path="/assistente-ia" element={<AssistenteIA />} />
             <Route path="/painel-acesso" element={<PainelAcesso />} />

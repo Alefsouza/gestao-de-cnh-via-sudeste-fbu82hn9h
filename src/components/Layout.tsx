@@ -44,6 +44,7 @@ const MENU: MenuItem[] = [
   { label: 'CNHs de motoristas', to: '/cnhs', icon: CreditCard },
   { label: 'Afastados', to: '/afastados', icon: UserMinus },
   { label: 'Atualização fiscal', to: '/atualizacao-fiscal', icon: FileCheck2 },
+  { label: 'Processos SPTrans', to: '/processos-sptrans', icon: Bus },
   { label: 'Processos Cadastrais', to: '/processos-cadastrais', icon: FolderKanban },
   { label: 'Assistente IA', to: '/assistente-ia', icon: Sparkles },
   { label: 'Painel de acesso', to: '/painel-acesso', icon: ShieldCheck },
