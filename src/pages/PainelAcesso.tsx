@@ -1,8 +1,5 @@
-/// <reference path="../../../pocketbase/migrations/0004_create_sync_runs.js" />
-
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { pb } from '@/lib/pocketbase/client'
@@ -10,15 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 type Perfil = 'Admin' | 'RH'
 
@@ -138,11 +132,8 @@ export default function PainelAcesso() {
               <SelectValue placeholder="Selecione o perfil" />
             </SelectTrigger>
             <SelectContent>
-              {PERFAIS.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
+              <SelectItem value="Admin">Admin</SelectItem>
+              <SelectItem value="RH">RH</SelectItem>
             </SelectContent>
           </Select>
         </div>
