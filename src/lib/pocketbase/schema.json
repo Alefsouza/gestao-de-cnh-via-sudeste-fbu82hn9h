@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T20:39:28.598Z",
+  "generatedAt": "2026-09-02T20:56:19.027Z",
   "collections": [
     {
       "name": "users",
@@ -78,7 +78,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["CURSINO", "SAPOPEMBA"]
+          "selectValues": ["CURSINO", "SAPOPEMBA", "ITAQUERA", "GUAIANASES"]
         },
         {
           "name": "funcao",
@@ -116,7 +116,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["Válida", "A vencer", "Vencida"]
+          "selectValues": ["Válida", "A vencer", "Vencida", "Vencida CNH", "Sem CNH"]
         },
         {
           "name": "motivo_afastamento",

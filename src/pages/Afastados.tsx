@@ -1,20 +1,111 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, UserMinus } from 'lucide-react'
+import {
+  Building2,
+  CalendarX,
+  CircleAlert,
+  FileDown,
+  Loader2,
+  Search,
+  UserMinus,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import StatusBadge from '@/components/StatusBadge'
+import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate } from '@/lib/format'
-import { listAllEmployees, updateEmployee } from '@/services/employees'
-import { createMovement } from '@/services/movements'
-import { createNotification } from '@/services/notifications'
+import { listAllEmployees } from '@/services/employees'
+import { FILIAIS, SITUACOES } from '@/lib/types'
 import type { Employee } from '@/lib/types'
+import { cn } from '@/lib/utils'
+
+const inputClass =
+  'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
+/** Resumo colorido exibido acima da tabela. */
+function SummaryCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+}: {
+  label: string
+  value: number
+  icon: typeof Users
+  tone: 'green' | 'orange' | 'red' | 'slate'
+}) {
+  const tones = {
+    green: { bg: 'bg-green-100', text: 'text-green-700', ring: 'border-green-200' },
+    orange: { bg: 'bg-orange-100', text: 'text-orange-700', ring: 'border-orange-200' },
+    red: { bg: 'bg-red-100', text: 'text-red-700', ring: 'border-red-200' },
+    slate: { bg: 'bg-primary/10', text: 'text-primary', ring: 'border-border' },
+  }[tone]
+
+  return (
+    <div
+      className={cn('flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm', tones.ring)}
+    >
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tones.bg}`}>
+        <Icon className={`h-5 w-5 ${tones.text}`} />
+      </div>
+      <div className="min-w-0">
+        <p className="tabular-nums text-2xl font-bold leading-none text-foreground">{value}</p>
+        <p className="mt-1 text-xs leading-snug text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+type CnhStatus = {
+  label: 'Vencida' | 'Regular' | 'Sem CNH'
+  tone: 'gray' | 'green' | 'red'
+  date?: string
+}
+
+function cnhStatus(employee: Employee): CnhStatus {
+  const situacaoCnh = employee.situacao_cnh as string | ''
+  if (!employee.cnh_numero || !situacaoCnh || situacaoCnh === 'Sem CNH') {
+    return { label: 'Sem CNH', tone: 'gray' }
+  }
+  if (situacaoCnh === 'Vencida' || situacaoCnh === 'Vencida CNH') {
+    return { label: 'Vencida', tone: 'red', date: formatDate(employee.validade_cnh) }
+  }
+  return { label: 'Regular', tone: 'green', date: formatDate(employee.validade_cnh) }
+}
+
+function CnhBadge({ status }: { status: CnhStatus }) {
+  const tones = {
+    gray: 'bg-gray-100 text-gray-700',
+    green: 'bg-green-100 text-green-800',
+    red: 'bg-red-100 text-red-800',
+  }[status.tone]
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <span
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+          tones,
+        )}
+      >
+        {status.label}
+      </span>
+      {status.date && (
+        <span className="text-[11px] text-muted-foreground">Val.: {status.date}</span>
+      )}
+    </div>
+  )
+}
+
+const PRINCIPAL_COMPANY = 'Via Sudeste Transportes'
 
 export default function Afastados() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
-  const [pending, setPending] = useState<Employee | null>(null)
-  const [confirming, setConfirming] = useState(false)
+  const [search, setSearch] = useState('')
+  const [empresa, setEmpresa] = useState('')
+  const [filial, setFilial] = useState('')
+  const [situacao, setSituacao] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -35,34 +126,86 @@ export default function Afastados() {
     load()
   })
 
+  const empresas = useMemo(
+    () => Array.from(new Set(employees.map((e) => e.company).filter(Boolean))).sort(),
+    [employees],
+  )
+
   const afastados = useMemo(
     () => employees.filter((employee) => employee.situacao === 'Afastado'),
     [employees],
   )
 
-  const confirmReturn = async () => {
-    if (!pending) return
-    setConfirming(true)
-    try {
-      await updateEmployee(pending.id, { situacao: 'Ativo' })
-      await createMovement({
-        employee: pending.id,
-        type: 'Retorno',
-        notes: `Retorno registrado — ${pending.motivo_afastamento || 'afastamento encerrado'}.`,
-      })
-      await createNotification({
-        title: 'Retorno registrado',
-        message: `${pending.name} (${pending.chapa}) retornou ao quadro de ativos.`,
-        type: 'success',
-      })
-      toast.success('Retorno registrado com sucesso')
-      setPending(null)
-      load()
-    } catch {
-      toast.error('Não foi possível registrar o retorno')
-    } finally {
-      setConfirming(false)
-    }
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return afastados.filter((employee) => {
+      if (
+        term &&
+        !employee.name.toLowerCase().includes(term) &&
+        !employee.chapa.toLowerCase().includes(term)
+      ) {
+        return false
+      }
+      if (empresa && employee.company !== empresa) return false
+      if (filial && employee.filial !== filial) return false
+      if (situacao && employee.situacao !== situacao) return false
+      return true
+    })
+  }, [afastados, search, empresa, filial, situacao])
+
+  const summary = useMemo(() => {
+    const principal = filtered.filter(
+      (e) => e.company === PRINCIPAL_COMPANY && e.filial === 'CURSINO',
+    ).length
+    const outras = filtered.length - principal
+    return { principal, outras, total: filtered.length }
+  }, [filtered])
+
+  const clearFilters = () => {
+    setSearch('')
+    setEmpresa('')
+    setFilial('')
+    setSituacao('')
+  }
+
+  const exportCsv = () => {
+    const header = [
+      'Chapa',
+      'Nome',
+      'Empresa',
+      'Filial/Garagem',
+      'Função',
+      'Situação',
+      'CNH',
+      'Validade CNH',
+    ]
+    const escape = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`
+    const rows = filtered.map((employee) => {
+      const status = cnhStatus(employee)
+      return [
+        employee.chapa,
+        employee.name,
+        employee.company || '',
+        employee.filial || '',
+        employee.funcao || '',
+        employee.situacao || '',
+        status.label,
+        status.date ?? '',
+      ]
+        .map(escape)
+        .join(';')
+    })
+    const csv = '\uFEFF' + [header.map(escape).join(';'), ...rows].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `afastados-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success(`Consulta exportada (${filtered.length} registro(s))`)
   }
 
   return (
@@ -74,12 +217,99 @@ export default function Afastados() {
         <div>
           <h1 className="text-lg font-bold text-foreground">Afastados</h1>
           <p className="text-xs text-muted-foreground">
-            {afastados.length} colaborador(es) afastado(s)
+            Colaboradores afastados e a divisão por garagem
           </p>
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white shadow-sm">
+      {/* Resumo */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <SummaryCard
+          label="Afastados na empresa principal com filial específica"
+          value={summary.principal}
+          icon={Building2}
+          tone="orange"
+        />
+        <SummaryCard
+          label="Afastados em outras empresas com outras filiais"
+          value={summary.outras}
+          icon={CircleAlert}
+          tone="red"
+        />
+        <SummaryCard label="Total de afastados" value={summary.total} icon={Users} tone="slate" />
+      </div>
+
+      {/* Filtros */}
+      <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por nome ou chapa…"
+              className="h-10 w-full rounded-md border border-input bg-white pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <select
+            value={empresa}
+            onChange={(e) => setEmpresa(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Todas as empresas</option>
+            {empresas.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <select value={filial} onChange={(e) => setFilial(e.target.value)} className={inputClass}>
+            <option value="">Todas as filiais</option>
+            {FILIAIS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <select
+            value={situacao}
+            onChange={(e) => setSituacao(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Todas as situações</option>
+            {SITUACOES.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+        {(search || empresa || filial || situacao) && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Tabela */}
+      <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+            afastado(s)
+          </p>
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
+            <FileDown className="mr-2 h-4 w-4" />
+            Exportar consulta
+          </Button>
+        </div>
+
         <div className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -92,51 +322,46 @@ export default function Afastados() {
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">Chapa</th>
                   <th className="px-4 py-3 font-semibold">Nome</th>
+                  <th className="px-4 py-3 font-semibold">Empresa</th>
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
                   <th className="px-4 py-3 font-semibold">Função</th>
-                  <th className="px-4 py-3 font-semibold">Motivo</th>
-                  <th className="px-4 py-3 font-semibold">Início</th>
-                  <th className="px-4 py-3 font-semibold">Previsão de retorno</th>
-                  <th className="px-4 py-3 font-semibold text-right">Ações</th>
+                  <th className="px-4 py-3 font-semibold">Situação</th>
+                  <th className="px-4 py-3 font-semibold">CNH</th>
                 </tr>
               </thead>
               <tbody>
-                {afastados.map((employee) => (
+                {filtered.map((employee) => (
                   <tr
                     key={employee.id}
                     className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
                   >
                     <td className="tabular-nums px-4 py-3 font-medium">{employee.chapa}</td>
-                    <td className="px-4 py-3 font-medium">{employee.name}</td>
+                    <td className="px-4 py-3">
+                      <span className="block font-medium">{employee.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Registro: {employee.cnh_numero || '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge value={employee.situacao} className="mb-1" />
-                      <span className="block text-xs text-muted-foreground">
-                        {employee.motivo_afastamento || '—'}
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge value={employee.situacao} />
+                        <span className="text-xs text-muted-foreground">
+                          {employee.motivo_afastamento || '—'}
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatDate(employee.inicio_afastamento)}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatDate(employee.previsao_retorno)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setPending(employee)}
-                        className="rounded-md border border-primary/50 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/5"
-                      >
-                        Registrar retorno
-                      </button>
+                    <td className="px-4 py-3">
+                      <CnhBadge status={cnhStatus(employee)} />
                     </td>
                   </tr>
                 ))}
-                {afastados.length === 0 && (
+                {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
-                      Nenhum colaborador afastado.
+                    <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                      Nenhum colaborador afastado encontrado.
                     </td>
                   </tr>
                 )}
@@ -146,41 +371,10 @@ export default function Afastados() {
         </div>
       </div>
 
-      {pending && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => !confirming && setPending(null)}
-          />
-          <div className="relative w-full max-w-sm rounded-xl border bg-white p-6 shadow-xl">
-            <h2 className="text-base font-bold text-foreground">Registrar retorno</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Confirmar o retorno de{' '}
-              <span className="font-medium text-foreground">{pending.name}</span> (chapa{' '}
-              {pending.chapa}) à situação <span className="font-medium text-foreground">Ativo</span>
-              ?
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={confirming}
-                onClick={() => setPending(null)}
-                className="rounded-md border px-4 py-2 text-sm transition-colors hover:bg-muted disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={confirming}
-                onClick={confirmReturn}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {confirming ? 'Confirmando…' : 'Confirmar retorno'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <CalendarX className="h-3.5 w-3.5" />
+        Datas de validade da CNH exibidas conforme o cadastro atualizado na matriz de funcionários.
+      </p>
     </div>
   )
 }
