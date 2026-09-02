@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T21:06:30.107Z",
+  "generatedAt": "2026-09-02T21:22:11.260Z",
   "collections": [
     {
       "name": "users",
@@ -299,6 +299,50 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_notifications_user ON notifications (user)"]
+    },
+    {
+      "name": "sync_runs",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": "",
+        "update": "",
+        "delete": ""
+      },
+      "fields": [
+        {
+          "name": "started_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "finished_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "records_updated",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": []
     }
   ]
 }
