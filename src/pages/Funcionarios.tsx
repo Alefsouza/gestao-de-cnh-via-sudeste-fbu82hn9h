@@ -1,21 +1,110 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Eye, Loader2, Search, Users } from 'lucide-react'
+import {
+  CalendarX,
+  Eye,
+  FileDown,
+  Loader2,
+  Search,
+  UserCheck,
+  UserMinus,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import StatusBadge from '@/components/StatusBadge'
+import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
+import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate } from '@/lib/format'
-import { listAllEmployees, updateEmployee } from '@/services/employees'
+import { listAllEmployees } from '@/services/employees'
 import { listMovementsByEmployee } from '@/services/movements'
 import { FILIAIS, FUNCOES, SITUACOES } from '@/lib/types'
 import type { Employee, Movement } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 10
+
+const inputClass =
+  'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
+/** Resumo colorido exibido acima da tabela. */
+function SummaryCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+}: {
+  label: string
+  value: number
+  icon: typeof Users
+  tone: 'green' | 'orange' | 'red' | 'slate'
+}) {
+  const tones = {
+    green: { bg: 'bg-green-100', text: 'text-green-700', ring: 'border-green-200' },
+    orange: { bg: 'bg-orange-100', text: 'text-orange-700', ring: 'border-orange-200' },
+    red: { bg: 'bg-red-100', text: 'text-red-700', ring: 'border-red-200' },
+    slate: { bg: 'bg-primary/10', text: 'text-primary', ring: 'border-border' },
+  }[tone]
+
+  return (
+    <div
+      className={cn('flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm', tones.ring)}
+    >
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tones.bg}`}>
+        <Icon className={`h-5 w-5 ${tones.text}`} />
+      </div>
+      <div className="min-w-0">
+        <p className="tabular-nums text-2xl font-bold leading-none text-foreground">{value}</p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+type CnhStatus = {
+  label: 'Sem CNH' | 'Regular' | 'Vencida'
+  tone: 'gray' | 'green' | 'red'
+  date?: string
+}
+
+function cnhStatus(employee: Employee): CnhStatus {
+  if (!employee.cnh_numero || !employee.situacao_cnh) {
+    return { label: 'Sem CNH', tone: 'gray' }
+  }
+  if (employee.situacao_cnh === 'Vencida') {
+    return { label: 'Vencida', tone: 'red', date: formatDate(employee.validade_cnh) }
+  }
+  return { label: 'Regular', tone: 'green', date: formatDate(employee.validade_cnh) }
+}
+
+function CnhBadge({ status }: { status: CnhStatus }) {
+  const tones = {
+    gray: 'bg-gray-100 text-gray-700',
+    green: 'bg-green-100 text-green-800',
+    red: 'bg-red-100 text-red-800',
+  }[status.tone]
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <span
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+          tones,
+        )}
+      >
+        {status.label}
+      </span>
+      {status.date && (
+        <span className="text-[11px] text-muted-foreground">Val.: {status.date}</span>
+      )}
+    </div>
+  )
+}
 
 export default function Funcionarios() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [empresa, setEmpresa] = useState('')
   const [filial, setFilial] = useState('')
   const [funcao, setFuncao] = useState('')
   const [situacao, setSituacao] = useState('')
@@ -23,6 +112,7 @@ export default function Funcionarios() {
   const [selected, setSelected] = useState<Employee | null>(null)
   const [movements, setMovements] = useState<Movement[]>([])
   const [movementsLoading, setMovementsLoading] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -43,29 +133,44 @@ export default function Funcionarios() {
     load()
   })
 
+  const empresas = useMemo(
+    () => Array.from(new Set(employees.map((e) => e.company).filter(Boolean))).sort(),
+    [employees],
+  )
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return employees.filter((employee) => {
       if (
         term &&
         !employee.name.toLowerCase().includes(term) &&
-        !employee.chapa.toLowerCase().includes(term)
+        !employee.chapa.toLowerCase().includes(term) &&
+        !(employee.cnh_numero ?? '').toLowerCase().includes(term) &&
+        !employee.funcao.toLowerCase().includes(term)
       ) {
         return false
       }
+      if (empresa && employee.company !== empresa) return false
       if (filial && employee.filial !== filial) return false
       if (funcao && employee.funcao !== funcao) return false
       if (situacao && employee.situacao !== situacao) return false
       return true
     })
-  }, [employees, search, filial, funcao, situacao])
+  }, [employees, search, empresa, filial, funcao, situacao])
+
+  const summary = useMemo(() => {
+    const ativos = filtered.filter((e) => e.situacao === 'Ativo').length
+    const afastados = filtered.filter((e) => e.situacao === 'Afastado').length
+    const cnhVencida = filtered.filter((e) => e.situacao_cnh === 'Vencida').length
+    return { total: filtered.length, ativos, afastados, cnhVencida }
+  }, [filtered])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   useEffect(() => {
     setPage(1)
-  }, [search, filial, funcao, situacao])
+  }, [search, empresa, filial, funcao, situacao])
 
   const openDetail = async (employee: Employee) => {
     setSelected(employee)
@@ -81,36 +186,101 @@ export default function Funcionarios() {
     }
   }
 
+  const clearFilters = () => {
+    setSearch('')
+    setEmpresa('')
+    setFilial('')
+    setFuncao('')
+    setSituacao('')
+  }
+
+  const exportCsv = () => {
+    const header = [
+      'Chapa',
+      'Nome',
+      'Registro CNH',
+      'Empresa',
+      'Filial/Garagem',
+      'Função',
+      'Situação',
+      'CNH',
+      'Validade CNH',
+    ]
+    const escape = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`
+    const rows = filtered.map((employee) => {
+      const status = cnhStatus(employee)
+      return [
+        employee.chapa,
+        employee.name,
+        employee.cnh_numero || '',
+        employee.company || '',
+        employee.filial || '',
+        employee.funcao || '',
+        employee.situacao || '',
+        status.label,
+        status.date ?? '',
+      ]
+        .map(escape)
+        .join(';')
+    })
+    const csv = '\uFEFF' + [header.map(escape).join(';'), ...rows].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `matriz-funcionarios-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success(`Consulta exportada (${filtered.length} registro(s))`)
+  }
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-          <Users className="h-5 w-5 text-primary" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+            <Users className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-foreground">Matriz de funcionários</h1>
+            <p className="text-xs text-muted-foreground">
+              Listagem completa dos colaboradores da empresa
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Matriz de funcionários</h1>
-          <p className="text-xs text-muted-foreground">
-            {filtered.length} colaborador(es) encontrados
-          </p>
-        </div>
+        <Button onClick={() => setModalOpen(true)} className="shrink-0">
+          <Users className="mr-2 h-4 w-4" />
+          Nova movimentação
+        </Button>
       </div>
 
+      {/* Filtros */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="relative flex-1">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
+          <div className="relative md:col-span-2 lg:col-span-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por nome ou chapa…"
+              placeholder="Buscar por nome, chapa, registro ou função…"
               className="h-10 w-full rounded-md border border-input bg-white pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
           <select
-            value={filial}
-            onChange={(event) => setFilial(event.target.value)}
-            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={empresa}
+            onChange={(e) => setEmpresa(e.target.value)}
+            className={inputClass}
           >
+            <option value="">Todas as empresas</option>
+            {empresas.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <select value={filial} onChange={(e) => setFilial(e.target.value)} className={inputClass}>
             <option value="">Todas as filiais</option>
             {FILIAIS.map((item) => (
               <option key={item} value={item}>
@@ -118,11 +288,7 @@ export default function Funcionarios() {
               </option>
             ))}
           </select>
-          <select
-            value={funcao}
-            onChange={(event) => setFuncao(event.target.value)}
-            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
+          <select value={funcao} onChange={(e) => setFuncao(e.target.value)} className={inputClass}>
             <option value="">Todas as funções</option>
             {FUNCOES.map((item) => (
               <option key={item} value={item}>
@@ -132,8 +298,8 @@ export default function Funcionarios() {
           </select>
           <select
             value={situacao}
-            onChange={(event) => setSituacao(event.target.value)}
-            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onChange={(e) => setSituacao(e.target.value)}
+            className={inputClass}
           >
             <option value="">Todas as situações</option>
             {SITUACOES.map((item) => (
@@ -143,19 +309,63 @@ export default function Funcionarios() {
             ))}
           </select>
         </div>
+        {(search || empresa || filial || funcao || situacao) && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        )}
+      </div>
 
-        <div className="mt-4 overflow-x-auto">
+      {/* Resumo */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryCard
+          label="Total de colaboradores"
+          value={summary.total}
+          icon={Users}
+          tone="slate"
+        />
+        <SummaryCard label="Ativos" value={summary.ativos} icon={UserCheck} tone="green" />
+        <SummaryCard label="Afastados" value={summary.afastados} icon={UserMinus} tone="orange" />
+        <SummaryCard
+          label="CNHs vencidas (motoristas)"
+          value={summary.cnhVencida}
+          icon={CalendarX}
+          tone="red"
+        />
+      </div>
+
+      {/* Tabela */}
+      <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+            colaborador(es)
+          </p>
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
+            <FileDown className="mr-2 h-4 w-4" />
+            Exportar consulta
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Carregando…
             </div>
           ) : (
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">Chapa</th>
                   <th className="px-4 py-3 font-semibold">Nome</th>
+                  <th className="px-4 py-3 font-semibold">Empresa</th>
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
                   <th className="px-4 py-3 font-semibold">Função</th>
                   <th className="px-4 py-3 font-semibold">Situação</th>
@@ -170,18 +380,20 @@ export default function Funcionarios() {
                     className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
                   >
                     <td className="tabular-nums px-4 py-3 font-medium">{employee.chapa}</td>
-                    <td className="px-4 py-3 font-medium">{employee.name}</td>
+                    <td className="px-4 py-3">
+                      <span className="block font-medium">{employee.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {employee.cnh_numero ? `Registro: ${employee.cnh_numero}` : 'Sem registro'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                     <td className="px-4 py-3">
                       <StatusBadge value={employee.situacao} />
                     </td>
                     <td className="px-4 py-3">
-                      {employee.situacao_cnh ? (
-                        <StatusBadge value={employee.situacao_cnh} />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+                      <CnhBadge status={cnhStatus(employee)} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -197,7 +409,7 @@ export default function Funcionarios() {
                 ))}
                 {pageItems.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum funcionário encontrado.
                     </td>
                   </tr>
@@ -296,7 +508,7 @@ export default function Funcionarios() {
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Status</dt>
                     <dd>
-                      {selected.situacao_cnh ? <StatusBadge value={selected.situacao_cnh} /> : '—'}
+                      <CnhBadge status={cnhStatus(selected)} />
                     </dd>
                   </div>
                 </dl>
@@ -337,6 +549,8 @@ export default function Funcionarios() {
           </aside>
         </div>
       )}
+
+      <NovaMovimentacaoModal open={modalOpen} onOpenChange={setModalOpen} />
     </div>
   )
 }
