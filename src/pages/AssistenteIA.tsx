@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Send, Sparkles } from 'lucide-react'
+import { Database, Loader2, MessageCircleQuestion, Send, Sparkles } from 'lucide-react'
 
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatDate } from '@/lib/format'
+import { daysUntil, formatDate } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import type { Employee } from '@/lib/types'
 
@@ -12,57 +12,134 @@ interface ChatMessage {
   content: string
 }
 
+const MAIN_COMPANY = 'Via Sudeste Transportes'
+
+const BOAS_VINDAS =
+  'Olá. Já analisei a matriz. Posso consultar ativos, afastados, outras empresas, filiais, garagens, fiscais e CNHs vencidas de motoristas.'
+
 const SUGESTOES = [
-  'Quais CNHs vencem neste mês?',
-  'Quais colaboradores estão afastados hoje?',
-  'Como está a distribuição por garagem?',
-  'Quantos fiscais temos na base?',
+  'Quantos afastados estão em outra empresa?',
+  'Quantos motoristas estão com a CNH vencida?',
+  'Quantos fiscais estão ativos?',
+  'Quantos colaboradores há no Cursino?',
 ]
 
-function daysUntil(dateStr?: string): number | null {
-  if (!dateStr) return null
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return null
-  const now = new Date()
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return Math.round((date.getTime() - startOfToday.getTime()) / 86400000)
+/** Garagens/filiais disponíveis na base (CURSINO e SAPOPEMBA são as originais). */
+const GARAGENS = ['CURSINO', 'SAPOPEMBA', 'ITAQUERA', 'GUAIANASES'] as const
+
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 }
 
-/** Gera a resposta do assistente a partir dos dados atuais da base. */
-function buildAnswer(question: string, employees: Employee[]): string {
-  const normalized = question.toLowerCase()
-  const now = new Date()
+/** CNH vencida: pela situação registrada ou pela data (quando a situação vier vazia). */
+function isCnhVencida(employee: Employee): boolean {
+  const situacao = employee.situacao_cnh as string
+  if (situacao === 'Vencida' || situacao === 'Vencida CNH') return true
+  if (situacao === 'Válida' || situacao === 'A vencer' || situacao === 'Sem CNH') return false
+  const days = daysUntil(employee.validade_cnh)
+  return days !== null && days < 0
+}
 
-  if (normalized.includes('cnh')) {
-    const vencidas = employees
-      .filter((employee) => employee.situacao_cnh === 'Vencida')
-      .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
+function isOutraEmpresa(employee: Employee): boolean {
+  return Boolean(employee.company) && employee.company !== MAIN_COMPANY
+}
+
+function groupCount(
+  employees: Employee[],
+  keyOf: (employee: Employee) => string,
+): [string, number][] {
+  const map = new Map<string, number>()
+  for (const employee of employees) {
+    const key = keyOf(employee) || '—'
+    map.set(key, (map.get(key) ?? 0) + 1)
+  }
+  return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
+
+function labelFilial(employee: Employee): string {
+  return employee.filial || 'Sem filial'
+}
+
+/** Gera a resposta do assistente a partir dos dados atuais da base (sem API externa). */
+function buildAnswer(rawQuestion: string, employees: Employee[]): string {
+  const question = normalize(rawQuestion)
+
+  if (employees.length === 0) {
+    return 'A base de colaboradores não possui registros no momento. Assim que houver dados importados, poderei responder suas consultas.'
+  }
+
+  const afastados = employees.filter((employee) => employee.situacao === 'Afastado')
+  const afastadosOutra = afastados.filter(isOutraEmpresa)
+  const outrasEmpresas = employees.filter(isOutraEmpresa)
+  const motoristas = employees.filter((employee) =>
+    normalize(employee.funcao).includes('motorista'),
+  )
+  const motoristasVencidos = motoristas
+    .filter(isCnhVencida)
+    .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
+  const fiscais = employees.filter((employee) => normalize(employee.funcao).includes('fiscal'))
+  const fiscaisAtivos = fiscais.filter((employee) => employee.situacao === 'Ativo')
+  const ativos = employees.filter((employee) => employee.situacao === 'Ativo')
+  const desligados = employees.filter((employee) => employee.situacao === 'Desligado')
+
+  // --- Afastados -----------------------------------------------------------
+  if (question.includes('afastad')) {
+    const perguntaOutra =
+      question.includes('outra') || question.includes('outras') || question.includes('outra(s)')
+
+    if (perguntaOutra) {
+      const linhas = afastadosOutra.map(
+        (employee) =>
+          `• ${employee.name} (chapa ${employee.chapa}) — ${employee.company || 'empresa não informada'} · motivo: ${employee.motivo_afastamento || 'não informado'} · retorno previsto para ${formatDate(employee.previsao_retorno)}`,
+      )
+      return [
+        `Existem ${afastadosOutra.length} colaborador(es) afastado(s) em outra empresa:`,
+        ...(linhas.length ? linhas : ['• Nenhum colaborador afastado em outra empresa.']),
+      ].join('\n')
+    }
+
+    const afastadosMatriz = afastados.filter((employee) => !isOutraEmpresa(employee))
+    return [
+      `Existem ${afastados.length} colaborador(es) afastado(s) no total, sendo ${afastadosMatriz.length} da matriz e ${afastadosOutra.length} em outra empresa.`,
+      '',
+      'Por empresa:',
+      ...groupCount(afastados, (employee) => employee.company || 'Sem empresa').map(
+        ([empresa, total]) => `• ${empresa}: ${total}`,
+      ),
+    ].join('\n')
+  }
+
+  // --- CNHs ----------------------------------------------------------------
+  if (question.includes('cnh')) {
+    if (question.includes('vencid')) {
+      const linhas = motoristasVencidos.map(
+        (employee) =>
+          `• ${employee.name} (chapa ${employee.chapa}) — vencida em ${formatDate(employee.validade_cnh)} (${labelFilial(employee)})`,
+      )
+      return [
+        `Existem ${motoristasVencidos.length} motorista(s) com a CNH vencida:`,
+        ...(linhas.length ? linhas : ['• Nenhum motorista com a CNH vencida.']),
+        '',
+        'Regularize essas CNHs para evitar restrições operacionais.',
+      ].join('\n')
+    }
+
     const aVencer = employees.filter((employee) => {
       if (employee.situacao_cnh !== 'A vencer') return false
       const days = daysUntil(employee.validade_cnh)
       return days !== null && days <= 30
     })
 
-    if (normalized.includes('vencem') || normalized.includes('mês') || normalized.includes('mes')) {
-      const linhas = aVencer.map(
-        (employee) =>
-          `• ${employee.name} (chapa ${employee.chapa}) — vence em ${formatDate(employee.validade_cnh)} (${employee.filial || '—'})`,
-      )
-      return [
-        `Nos próximos 30 dias, ${aVencer.length} CNH(s) vencem:`,
-        ...(linhas.length ? linhas : ['• Nenhuma CNH vence nos próximos 30 dias.']),
-        '',
-        `Além disso, existem ${vencidas.length} CNH(s) já vencida(s) que precisam de regularização urgente.`,
-      ].join('\n')
-    }
-
     return [
-      `Situação atual das CNHs de motoristas:`,
-      `• Vencidas: ${vencidas.length}`,
+      'Situação atual das CNHs de motoristas:',
+      `• Vencidas: ${motoristasVencidos.length}`,
       `• A vencer (30 dias): ${aVencer.length}`,
       '',
       'Mais críticas:',
-      ...vencidas
+      ...motoristasVencidos
         .slice(0, 5)
         .map(
           (employee) =>
@@ -71,57 +148,141 @@ function buildAnswer(question: string, employees: Employee[]): string {
     ].join('\n')
   }
 
-  if (normalized.includes('afastad')) {
-    const afastados = employees.filter((employee) => employee.situacao === 'Afastado')
+  // --- Fiscais -------------------------------------------------------------
+  if (question.includes('fiscal')) {
+    if (question.includes('ativo')) {
+      const porGaragem = GARAGENS.map((garagem) => ({
+        garagem,
+        total: fiscaisAtivos.filter((employee) => employee.filial === garagem).length,
+      })).filter((item) => item.total > 0)
+
+      return [
+        `Existem ${fiscaisAtivos.length} fiscal(is) de Viajem ativo(s) na base.`,
+        ...(porGaragem.length
+          ? ['', 'Por garagem:', ...porGaragem.map((item) => `• ${item.garagem}: ${item.total}`)]
+          : []),
+      ].join('\n')
+    }
+
+    return `A base possui ${fiscais.length} fiscal(is) de Viajem, dos quais ${fiscaisAtivos.length} ativo(s) e ${fiscais.length - fiscaisAtivos.length} em outra situação.`
+  }
+
+  // --- Filial/garagem específica --------------------------------------------
+  const garagemDetectada = GARAGENS.find((garagem) => question.includes(normalize(garagem)))
+  if (garagemDetectada) {
+    const naGaragem = employees.filter((employee) => employee.filial === garagemDetectada)
+    const ativosGaragem = naGaragem.filter((employee) => employee.situacao === 'Ativo').length
+    const afastadosGaragem = naGaragem.filter((employee) => employee.situacao === 'Afastado').length
     return [
-      `Existem ${afastados.length} colaborador(es) afastado(s):`,
-      ...afastados.map(
-        (employee) =>
-          `• ${employee.name} (chapa ${employee.chapa}) — ${employee.motivo_afastamento || 'motivo não informado'}; retorno previsto para ${formatDate(employee.previsao_retorno)}`,
+      `Há ${naGaragem.length} colaborador(es) na garagem ${garagemDetectada}:`,
+      `• Ativos: ${ativosGaragem}`,
+      `• Afastados: ${afastadosGaragem}`,
+      `• Desligados/sem situação: ${naGaragem.length - ativosGaragem - afastadosGaragem}`,
+    ].join('\n')
+  }
+
+  // --- Outras empresas -----------------------------------------------------
+  if (question.includes('empresa')) {
+    return [
+      `Existem ${outrasEmpresas.length} registro(s) de outras empresas na base:`,
+      ...groupCount(outrasEmpresas, (employee) => employee.company || 'Sem empresa').map(
+        ([empresa, total]) => `• ${empresa}: ${total}`,
       ),
     ].join('\n')
   }
 
-  if (normalized.includes('garagem') || normalized.includes('distribui')) {
-    const cursino = employees.filter((employee) => employee.filial === 'CURSINO').length
-    const sapopemba = employees.filter((employee) => employee.filial === 'SAPOPEMBA').length
-    return `Distribuição atual na base:\n• CURSINO: ${cursino} colaboradores\n• SAPOPEMBA: ${sapopemba} colaboradores\n• Total: ${cursino + sapopemba}`
+  // --- Distribuição por garagem ---------------------------------------------
+  if (question.includes('garagem')) {
+    return [
+      'Distribuição atual por garagem (filial):',
+      ...GARAGENS.map((garagem) => {
+        const total = employees.filter((employee) => employee.filial === garagem).length
+        return `• ${garagem}: ${total} colaborador(es)`
+      }),
+      '',
+      `Total: ${employees.length}`,
+    ].join('\n')
   }
 
-  if (normalized.includes('fiscal')) {
-    const fiscais = employees.filter((employee) => employee.funcao === 'Fiscal de Viajem')
-    const emDia = fiscais.filter((employee) => {
-      const days = daysUntil(employee.validade_documento_fiscal)
-      return days !== null && days > 30
-    }).length
-    return `Temos ${fiscais.length} fiscal(is) na base, dos quais ${emDia} com documentação em dia.`
+  // --- Motoristas ----------------------------------------------------------
+  if (question.includes('motorista')) {
+    return [
+      `A base possui ${motoristas.length} motorista(s), dos quais ${motoristasVencidos.length} com a CNH vencida.`,
+      '',
+      'Por garagem:',
+      ...GARAGENS.map((garagem) => {
+        const total = motoristas.filter((employee) => employee.filial === garagem).length
+        return `• ${garagem}: ${total}`
+      }),
+    ].join('\n')
   }
 
-  return 'Posso ajudar com informações sobre CNHs de motoristas, colaboradores afastados, distribuição por garagem e atualização fiscal. Experimente uma das sugestões abaixo.'
+  // --- Ativos --------------------------------------------------------------
+  if (question.includes('ativo')) {
+    return [
+      `A base possui ${ativos.length} colaborador(es) ativo(s) no total.`,
+      '',
+      'Por garagem:',
+      ...GARAGENS.map((garagem) => {
+        const total = ativos.filter((employee) => employee.filial === garagem).length
+        return `• ${garagem}: ${total}`
+      }),
+    ].join('\n')
+  }
+
+  // --- Total de colaboradores ------------------------------------------------
+  if (question.includes('colaborador') || question.includes('quantos')) {
+    return [
+      `A base de colaboradores possui ${employees.length} registro(s):`,
+      `• Ativos: ${ativos.length}`,
+      `• Afastados: ${afastados.length}`,
+      `• Desligados: ${desligados.length}`,
+    ].join('\n')
+  }
+
+  return 'Posso ajudar com informações sobre ativos, afastados, outras empresas, filiais, garagens, fiscais e CNHs vencidas de motoristas. Experimente uma das perguntas sugeridas.'
 }
 
 export default function AssistenteIA() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'assistant', content: BOAS_VINDAS },
+  ])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [loaded, setLoaded] = useState(false)
   const location = useLocation()
   const bottomRef = useRef<HTMLDivElement>(null)
   const pendingQuestion = useRef<string | null>(
     (location.state as { question?: string } | null)?.question ?? null,
   )
 
-  useEffect(() => {
+  const loadEmployees = () => {
     listAllEmployees()
-      .then(setEmployees)
-      .catch(() => setEmployees([]))
+      .then((items) => {
+        setEmployees(items)
+        setLoaded(true)
+      })
+      .catch(() => setLoaded(true))
+  }
+
+  useEffect(() => {
+    loadEmployees()
   }, [])
 
-  useRealtime('employees', () => {
-    listAllEmployees()
-      .then(setEmployees)
-      .catch(() => {})
-  })
+  useRealtime('employees', loadEmployees)
+
+  const stats = useMemo(
+    () => ({
+      total: employees.length,
+      ativos: employees.filter((employee) => employee.situacao === 'Ativo').length,
+      afastados: employees.filter((employee) => employee.situacao === 'Afastado').length,
+      motoristas: employees.filter((employee) => normalize(employee.funcao).includes('motorista'))
+        .length,
+      fiscais: employees.filter((employee) => normalize(employee.funcao).includes('fiscal')).length,
+    }),
+    [employees],
+  )
 
   const sendQuestion = (question: string) => {
     const trimmed = question.trim()
@@ -156,90 +317,129 @@ export default function AssistenteIA() {
   const canSend = useMemo(() => input.trim().length > 0 && !thinking, [input, thinking])
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-150px)] max-w-4xl flex-col">
+    <div className="mx-auto flex h-[calc(100vh-140px)] max-w-6xl flex-col">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-[#0C1B14] to-[#14532D]">
+        <div className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-gradient-to-br from-[#0C1B14] to-[#14532D]">
           <Sparkles className="h-5 w-5 text-emerald-300" />
         </div>
         <div>
           <h1 className="text-lg font-bold text-foreground">Assistente IA</h1>
           <p className="text-xs text-muted-foreground">
-            Tire dúvidas sobre colaboradores, CNHs, afastamentos e processos.
+            Consulte os registros reais da base em linguagem natural.
           </p>
         </div>
       </div>
 
-      <div className="mt-4 flex-1 space-y-4 overflow-y-auto rounded-xl border bg-white p-4 shadow-sm">
-        {messages.length === 0 && !thinking && (
-          <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-            <Sparkles className="h-8 w-8 text-primary" />
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Faça uma pergunta sobre a base de colaboradores da Via Sudeste.
+      <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        {/* Bloco informativo lateral */}
+        <aside className="flex flex-col gap-4 lg:w-[290px] lg:flex-none">
+          <div className="rounded-2xl border bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-bold text-foreground">Consulte a base sem fórmulas</h2>
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              O assistente consulta os registros reais da matriz de colaboradores. Clique em uma
+              sugestão para perguntar:
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
+            <div className="mt-3 flex flex-col gap-2">
               {SUGESTOES.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
+                  disabled={thinking}
                   onClick={() => sendQuestion(suggestion)}
-                  className="rounded-full border bg-muted/40 px-3 py-1.5 text-xs font-medium transition-colors hover:border-primary/40 hover:bg-accent"
+                  className="group flex items-start gap-2 rounded-xl border bg-muted/40 px-3 py-2.5 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {suggestion}
+                  <MessageCircleQuestion className="mt-0.5 h-3.5 w-3.5 flex-none text-primary" />
+                  <span>{suggestion}</span>
                 </button>
               ))}
             </div>
           </div>
-        )}
+        </aside>
 
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        {/* Área de chat */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex-1 space-y-4 overflow-y-auto rounded-2xl border bg-white p-4 shadow-sm">
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={`flex gap-2.5 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {message.role === 'assistant' && (
+                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-gradient-to-br from-[#0C1B14] to-[#14532D]">
+                    <Sparkles className="h-4 w-4 text-emerald-300" />
+                  </span>
+                )}
+                <div
+                  className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm ${
+                    message.role === 'user'
+                      ? 'rounded-br-sm bg-primary text-white'
+                      : 'rounded-bl-sm bg-muted text-foreground'
+                  }`}
+                >
+                  {message.content}
+                </div>
+              </div>
+            ))}
+
+            {thinking && (
+              <div className="flex justify-start gap-2.5">
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-gradient-to-br from-[#0C1B14] to-[#14532D]">
+                  <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
+                </span>
+                <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-2.5 text-sm text-muted-foreground">
+                  Analisando os registros da base…
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Indicador de registros disponíveis */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 font-semibold text-primary">
+              <Database className="h-3.5 w-3.5" />
+              {loaded
+                ? `${stats.total} registros disponíveis na base`
+                : 'Carregando registros da base…'}
+            </span>
+            {loaded && stats.total > 0 && (
+              <>
+                <span>· {stats.ativos} ativo(s)</span>
+                <span>· {stats.afastados} afastado(s)</span>
+                <span>· {stats.motoristas} motorista(s)</span>
+                <span>· {stats.fiscais} fiscal(is)</span>
+              </>
+            )}
+          </div>
+
+          {/* Barra de entrada */}
+          <form
+            className="mt-2.5 flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              sendQuestion(input)
+            }}
           >
-            <div
-              className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm ${
-                message.role === 'user'
-                  ? 'rounded-br-sm bg-primary text-white'
-                  : 'rounded-bl-sm bg-muted text-foreground'
-              }`}
+            <input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="Pergunte algo sobre a base de colaboradores…"
+              className="h-11 flex-1 rounded-full border border-input bg-white px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <button
+              type="submit"
+              disabled={!canSend}
+              className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary/90 disabled:opacity-40"
+              aria-label="Enviar"
             >
-              {message.content}
-            </div>
-          </div>
-        ))}
-
-        {thinking && (
-          <div className="flex justify-start">
-            <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-2.5 text-sm text-muted-foreground">
-              Analisando os dados…
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
+              <Send className="h-4 w-4" />
+            </button>
+          </form>
+        </div>
       </div>
-
-      <form
-        className="mt-4 flex items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          sendQuestion(input)
-        }}
-      >
-        <input
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Pergunte algo sobre a base de colaboradores…"
-          className="h-11 flex-1 rounded-full border border-input bg-white px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        <button
-          type="submit"
-          disabled={!canSend}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary/90 disabled:opacity-40"
-          aria-label="Enviar"
-        >
-          <Send className="h-4 w-4" />
-        </button>
-      </form>
     </div>
   )
 }
