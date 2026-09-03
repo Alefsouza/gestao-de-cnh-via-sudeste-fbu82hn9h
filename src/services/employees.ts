@@ -274,28 +274,36 @@ export async function getCnhsSummary(
     }
   }
 
-  const results = await Promise.allSettled([
-    (async () => countSafe())(),
-    (async () => {
-      await wait(100)
-      return countSafe('situacao_cnh = "Válida"')
-    })(),
-    (async () => {
-      await wait(200)
-      return countSafe('situacao_cnh = "A vencer"')
-    })(),
-    (async () => {
-      await wait(300)
-      return countSafe('situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH"')
-    })(),
-  ])
+  // Executa as contagens de forma sequencial espaçada para evitar rajada e erro 429
+  let todas = 0
+  let valida = 0
+  let aVencer = 0
+  let vencida = 0
 
-  const todas = results[0].status === 'fulfilled' ? results[0].value : 0
-  const valida = results[1].status === 'fulfilled' ? results[1].value : 0
-  const aVencer = results[2].status === 'fulfilled' ? results[2].value : 0
-  const vencida = results[3].status === 'fulfilled' ? results[3].value : 0
+  try {
+    todas = await countSafe()
+  } catch {
+    hasError = true
+  }
 
-  if (results.some((r) => r.status === 'rejected')) {
+  await wait(180)
+  try {
+    valida = await countSafe('situacao_cnh = "Válida"')
+  } catch {
+    hasError = true
+  }
+
+  await wait(180)
+  try {
+    aVencer = await countSafe('situacao_cnh = "A vencer"')
+  } catch {
+    hasError = true
+  }
+
+  await wait(180)
+  try {
+    vencida = await countSafe('situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH"')
+  } catch {
     hasError = true
   }
 

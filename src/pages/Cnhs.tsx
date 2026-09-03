@@ -55,6 +55,7 @@ export default function Cnhs() {
   const [exporting, setExporting] = useState(false)
   const [tab, setTab] = useState<StatusFilter>('todas')
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [garagem, setGaragem] = useState('')
   const [situacao, setSituacao] = useState<SituacaoFilter>('todos')
   const [page, setPage] = useState(1)
@@ -69,6 +70,14 @@ export default function Cnhs() {
     'A vencer': 0,
     Vencida: 0,
   })
+
+  // Debounce do termo de busca digitado pelo usuário para evitar disparar consultas a cada tecla
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -88,14 +97,14 @@ export default function Cnhs() {
   // Reseta a página para 1 quando os filtros mudam
   useEffect(() => {
     setPage(1)
-  }, [search, tab, garagem, situacao])
+  }, [debouncedSearch, tab, garagem, situacao])
 
   // Carrega os contadores dos cards e abas no backend de forma leve e pontual
   const loadSummary = useCallback(async () => {
     const runId = ++summaryRunId.current
     try {
       const res = await getCnhsSummary({
-        search: search.trim(),
+        search: debouncedSearch.trim(),
         filial: garagem || undefined,
         situacao: situacao === 'todos' ? undefined : situacao,
       })
@@ -111,7 +120,7 @@ export default function Cnhs() {
         console.error('Erro ao carregar contadores de CNH:', err)
       }
     }
-  }, [search, garagem, situacao])
+  }, [debouncedSearch, garagem, situacao])
 
   // Filtros ativos para a consulta paginada
   const activeFilters = useMemo<EmployeeFilters>(() => {
@@ -129,7 +138,7 @@ export default function Cnhs() {
     const pbSort = sortDirection === 'asc' ? '+validade_cnh,chapa' : '-validade_cnh,chapa'
 
     return {
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       filial: garagem || undefined,
       situacao: situacao === 'todos' ? undefined : situacao,
       customFilter: customParts.join(' && '),
@@ -137,7 +146,7 @@ export default function Cnhs() {
       perPage: PAGE_SIZE,
       sort: pbSort,
     }
-  }, [search, garagem, situacao, tab, page, sortDirection])
+  }, [debouncedSearch, garagem, situacao, tab, page, sortDirection])
 
   // Busca apenas a página corrente do servidor
   const loadPage = useCallback(async () => {
@@ -168,11 +177,12 @@ export default function Cnhs() {
     void loadPage()
   }, [loadPage])
 
-  // Carrega os contadores com debounce para evitar requisições repetidas ao digitar
+  // Carrega os contadores com debounce e espaçado após a requisição inicial da listagem da página
+  // para eliminar a concorrência em rajada no PocketBase
   useEffect(() => {
     const timer = setTimeout(() => {
       void loadSummary()
-    }, 150)
+    }, 400)
     return () => clearTimeout(timer)
   }, [loadSummary])
 
