@@ -445,7 +445,7 @@ export default function ProcessosCadastrais() {
             <table className="w-full min-w-[860px] text-left text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-3 font-semibold">Matrícula</th>
+                  <th className="px-4 py-3 font-semibold">REGISTRO</th>
                   <th className="px-4 py-3 font-semibold">Colaborador</th>
                   <th className="px-4 py-3 font-semibold">Função</th>
                   <th className="px-4 py-3 font-semibold">Processo</th>
