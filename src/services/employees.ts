@@ -76,14 +76,102 @@ export async function listEmployees(filters: EmployeeFilters = {}) {
 }
 
 /**
- * Busca uma única página da base, sem filtros — usada pelo carregamento
- * paginado do dashboard. Repete automaticamente em caso de 429 (rate limit)
- * ou instabilidade do backend, com backoff exponencial.
+ * Busca uma única página da base, sem filtros. Repete automaticamente
+ * em caso de 429 (rate limit) ou instabilidade do backend, com backoff exponencial.
  */
 export async function listEmployeesPage(page: number, perPage: number) {
   return withRetry(() =>
     pb.collection<Employee>(COLLECTION).getList(page, perPage, { sort: 'chapa' }),
   )
+}
+
+/**
+ * Filtro padrão para identificar CNHs vencidas no backend PocketBase:
+ * 1) situacao_cnh = 'Vencida' OU 'Vencida CNH'
+ * 2) OU situacao_cnh != 'Sem CNH' E validade_cnh preenchida e anterior à data/hora atual.
+ */
+export const CNH_VENCIDA_FILTER =
+  'situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now)'
+
+/**
+ * Retorna a contagem de registros que atendem a um determinado filtro,
+ * fazendo uma requisição leve com perPage=1 e lendo totalItems.
+ */
+export async function countEmployees(filter?: string): Promise<number> {
+  return withRetry(async () => {
+    const res = await pb.collection<Employee>(COLLECTION).getList(1, 1, {
+      filter: filter || undefined,
+      fields: 'id',
+      requestKey: null,
+    })
+    return res.totalItems
+  })
+}
+
+export interface VisaoGeralStats {
+  ativos: number
+  afastados: number
+  vencidas: number
+  fiscais: number
+  porGaragem: {
+    CURSINO: number
+    SAPOPEMBA: number
+  }
+}
+
+/**
+ * Carrega todas as métricas da Visão Geral em paralelo usando contagens pontuais no backend,
+ * tratando eventuais falhas individualmente para não derrubar o dashboard.
+ */
+export async function getVisaoGeralStats(): Promise<{ stats: VisaoGeralStats; hasError: boolean }> {
+  let hasError = false
+
+  const countSafe = async (filter: string): Promise<number> => {
+    try {
+      return await countEmployees(filter)
+    } catch (err) {
+      console.error(`Erro ao contar colaboradores (${filter}):`, err)
+      hasError = true
+      return 0
+    }
+  }
+
+  const [ativos, afastados, vencidas, fiscais, cursino, sapopemba] = await Promise.all([
+    countSafe('situacao = "Ativo"'),
+    countSafe('situacao = "Afastado"'),
+    countSafe(CNH_VENCIDA_FILTER),
+    countSafe('funcao ~ "fiscal"'),
+    countSafe('filial = "CURSINO"'),
+    countSafe('filial = "SAPOPEMBA"'),
+  ])
+
+  return {
+    stats: {
+      ativos,
+      afastados,
+      vencidas,
+      fiscais,
+      porGaragem: {
+        CURSINO: cursino,
+        SAPOPEMBA: sapopemba,
+      },
+    },
+    hasError,
+  }
+}
+
+/**
+ * Busca as primeiras CNHs vencidas para a tabela da Visão Geral (ordenadas por validade_cnh ascendente).
+ */
+export async function listCnhsVencidasTop(limit = 5): Promise<Employee[]> {
+  return withRetry(async () => {
+    const res = await pb.collection<Employee>(COLLECTION).getList(1, limit, {
+      filter: CNH_VENCIDA_FILTER,
+      sort: 'validade_cnh,chapa',
+      requestKey: null,
+    })
+    return res.items
+  })
 }
 
 /** Busca todos os funcionários aplicando os filtros informados, com paginação sequencial e retry para evitar 429. */

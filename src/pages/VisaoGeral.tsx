@@ -20,18 +20,14 @@ import StatCard from '@/components/StatCard'
 import StatusBadge from '@/components/StatusBadge'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate, formatCnh, relativeDayLabel } from '@/lib/format'
-import { listEmployeesPage } from '@/services/employees'
+import { getVisaoGeralStats, listCnhsVencidasTop, type VisaoGeralStats } from '@/services/employees'
 import { triggerSync } from '@/lib/sync'
 import type { Employee } from '@/lib/types'
-import { comparable, isCnhVencida, normalizeEmployees, normalizeFuncao } from '@/lib/normalize'
+import { normalizeEmployees } from '@/lib/normalize'
 const GARAGENS = ['CURSINO', 'SAPOPEMBA'] as const
 
-/** Tamanho de cada página de carregamento da base (evita 429 do backend). */
-const BASE_PAGE_SIZE = 500
-/** Pausa entre lotes de carregamento (respeita o rate limit do backend). */
-const PAGE_DELAY_MS = 800
 /** Janela em que eventos de realtime são ignorados após um carregamento (evita refetch em rajada). */
-const RELOAD_THROTTLE_MS = 10_000
+const RELOAD_THROTTLE_MS = 5_000
 
 /** Cores das barras por garagem (gradiente escuro -> claro). */
 const BAR_STYLES: Record<(typeof GARAGENS)[number], string> = {
@@ -75,7 +71,17 @@ function DistribuitionBar({
 }
 
 export default function VisaoGeral() {
-  const [employees, setEmployees] = useState<Employee[]>([])
+  const [stats, setStats] = useState<VisaoGeralStats>({
+    ativos: 0,
+    afastados: 0,
+    vencidas: 0,
+    fiscais: 0,
+    porGaragem: {
+      CURSINO: 0,
+      SAPOPEMBA: 0,
+    },
+  })
+  const [vencidasRaw, setVencidasRaw] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [loadError, setLoadError] = useState(false)
@@ -87,8 +93,8 @@ export default function VisaoGeral() {
   const lastLoadedAt = useRef(0)
 
   /**
-   * Carrega a base paginada (500 por página, sequencial) para não estourar
-   * o limite de requisições do backend (429) com a base completa.
+   * Carrega os contadores e os 5 primeiros registros de CNHs vencidas
+   * sem baixar a base inteira, usando contagens pontuais no backend PocketBase.
    */
   const load = useCallback(async () => {
     const runId = ++loadRunId.current
@@ -96,20 +102,41 @@ export default function VisaoGeral() {
     setLoading(true)
     setLoadError(false)
     try {
-      const first = await listEmployeesPage(1, BASE_PAGE_SIZE)
-      const collected = [...first.items]
-      const totalPages = first.totalPages
-      for (let page = 2; page <= totalPages; page++) {
-        // Pausa entre lotes para respeitar o rate limit do backend.
-        await new Promise((resolve) => setTimeout(resolve, PAGE_DELAY_MS))
-        if (runId !== loadRunId.current) return
-        const next = await listEmployeesPage(page, BASE_PAGE_SIZE)
-        collected.push(...next.items)
+      const [statsResult, cnhsResult] = await Promise.allSettled([
+        getVisaoGeralStats(),
+        listCnhsVencidasTop(5),
+      ])
+
+      if (runId !== loadRunId.current) return
+
+      let hasFailure = false
+
+      if (statsResult.status === 'fulfilled') {
+        setStats(statsResult.value.stats)
+        if (statsResult.value.hasError) {
+          hasFailure = true
+        }
+      } else {
+        hasFailure = true
+        console.error('Erro ao buscar estatísticas da Visão Geral:', statsResult.reason)
       }
-      setEmployees(collected)
+
+      if (cnhsResult.status === 'fulfilled') {
+        setVencidasRaw(cnhsResult.value)
+      } else {
+        hasFailure = true
+        console.error('Erro ao buscar CNHs vencidas:', cnhsResult.reason)
+      }
+
+      if (hasFailure && statsResult.status === 'rejected' && cnhsResult.status === 'rejected') {
+        setLoadError(true)
+        toast.error('Não foi possível carregar os dados da matriz')
+      }
     } catch {
-      setLoadError(true)
-      toast.error('Não foi possível carregar os dados da matriz')
+      if (runId === loadRunId.current) {
+        setLoadError(true)
+        toast.error('Não foi possível carregar os dados da matriz')
+      }
     } finally {
       if (runId === loadRunId.current) {
         loadInProgress.current = false
@@ -133,39 +160,15 @@ export default function VisaoGeral() {
     requestLoad()
   })
 
-  // Normalização aplicada UMA VEZ, sobre a lista carregada — as contagens dos
-  // cards e da tabela comparam valores canônicos, sem depender de caixa.
-  const normalized = useMemo(() => normalizeEmployees(employees), [employees])
+  // Normalização leve aplicada apenas aos 5 registros trazidos para a tabela
+  const vencidasList = useMemo(() => normalizeEmployees(vencidasRaw), [vencidasRaw])
 
-  const stats = useMemo(() => {
-    const ativos = normalized.filter((employee) => comparable(employee.situacao) === 'ativo').length
-    const afastados = normalized.filter(
-      (employee) => comparable(employee.situacao) === 'afastado',
-    ).length
-    const vencidas = normalized.filter((employee) => isCnhVencida(employee)).length
-    const fiscais = normalized.filter((employee) =>
-      comparable(employee.funcao).includes('fiscal'),
-    ).length
-    const porGaragem = Object.fromEntries(
-      GARAGENS.map((garagem) => [
-        garagem,
-        normalized.filter((employee) => comparable(employee.filial) === garagem.toLowerCase())
-          .length,
-      ]),
-    ) as Record<(typeof GARAGENS)[number], number>
-    return { ativos, afastados, vencidas, fiscais, porGaragem }
-  }, [normalized])
-
-  const vencidasList = useMemo(
-    () =>
-      normalized
-        .filter((employee) => isCnhVencida(employee))
-        .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
-        .slice(0, 5),
-    [normalized],
-  )
-
-  const hasBaseData = employees.length > 0
+  const hasBaseData =
+    stats.ativos > 0 ||
+    stats.afastados > 0 ||
+    stats.porGaragem.CURSINO > 0 ||
+    stats.porGaragem.SAPOPEMBA > 0 ||
+    vencidasList.length > 0
 
   const handleSync = async () => {
     if (syncing) return
