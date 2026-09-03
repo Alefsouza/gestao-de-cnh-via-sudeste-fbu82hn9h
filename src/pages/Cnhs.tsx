@@ -387,7 +387,7 @@ export default function Cnhs() {
               aria-label="Filial ou garagem"
             >
               <option value="">Todas as garagens</option>
-              {FILIAIS.map((item) => (
+              {FILIAIS.filter((item) => item !== 'ITAQUERA').map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>
