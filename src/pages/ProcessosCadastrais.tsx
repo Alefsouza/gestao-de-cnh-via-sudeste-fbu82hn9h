@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useRealtime } from '@/hooks/use-realtime'
+import pb from '@/lib/pocketbase/client'
 import { formatDate } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import { createMovement } from '@/services/movements'
@@ -96,10 +97,13 @@ const CARD_STYLES: Record<
 }
 
 const ETAPAS = [
+  'Documentação',
+  'Análise',
+  'Aprovação',
+  'Concluído',
   'Documentos solicitados',
   'Aguardando documentos',
   'Em conferência',
-  'Concluído',
 ] as const
 type Etapa = (typeof ETAPAS)[number]
 
@@ -304,7 +308,9 @@ export default function ProcessosCadastrais() {
       matricula: string
       nome: string
       funcao: string
+      etapa: Etapa
       prazo: string
+      situacao: Situacao
       employeeId?: string
     }) => {
       const novo: ProcessoCadastral = {
@@ -313,9 +319,9 @@ export default function ProcessosCadastrais() {
         colaborador: data.nome,
         funcao: data.funcao,
         processo: data.processo,
-        etapa: ETAPA_INICIAL,
+        etapa: data.etapa,
         prazo: data.prazo,
-        situacao: 'Pendente',
+        situacao: data.situacao,
       }
 
       setProcessos((prev) => {
@@ -356,7 +362,9 @@ export default function ProcessosCadastrais() {
       matricula: string
       nome: string
       funcao: string
+      etapa: Etapa
       prazo: string
+      situacao: Situacao
       employeeId?: string
     }) => {
       setProcessos((prev) => {
@@ -368,7 +376,9 @@ export default function ProcessosCadastrais() {
               colaborador: data.nome,
               funcao: data.funcao,
               processo: data.processo,
+              etapa: data.etapa,
               prazo: data.prazo,
+              situacao: data.situacao,
             }
           }
           return item
@@ -735,7 +745,9 @@ interface ProcessoCadastralFormModalProps {
     matricula: string
     nome: string
     funcao: string
+    etapa: Etapa
     prazo: string
+    situacao: Situacao
     employeeId?: string
   }) => Promise<void> | void
 }
@@ -752,7 +764,11 @@ function ProcessoCadastralFormModal({
   const [matricula, setMatricula] = useState('')
   const [nome, setNome] = useState('')
   const [funcao, setFuncao] = useState('')
+  const [etapa, setEtapa] = useState<Etapa>('Documentação' as Etapa)
   const [prazo, setPrazo] = useState('')
+  const [situacao, setSituacao] = useState<Situacao>('Pendente')
+  const [searchingEmployee, setSearchingEmployee] = useState(false)
+  const [resolvedEmployeeId, setResolvedEmployeeId] = useState<string | undefined>(undefined)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -762,25 +778,88 @@ function ProcessoCadastralFormModal({
         setMatricula(initialData.matricula || '')
         setNome(initialData.colaborador || '')
         setFuncao(initialData.funcao || '')
+        setEtapa(initialData.etapa || 'Documentação')
         setPrazo(initialData.prazo || '')
+        setSituacao(initialData.situacao || 'Pendente')
+        setResolvedEmployeeId(undefined)
       } else {
         setProcesso('Inclusão')
         setMatricula('')
         setNome('')
         setFuncao('')
+        setEtapa('Documentação')
         setPrazo('')
+        setSituacao('Pendente')
+        setResolvedEmployeeId(undefined)
       }
     }
   }, [open, initialData])
+
+  // Auto-preenchimento ao digitar o registro/chapa
+  useEffect(() => {
+    if (!open) return
+    const term = matricula.trim()
+    if (!term) return
+
+    let isMounted = true
+    const timer = setTimeout(async () => {
+      // 1. Tenta encontrar na lista em memória (se já carregada)
+      const localMatch = employees.find((emp) => {
+        const chapa = (emp.chapa || '').trim().toLowerCase()
+        const reg = (emp.registro || '').trim().toLowerCase()
+        const target = term.toLowerCase()
+        return chapa === target || reg === target
+      })
+
+      if (localMatch) {
+        if (!isMounted) return
+        if (localMatch.name) setNome(localMatch.name)
+        if (localMatch.funcao) setFuncao(localMatch.funcao)
+        setResolvedEmployeeId(localMatch.id)
+        return
+      }
+
+      // 2. Se não encontrou em memória, busca na coleção employees do PocketBase
+      setSearchingEmployee(true)
+      try {
+        const safe = term.replace(/"/g, '\\"')
+        // Consulta exata ou prefixo com zeros comuns em chapas (ex: 13 -> 000013)
+        const padded6 = /^\d+$/.test(term) ? term.padStart(6, '0') : term
+        const safePadded = padded6.replace(/"/g, '\\"')
+        const records = await pb.collection<Employee>('employees').getList(1, 1, {
+          filter: `chapa = "${safe}" || chapa = "${safePadded}" || registro = "${safe}" || registro = "${safePadded}" || chapa ~ "${safe}"`,
+        })
+
+        if (!isMounted) return
+        if (records.items.length > 0) {
+          const emp = records.items[0]
+          if (emp.name) setNome(emp.name)
+          if (emp.funcao) setFuncao(emp.funcao)
+          setResolvedEmployeeId(emp.id)
+        }
+      } catch (error) {
+        console.error('Erro ao buscar colaborador por registro:', error)
+      } finally {
+        if (isMounted) setSearchingEmployee(false)
+      }
+    }, 300)
+
+    return () => {
+      isMounted = false
+      clearTimeout(timer)
+    }
+  }, [matricula, open, employees])
 
   const selectedEmployee = useMemo(
     () =>
       employees.find(
         (employee) =>
+          employee.id === resolvedEmployeeId ||
           employee.chapa === matricula.trim() ||
+          employee.registro === matricula.trim() ||
           employee.name.toLowerCase() === nome.trim().toLowerCase(),
       ),
-    [employees, matricula, nome],
+    [employees, matricula, nome, resolvedEmployeeId],
   )
 
   const canSubmit = matricula.trim() !== '' && nome.trim() !== '' && processo !== null && !saving
@@ -794,8 +873,10 @@ function ProcessoCadastralFormModal({
         matricula: matricula.trim(),
         nome: nome.trim(),
         funcao: funcao.trim(),
+        etapa,
         prazo,
-        employeeId: selectedEmployee?.id,
+        situacao,
+        employeeId: resolvedEmployeeId || selectedEmployee?.id,
       })
       onOpenChange(false)
     } finally {
@@ -845,10 +926,18 @@ function ProcessoCadastralFormModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="modal-matricula">Registro</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="modal-matricula">Registro / Chapa</Label>
+              {searchingEmployee && (
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                  Buscando colaborador…
+                </span>
+              )}
+            </div>
             <Input
               id="modal-matricula"
-              placeholder="Número da matrícula / registro"
+              placeholder="Digite o registro ou chapa (ex: 000055)"
               value={matricula}
               onChange={(event) => setMatricula(event.target.value)}
               autoComplete="off"
@@ -875,6 +964,40 @@ function ProcessoCadastralFormModal({
               onChange={(event) => setFuncao(event.target.value)}
               autoComplete="off"
             />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="modal-etapa">Etapa</Label>
+              <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
+                <SelectTrigger id="modal-etapa">
+                  <SelectValue placeholder="Selecione a etapa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ETAPAS.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="modal-situacao">Situação</Label>
+              <Select value={situacao} onValueChange={(value) => setSituacao(value as Situacao)}>
+                <SelectTrigger id="modal-situacao">
+                  <SelectValue placeholder="Selecione a situação" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SITUACOES_VALIDAS.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-2">
