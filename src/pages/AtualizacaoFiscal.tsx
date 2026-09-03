@@ -131,7 +131,11 @@ export default function AtualizacaoFiscal() {
   })
 
   const fiscais = useMemo(
-    () => employees.filter((employee) => employee.funcao === 'Fiscal de Viajem'),
+    () =>
+      employees.filter((employee) => {
+        const funcao = employee.funcao?.trim().toLowerCase()
+        return Boolean(funcao && funcao.includes('fiscal'))
+      }),
     [employees],
   )
 
