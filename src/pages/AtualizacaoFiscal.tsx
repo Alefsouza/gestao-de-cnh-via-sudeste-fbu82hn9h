@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Building2,
   FileCheck2,
+  FileDown,
   Info,
   Loader2,
   Search,
@@ -10,6 +11,7 @@ import {
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 
 import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -296,6 +298,55 @@ export default function AtualizacaoFiscal() {
     search || garagem || cnhStatusFilter !== 'todos' || cardFilter !== 'todos',
   )
 
+  const exportXlsx = useCallback(() => {
+    if (filtered.length === 0) {
+      toast.error('Nenhum fiscal para exportar.')
+      return
+    }
+
+    try {
+      const rows = filtered.map((employee) => {
+        const cnhInfo = cnhStatus(employee)
+        return {
+          REGISTRO: employee.chapa,
+          Nome: employee.name,
+          Empresa: employee.company || '',
+          'Filial/Garagem': employee.filial || '',
+          Função: 'Fiscal',
+          Situação: employee.situacao || '',
+          CNH: employee.cnh_numero?.trim()
+            ? formatCnh(employee.cnh_categoria, employee.cnh_numero)
+            : 'Sem CNH',
+          'Status CNH': cnhInfo.label,
+          'Validade CNH': cnhInfo.date || '',
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(rows)
+      worksheet['!cols'] = [
+        { wch: 14 }, // REGISTRO
+        { wch: 32 }, // Nome
+        { wch: 20 }, // Empresa
+        { wch: 20 }, // Filial/Garagem
+        { wch: 16 }, // Função
+        { wch: 16 }, // Situação
+        { wch: 20 }, // CNH
+        { wch: 16 }, // Status CNH
+        { wch: 16 }, // Validade CNH
+      ]
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Atualização Fiscal')
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(workbook, `fiscais-${dateStr}.xlsx`)
+      toast.success(`Exportação concluída (${filtered.length} registro(s))`)
+    } catch (error) {
+      console.error('Erro ao exportar fiscais para XLSX:', error)
+      toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
+    }
+  }, [filtered])
+
   const handleAbrirProcesso = async () => {
     if (!processoTarget) return
     setSaving(true)
@@ -326,15 +377,30 @@ export default function AtualizacaoFiscal() {
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       {/* Cabeçalho */}
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100">
-          <FileCheck2 className="h-5 w-5 text-teal-700" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100">
+            <FileCheck2 className="h-5 w-5 text-teal-700" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-foreground">Atualização fiscal</h1>
+            <p className="text-xs text-muted-foreground">
+              Fiscais localizados na matriz e seus processos de atualização
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Atualização fiscal</h1>
-          <p className="text-xs text-muted-foreground">
-            Fiscais localizados na matriz e seus processos de atualização
-          </p>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            onClick={exportXlsx}
+            disabled={filtered.length === 0}
+            className="inline-flex h-10 items-center gap-2"
+          >
+            <FileDown className="h-4 w-4" />
+            Exportar .xlsx
+          </Button>
         </div>
       </div>
 
