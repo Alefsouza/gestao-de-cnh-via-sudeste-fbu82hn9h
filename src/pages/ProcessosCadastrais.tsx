@@ -578,7 +578,7 @@ export default function ProcessosCadastrais() {
                     </td>
                   </tr>
                 ))}
-              </tbody>{' '}
+              </tbody>
             </table>
           </div>
         )}
