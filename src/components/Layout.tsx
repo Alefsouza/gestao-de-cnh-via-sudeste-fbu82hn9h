@@ -90,8 +90,11 @@ function SidebarNav({ compact, onNavigate }: { compact?: boolean; onNavigate?: (
   const { user } = useAuth()
   const userRole = ((user?.role as string) || 'Admin').toLowerCase()
   const isTrafego = userRole === 'tráfego' || userRole === 'trafego'
+  const isAdmin = userRole === 'admin'
 
-  const filteredMenu = isTrafego ? MENU.filter((item) => item.to === '/processos-cadastrais') : MENU
+  const filteredMenu = isTrafego
+    ? MENU.filter((item) => item.to === '/processos-cadastrais')
+    : MENU.filter((item) => (item.to === '/painel-acesso' ? isAdmin : true))
 
   return (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">

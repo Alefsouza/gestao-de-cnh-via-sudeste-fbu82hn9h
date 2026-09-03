@@ -47,14 +47,18 @@ function RoleRouteGuard({
   if (!user) return <Navigate to="/login" replace />
 
   const userRole = (user.role as string) || 'Admin'
-  const isTrafego = userRole.toLowerCase() === 'tráfego' || userRole.toLowerCase() === 'trafego'
+  const normalizedRole = userRole.toLowerCase()
+  const isTrafego = normalizedRole === 'tráfego' || normalizedRole === 'trafego'
 
   // Tráfego só pode acessar /processos-cadastrais
   if (isTrafego) {
-    if (allowedRoles && !allowedRoles.includes('Tráfego') && !allowedRoles.includes('trafego')) {
+    if (
+      allowedRoles &&
+      !allowedRoles.some((r) => r.toLowerCase() === 'tráfego' || r.toLowerCase() === 'trafego')
+    ) {
       return <Navigate to="/processos-cadastrais" replace />
     }
-  } else if (allowedRoles && !allowedRoles.includes(userRole)) {
+  } else if (allowedRoles && !allowedRoles.some((r) => r.toLowerCase() === normalizedRole)) {
     // Para outros papéis caso haja restrição
     return <Navigate to="/" replace />
   }
@@ -147,7 +151,7 @@ const App = () => (
             <Route
               path="/painel-acesso"
               element={
-                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                <RoleRouteGuard allowedRoles={['Admin']}>
                   <PainelAcesso />
                 </RoleRouteGuard>
               }
