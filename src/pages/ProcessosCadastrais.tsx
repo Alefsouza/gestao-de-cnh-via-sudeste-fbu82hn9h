@@ -7,6 +7,7 @@ import {
   FileSearch,
   FileX2,
   Loader2,
+  Mail,
   Pencil,
   Plus,
   RefreshCcw,
@@ -17,6 +18,7 @@ import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
+import VisualizarCartasModal from '@/components/VisualizarCartasModal'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -163,6 +165,7 @@ export default function ProcessosCadastrais() {
 
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
+  const [cartasModalOpen, setCartasModalOpen] = useState(false)
   const [editingProcesso, setEditingProcesso] = useState<ProcessoCadastral | null>(null)
   const [deletingProcesso, setDeletingProcesso] = useState<ProcessoCadastral | null>(null)
   const [processoAlterarSituacao, setProcessoAlterarSituacao] = useState<ProcessoCadastral | null>(
@@ -551,6 +554,20 @@ export default function ProcessosCadastrais() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Botão Cartas: visível para Admin e RH (não exibido para Tráfego) */}
+          {!isTrafego && (
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              onClick={() => setCartasModalOpen(true)}
+              className="inline-flex h-10 items-center gap-2 border-primary/30 text-primary hover:bg-primary/10"
+              title="Consultar cartas emitidas e documentos anexos"
+            >
+              <Mail className="h-4 w-4" />
+              Cartas
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -698,25 +715,18 @@ export default function ProcessosCadastrais() {
                         <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/70" />
                         <span>{formatDate(processo.prazo)}</span>
                         {processo.alerta_trafego && (
-                          <TooltipProvider delayDuration={150}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span
-                                  className="inline-flex items-center justify-center text-amber-600 hover:text-amber-700 cursor-help"
-                                  aria-label={
-                                    ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] ||
-                                    'Alerta Tráfego'
-                                  }
-                                >
-                                  <TriangleAlert className="h-4 w-4" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="text-xs">
-                                {ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] ||
-                                  processo.alerta_trafego}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <span
+                            className="inline-flex items-center justify-center text-amber-600 hover:text-amber-700 cursor-help"
+                            title={
+                              ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] ||
+                              processo.alerta_trafego
+                            }
+                            aria-label={
+                              ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] || 'Alerta Tráfego'
+                            }
+                          >
+                            <TriangleAlert className="h-4 w-4" />
+                          </span>
                         )}
                       </span>
                     </td>
@@ -818,7 +828,11 @@ export default function ProcessosCadastrais() {
       <ProcessoCadastralFormModal
         open={editingProcesso !== null && !isTrafego}
         onOpenChange={(open) => {
-          if (!open) setEditingProcesso(null)
+          if (!open) {
+            // Pequeno delay para garantir que a animação de saída do Radix Dialog seja concluída
+            // antes de desmontar os nós de conteúdo, prevenindo NotFoundError em removeChild
+            setTimeout(() => setEditingProcesso(null), 150)
+          }
         }}
         initialData={editingProcesso}
         employees={employees}
@@ -831,6 +845,9 @@ export default function ProcessosCadastrais() {
           }
         }}
       />
+
+      {/* Modal Visualizar Cartas (Admin e RH) */}
+      <VisualizarCartasModal open={cartasModalOpen} onOpenChange={setCartasModalOpen} />
 
       {/* Modal Restrito do perfil Tráfego: Apenas Alterar Situação */}
       <Dialog

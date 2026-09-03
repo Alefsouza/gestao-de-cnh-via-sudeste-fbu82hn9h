@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
+  CheckCircle,
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
@@ -12,9 +13,11 @@ import {
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 
+import NovaCartaModal from '@/components/NovaCartaModal'
 import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
+import pb from '@/lib/pocketbase/client'
 import { daysUntil, formatDate, formatCnh } from '@/lib/format'
 import {
   CNH_VALIDA_FIELD_FILTER,
@@ -25,7 +28,7 @@ import {
   type EmployeeFilters,
 } from '@/services/employees'
 import { FILIAIS } from '@/lib/types'
-import type { Employee } from '@/lib/types'
+import type { Employee, ProcessoCadastralRecord } from '@/lib/types'
 
 const PAGE_SIZE = 15
 const RELOAD_THROTTLE_MS = 5_000
@@ -63,6 +66,12 @@ export default function Cnhs() {
   const [totalPages, setTotalPages] = useState(1)
   const [sortField, setSortField] = useState<SortField>('validade')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  // Mapa de processos cadastrais indexados por matrícula (chapa e registro)
+  // para identificar situações como "Foto Bloqueada" ou "Impossibilitado de Trabalhar"
+  const [processosMap, setProcessosMap] = useState<Map<string, ProcessoCadastralRecord>>(new Map())
+  const [cartaModalEmployee, setCartaModalEmployee] = useState<Employee | null>(null)
+  const [cartaModalOpen, setCartaModalOpen] = useState(false)
 
   const [counts, setCounts] = useState<Record<StatusFilter, number>>({
     todas: 0,
@@ -186,17 +195,72 @@ export default function Cnhs() {
     return () => clearTimeout(timer)
   }, [loadSummary])
 
+  // Carrega a lista de processos cadastrais para saber a situação atual de cada colaborador
+  const loadProcessos = useCallback(async () => {
+    try {
+      const records = await pb
+        .collection('processos_cadastrais')
+        .getFullList<ProcessoCadastralRecord>({
+          sort: '-updated',
+        })
+      const map = new Map<string, ProcessoCadastralRecord>()
+      for (const proc of records) {
+        const mat = String(proc.matricula || '').trim()
+        const colab = String(proc.colaborador || '')
+          .trim()
+          .toLowerCase()
+        if (mat && !map.has(mat)) map.set(mat, proc)
+        const unpadded = mat.replace(/^0+/, '')
+        if (unpadded && !map.has(unpadded)) map.set(unpadded, proc)
+        if (colab && !map.has(colab)) map.set(colab, proc)
+      }
+      setProcessosMap(map)
+    } catch (err) {
+      console.warn('Erro ao carregar processos cadastrais em Cnhs:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadProcessos()
+  }, [loadProcessos])
+
+  useRealtime('processos_cadastrais', () => {
+    void loadProcessos()
+  })
+
   // Recarregamento via realtime com throttle para evitar rajadas e erro 429
   const requestReload = useCallback(() => {
     if (loadInProgress.current) return
     if (Date.now() - lastLoadedAt.current < RELOAD_THROTTLE_MS) return
     void loadPage()
     void loadSummary()
-  }, [loadPage, loadSummary])
+    void loadProcessos()
+  }, [loadPage, loadSummary, loadProcessos])
 
   useRealtime('employees', () => {
     requestReload()
   })
+
+  // Função auxiliar para obter o processo cadastral correspondente a um colaborador
+  const getProcessoForEmployee = useCallback(
+    (emp: Employee): ProcessoCadastralRecord | undefined => {
+      const chapa = String(emp.chapa || '').trim()
+      const registro = String(emp.registro || '').trim()
+      const nome = String(emp.name || '')
+        .trim()
+        .toLowerCase()
+
+      if (chapa && processosMap.has(chapa)) return processosMap.get(chapa)
+      const chapaUnpadded = chapa.replace(/^0+/, '')
+      if (chapaUnpadded && processosMap.has(chapaUnpadded)) return processosMap.get(chapaUnpadded)
+      if (registro && processosMap.has(registro)) return processosMap.get(registro)
+      const regUnpadded = registro.replace(/^0+/, '')
+      if (regUnpadded && processosMap.has(regUnpadded)) return processosMap.get(regUnpadded)
+      if (nome && processosMap.has(nome)) return processosMap.get(nome)
+      return undefined
+    },
+    [processosMap],
+  )
 
   // Exportação para XLSX respeitando todos os filtros ativos no momento do clique
   const exportXlsx = useCallback(async () => {
@@ -475,18 +539,51 @@ export default function Cnhs() {
                     </button>
                   </th>
                   <th className="px-4 py-3 font-semibold">Status CNH</th>
+                  <th className="px-4 py-3 font-semibold text-right">Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {employees.map((employee) => {
                   const days = daysUntil(employee.validade_cnh)
+                  const proc = getProcessoForEmployee(employee)
+                  const procSit = proc?.situacao
+                  // Condição do requisito: colaboradores com SITUAÇÃO "Foto Bloqueada" ou "Impossibilitado de Trabalhar"
+                  // Verifica tanto na situação do processo cadastral vinculado quanto na situação do colaborador
+                  const canEmitirCarta =
+                    procSit === 'Foto Bloqueada' ||
+                    procSit === 'Impossibilitado de Trabalhar' ||
+                    employee.situacao === ('Foto Bloqueada' as any) ||
+                    employee.situacao === ('Impossibilitado de Trabalhar' as any)
+
                   return (
                     <tr
                       key={employee.id}
-                      className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
+                      className={`border-b transition-colors last:border-b-0 hover:bg-muted/40 ${
+                        canEmitirCarta ? 'bg-amber-50/40' : ''
+                      }`}
                     >
                       <td className="tabular-nums px-4 py-3 font-medium">{employee.chapa}</td>
-                      <td className="px-4 py-3 font-medium">{employee.name}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <div>{employee.name}</div>
+                        {procSit && (
+                          <div className="text-[11px] text-muted-foreground">
+                            Processo:{' '}
+                            <span
+                              className={
+                                procSit === 'Foto Bloqueada'
+                                  ? 'font-semibold text-rose-700'
+                                  : procSit === 'Impossibilitado de Trabalhar'
+                                    ? 'font-semibold text-amber-700'
+                                    : procSit === 'Regular'
+                                      ? 'text-emerald-700'
+                                      : 'text-muted-foreground'
+                              }
+                            >
+                              {procSit}
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
                       <td className="px-4 py-3">
@@ -505,12 +602,32 @@ export default function Cnhs() {
                       <td className="px-4 py-3">
                         <StatusBadge value={employee.situacao_cnh} />
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        {canEmitirCarta ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setCartaModalEmployee(employee)
+                              setCartaModalOpen(true)
+                            }}
+                            className="inline-flex h-8 items-center gap-1.5 border-emerald-600 bg-emerald-50 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900"
+                            title={`Emitir carta de regularização para ${employee.name}`}
+                          >
+                            <CheckCircle className="h-4 w-4 text-emerald-600" />
+                            <span>Carta</span>
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
                 {employees.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum registro encontrado.
                     </td>
                   </tr>
@@ -546,6 +663,20 @@ export default function Cnhs() {
           </div>
         )}
       </div>
+
+      {/* Pop-up de Carta com upload dos 5 documentos obrigatórios */}
+      <NovaCartaModal
+        open={cartaModalOpen}
+        onOpenChange={setCartaModalOpen}
+        employee={cartaModalEmployee}
+        processoSituacao={
+          cartaModalEmployee ? getProcessoForEmployee(cartaModalEmployee)?.situacao : undefined
+        }
+        onSuccess={() => {
+          void loadProcessos()
+          void loadPage()
+        }}
+      />
     </div>
   )
 }
