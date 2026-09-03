@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCcw,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
@@ -44,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/contexts/AuthContext'
 import pb from '@/lib/pocketbase/client'
@@ -57,7 +59,7 @@ import {
   deleteProcessoCadastral,
 } from '@/services/processosCadastrais'
 import { createMovement } from '@/services/movements'
-import type { Employee, ProcessoSituacao } from '@/lib/types'
+import type { AlertaTrafego, Employee, ProcessoSituacao } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 // Categorias exibidas nos cards de resumo (ordem exata solicitada)
@@ -142,6 +144,12 @@ interface ProcessoCadastral {
   prazo: string
   situacao: Situacao
   garagem: 'CURSINO' | 'SAPOPEMBA' | string
+  alerta_trafego?: AlertaTrafego | string
+}
+
+const ALERTA_TRAFEGO_LABELS: Record<string, string> = {
+  bloquear_foto: 'Bloquear foto',
+  impossibilitado_trabalhar: 'Impossibilitado de Trabalhar',
 }
 
 const ETAPA_INICIAL: Etapa = 'Documentos solicitados'
@@ -180,6 +188,7 @@ export default function ProcessosCadastrais() {
           prazo: r.prazo,
           situacao: r.situacao,
           garagem: r.garagem || 'CURSINO',
+          alerta_trafego: r.alerta_trafego || '',
         })),
       )
     } catch (err) {
@@ -259,6 +268,7 @@ export default function ProcessosCadastrais() {
       prazo: string
       situacao: Situacao
       garagem?: string
+      alerta_trafego?: AlertaTrafego | string
       employeeId?: string
     }) => {
       try {
@@ -271,6 +281,7 @@ export default function ProcessosCadastrais() {
           prazo: data.prazo ? new Date(`${data.prazo}T12:00:00Z`).toISOString() : '',
           situacao: data.situacao,
           garagem: data.garagem || 'CURSINO',
+          alerta_trafego: data.alerta_trafego || '',
         })
 
         setProcessos((prev) => [
@@ -284,6 +295,7 @@ export default function ProcessosCadastrais() {
             prazo: created.prazo,
             situacao: created.situacao,
             garagem: created.garagem || data.garagem || 'CURSINO',
+            alerta_trafego: created.alerta_trafego || data.alerta_trafego || '',
           },
           ...prev,
         ])
@@ -324,6 +336,7 @@ export default function ProcessosCadastrais() {
       prazo: string
       situacao: Situacao
       garagem?: string
+      alerta_trafego?: AlertaTrafego | string
       employeeId?: string
     }) => {
       try {
@@ -336,6 +349,7 @@ export default function ProcessosCadastrais() {
           prazo: data.prazo ? new Date(`${data.prazo}T12:00:00Z`).toISOString() : '',
           situacao: data.situacao,
           garagem: data.garagem,
+          alerta_trafego: data.alerta_trafego ?? '',
         })
 
         setProcessos((prev) =>
@@ -351,6 +365,7 @@ export default function ProcessosCadastrais() {
                 prazo: data.prazo,
                 situacao: data.situacao,
                 garagem: data.garagem || item.garagem,
+                alerta_trafego: data.alerta_trafego ?? item.alerta_trafego,
               }
             }
             return item
@@ -462,7 +477,7 @@ export default function ProcessosCadastrais() {
     }
 
     try {
-      // Mapeamento exato das colunas atuais da tabela
+      // Mapeamento exato das colunas atuais da tabela com coluna informativa extra
       const rows = filteredProcessos.map((item) => ({
         Matrícula: item.matricula,
         Colaborador: item.colaborador,
@@ -472,6 +487,9 @@ export default function ProcessosCadastrais() {
         Etapa: item.etapa,
         Prazo: formatDate(item.prazo),
         Situação: item.situacao,
+        'Alerta Tráfego': item.alerta_trafego
+          ? ALERTA_TRAFEGO_LABELS[item.alerta_trafego] || item.alerta_trafego
+          : '',
       }))
 
       const worksheet = XLSX.utils.json_to_sheet(rows)
@@ -486,6 +504,7 @@ export default function ProcessosCadastrais() {
         { wch: 26 }, // Etapa
         { wch: 14 }, // Prazo
         { wch: 14 }, // Situação
+        { wch: 28 }, // Alerta Tráfego
       ]
       worksheet['!cols'] = columnWidths
 
@@ -667,7 +686,28 @@ export default function ProcessosCadastrais() {
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                         <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/70" />
-                        {formatDate(processo.prazo)}
+                        <span>{formatDate(processo.prazo)}</span>
+                        {processo.alerta_trafego && (
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="inline-flex items-center justify-center text-amber-600 hover:text-amber-700 cursor-help"
+                                  aria-label={
+                                    ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] ||
+                                    'Alerta Tráfego'
+                                  }
+                                >
+                                  <TriangleAlert className="h-4 w-4" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="text-xs">
+                                {ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] ||
+                                  processo.alerta_trafego}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -931,6 +971,7 @@ interface ProcessoCadastralFormModalProps {
     prazo: string
     situacao: Situacao
     garagem?: string
+    alerta_trafego?: AlertaTrafego | string
     employeeId?: string
   }) => Promise<void> | void
 }
@@ -951,6 +992,7 @@ function ProcessoCadastralFormModal({
   const [prazo, setPrazo] = useState('')
   const [situacao, setSituacao] = useState<Situacao>('Pendente')
   const [garagem, setGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
+  const [alertaTrafego, setAlertaTrafego] = useState<AlertaTrafego>('')
   const [searchingEmployee, setSearchingEmployee] = useState(false)
   const [resolvedEmployeeId, setResolvedEmployeeId] = useState<string | undefined>(undefined)
   const [saving, setSaving] = useState(false)
@@ -966,6 +1008,7 @@ function ProcessoCadastralFormModal({
         setPrazo(initialData.prazo || '')
         setSituacao(initialData.situacao || 'Pendente')
         setGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
+        setAlertaTrafego((initialData.alerta_trafego as AlertaTrafego) || '')
         setResolvedEmployeeId(undefined)
       } else {
         setProcesso('Inclusão')
@@ -976,6 +1019,7 @@ function ProcessoCadastralFormModal({
         setPrazo('')
         setSituacao('Pendente')
         setGaragem('CURSINO')
+        setAlertaTrafego('')
         setResolvedEmployeeId(undefined)
       }
     }
@@ -1073,6 +1117,7 @@ function ProcessoCadastralFormModal({
         // Em novo processo a situação é sempre gravada automaticamente como "Pendente"
         situacao: isEditing ? situacao : 'Pendente',
         garagem,
+        alerta_trafego: alertaTrafego,
         employeeId: resolvedEmployeeId || selectedEmployee?.id,
       })
       onOpenChange(false)
@@ -1241,6 +1286,74 @@ function ProcessoCadastralFormModal({
               value={prazo}
               onChange={(event) => setPrazo(event.target.value)}
             />
+          </div>
+
+          {/* Marcação de ciência para o Tráfego (informativo) */}
+          <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-foreground">
+                Marcação de ciência (opcional)
+              </Label>
+              {alertaTrafego && (
+                <button
+                  type="button"
+                  onClick={() => setAlertaTrafego('')}
+                  className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                >
+                  Limpar marcação
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
+              <label
+                className={cn(
+                  'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
+                  alertaTrafego === 'bloquear_foto'
+                    ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
+                    : 'border-border/70 hover:bg-muted/40 text-foreground',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="alerta_trafego"
+                  value="bloquear_foto"
+                  checked={alertaTrafego === 'bloquear_foto'}
+                  onChange={() => setAlertaTrafego('bloquear_foto')}
+                  className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
+                />
+                <span>Bloquear foto</span>
+              </label>
+
+              <label
+                className={cn(
+                  'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
+                  alertaTrafego === 'impossibilitado_trabalhar'
+                    ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
+                    : 'border-border/70 hover:bg-muted/40 text-foreground',
+                )}
+              >
+                <input
+                  type="radio"
+                  name="alerta_trafego"
+                  value="impossibilitado_trabalhar"
+                  checked={alertaTrafego === 'impossibilitado_trabalhar'}
+                  onChange={() => setAlertaTrafego('impossibilitado_trabalhar')}
+                  className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
+                />
+                <span>Impossibilitar de Trabalhar</span>
+              </label>
+            </div>
+
+            {alertaTrafego ? (
+              <p className="text-[11px] text-amber-800 font-medium pt-0.5">
+                Apenas informativo — não altera a Situação do processo.
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground pt-0.5">
+                Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.
+              </p>
+            )}
           </div>
 
           <DialogFooter>

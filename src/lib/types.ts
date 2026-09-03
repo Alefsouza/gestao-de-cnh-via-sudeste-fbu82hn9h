@@ -89,6 +89,8 @@ export type ProcessoSituacao =
   | 'Foto Bloqueada'
   | 'Impossibilitado de Trabalhar'
 
+export type AlertaTrafego = 'bloquear_foto' | 'impossibilitado_trabalhar' | ''
+
 export interface ProcessoCadastralRecord {
   id: string
   matricula: string
@@ -99,6 +101,7 @@ export interface ProcessoCadastralRecord {
   prazo: string
   situacao: ProcessoSituacao
   garagem?: 'CURSINO' | 'SAPOPEMBA' | string
+  alerta_trafego?: AlertaTrafego | string
   created?: string
   updated?: string
 }
