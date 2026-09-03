@@ -403,9 +403,6 @@ export default function Afastados() {
                     <td className="px-4 py-3">
                       <div className="flex flex-col items-start gap-1">
                         <StatusBadge value={employee.situacao} />
-                        <span className="text-xs text-muted-foreground">
-                          {employee.motivo_afastamento || '—'}
-                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
