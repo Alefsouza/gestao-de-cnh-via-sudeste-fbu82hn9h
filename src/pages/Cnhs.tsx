@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ChevronDown,
@@ -56,14 +56,24 @@ export default function Cnhs() {
     }
   }
 
+  const loadRunId = useRef(0)
+  const lastLoadedAt = useRef(0)
+
   const load = useCallback(async () => {
+    const runId = ++loadRunId.current
+    setLoading(true)
     try {
       const data = await listAllEmployees()
+      if (runId !== loadRunId.current) return
       setEmployees(data)
     } catch {
+      if (runId !== loadRunId.current) return
       toast.error('Não foi possível carregar as CNHs')
     } finally {
-      setLoading(false)
+      if (runId === loadRunId.current) {
+        lastLoadedAt.current = Date.now()
+        setLoading(false)
+      }
     }
   }, [])
 
@@ -72,6 +82,8 @@ export default function Cnhs() {
   }, [load])
 
   useRealtime('employees', () => {
+    // Evita refetch em rajada quando o cron atualiza muitos registros de uma vez
+    if (Date.now() - lastLoadedAt.current < 10_000) return
     load()
   })
 

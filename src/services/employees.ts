@@ -86,14 +86,32 @@ export async function listEmployeesPage(page: number, perPage: number) {
   )
 }
 
-/** Busca todos os funcionários (até PAGE_SIZE) aplicando os filtros informados. */
+/** Busca todos os funcionários aplicando os filtros informados, com paginação sequencial e retry para evitar 429. */
 export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<Employee[]> {
-  const result = await pb.collection<Employee>(COLLECTION).getFullList({
-    filter: buildFilter(filters),
-    sort: 'chapa',
-    batch: PAGE_SIZE,
-  })
-  return result
+  const filter = buildFilter(filters)
+  const first = await withRetry(() =>
+    pb.collection<Employee>(COLLECTION).getList(1, PAGE_SIZE, {
+      filter,
+      sort: 'chapa',
+    }),
+  )
+
+  const items = [...first.items]
+  const totalPages = first.totalPages
+
+  for (let page = 2; page <= totalPages; page++) {
+    // Pausa breve entre páginas para não exceder o rate limit do backend (429)
+    await wait(150)
+    const next = await withRetry(() =>
+      pb.collection<Employee>(COLLECTION).getList(page, PAGE_SIZE, {
+        filter,
+        sort: 'chapa',
+      }),
+    )
+    items.push(...next.items)
+  }
+
+  return items
 }
 
 export async function getEmployee(id: string): Promise<Employee> {
