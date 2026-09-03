@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -29,7 +29,9 @@ const GARAGENS = ['CURSINO', 'SAPOPEMBA'] as const
 /** Tamanho de cada página de carregamento da base (evita 429 do backend). */
 const BASE_PAGE_SIZE = 500
 /** Pausa entre lotes de carregamento (respeita o rate limit do backend). */
-const PAGE_DELAY_MS = 300
+const PAGE_DELAY_MS = 800
+/** Janela em que eventos de realtime são ignorados após um carregamento (evita refetch em rajada). */
+const RELOAD_THROTTLE_MS = 10_000
 
 /** Cores das barras por garagem (gradiente escuro -> claro). */
 const BAR_STYLES: Record<(typeof GARAGENS)[number], string> = {
@@ -76,37 +78,59 @@ export default function VisaoGeral() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [lastSync, setLastSync] = useState<string | null>(null)
+
+  // Guardas para não empilhar carregamentos: um em andamento e um recente.
+  const loadRunId = useRef(0)
+  const loadInProgress = useRef(false)
+  const lastLoadedAt = useRef(0)
 
   /**
    * Carrega a base paginada (500 por página, sequencial) para não estourar
    * o limite de requisições do backend (429) com a base completa.
    */
   const load = useCallback(async () => {
+    const runId = ++loadRunId.current
+    loadInProgress.current = true
+    setLoading(true)
+    setLoadError(false)
     try {
       const first = await listEmployeesPage(1, BASE_PAGE_SIZE)
       const collected = [...first.items]
       const totalPages = first.totalPages
       for (let page = 2; page <= totalPages; page++) {
-        // Pequena pausa entre lotes para respeitar o rate limit do backend.
+        // Pausa entre lotes para respeitar o rate limit do backend.
         await new Promise((resolve) => setTimeout(resolve, PAGE_DELAY_MS))
+        if (runId !== loadRunId.current) return
         const next = await listEmployeesPage(page, BASE_PAGE_SIZE)
         collected.push(...next.items)
       }
       setEmployees(collected)
     } catch {
+      setLoadError(true)
       toast.error('Não foi possível carregar os dados da matriz')
     } finally {
-      setLoading(false)
+      if (runId === loadRunId.current) {
+        loadInProgress.current = false
+        lastLoadedAt.current = Date.now()
+        setLoading(false)
+      }
     }
   }, [])
+
+  const requestLoad = useCallback(() => {
+    if (loadInProgress.current) return
+    if (Date.now() - lastLoadedAt.current < RELOAD_THROTTLE_MS) return
+    void load()
+  }, [load])
 
   useEffect(() => {
     void load()
   }, [load])
 
   useRealtime('employees', () => {
-    void load()
+    requestLoad()
   })
 
   const stats = useMemo(() => {
@@ -283,6 +307,35 @@ export default function VisaoGeral() {
                     )}
                   </tbody>
                 </table>
+              ) : !hasBaseData && loadError ? (
+                <div className="flex flex-col items-center gap-2 px-5 py-12 text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    Não foi possível carregar os dados da matriz
+                  </p>
+                  <p className="max-w-md text-xs text-muted-foreground">
+                    O backend está sobrecarregado neste momento. Tente novamente em alguns
+                    instantes.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => void load()}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Carregando…
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4" />
+                        Tentar novamente
+                      </>
+                    )}
+                  </Button>
+                </div>
               ) : (
                 <div className="flex flex-col items-center gap-1 px-5 py-12 text-center">
                   <p className="text-sm font-medium text-foreground">
