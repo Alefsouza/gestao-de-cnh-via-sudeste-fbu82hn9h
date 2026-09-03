@@ -258,10 +258,6 @@ export default function Funcionarios() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setModalOpen(true)} className="shrink-0">
-          <Users className="mr-2 h-4 w-4" />
-          Nova movimentação
-        </Button>
       </div>
 
       {/* Filtros */}
