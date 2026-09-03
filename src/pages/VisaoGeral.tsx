@@ -469,7 +469,7 @@ export default function VisaoGeral() {
           >
             <CheckCircle2 className="h-5 w-5 flex-none text-green-600" />
             <p className="text-xs leading-relaxed text-green-900">
-              Exibindo os dados reais carregados da matriz Via Sudeste.
+              Exibindo os dados reais carregados do Globus.
             </p>
           </section>
         </aside>
