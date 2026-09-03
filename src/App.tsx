@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import Layout from '@/components/Layout'
 import VisaoGeral from './pages/VisaoGeral'
 import Funcionarios from './pages/Funcionarios'
@@ -78,90 +79,92 @@ function PublicOnly({ children }: { children: React.ReactNode }) {
 }
 
 const App = () => (
-  <BrowserRouter>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <AuthProvider>
-        <Routes>
-          <Route
-            path="/login"
-            element={
-              <PublicOnly>
-                <Login />
-              </PublicOnly>
-            }
-          />
-          <Route
-            element={
-              <RequireAuth>
-                <Layout />
-              </RequireAuth>
-            }
-          >
+  <ErrorBoundary>
+    <BrowserRouter>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <AuthProvider>
+          <Routes>
             <Route
-              path="/"
+              path="/login"
               element={
-                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
-                  <VisaoGeral />
-                </RoleRouteGuard>
+                <PublicOnly>
+                  <Login />
+                </PublicOnly>
               }
             />
             <Route
-              path="/funcionarios"
               element={
-                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
-                  <Funcionarios />
-                </RoleRouteGuard>
+                <RequireAuth>
+                  <Layout />
+                </RequireAuth>
               }
-            />
-            <Route
-              path="/cnhs"
-              element={
-                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
-                  <Cnhs />
-                </RoleRouteGuard>
-              }
-            />
-            <Route
-              path="/afastados"
-              element={
-                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
-                  <Afastados />
-                </RoleRouteGuard>
-              }
-            />
-            <Route
-              path="/atualizacao-fiscal"
-              element={
-                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
-                  <AtualizacaoFiscal />
-                </RoleRouteGuard>
-              }
-            />
-            <Route path="/processos-cadastrais" element={<ProcessosCadastrais />} />
-            <Route
-              path="/assistente-ia"
-              element={
-                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
-                  <AssistenteIA />
-                </RoleRouteGuard>
-              }
-            />
-            <Route
-              path="/painel-acesso"
-              element={
-                <RoleRouteGuard allowedRoles={['Admin']}>
-                  <PainelAcesso />
-                </RoleRouteGuard>
-              }
-            />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </AuthProvider>
-    </TooltipProvider>
-  </BrowserRouter>
+            >
+              <Route
+                path="/"
+                element={
+                  <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                    <VisaoGeral />
+                  </RoleRouteGuard>
+                }
+              />
+              <Route
+                path="/funcionarios"
+                element={
+                  <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                    <Funcionarios />
+                  </RoleRouteGuard>
+                }
+              />
+              <Route
+                path="/cnhs"
+                element={
+                  <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                    <Cnhs />
+                  </RoleRouteGuard>
+                }
+              />
+              <Route
+                path="/afastados"
+                element={
+                  <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                    <Afastados />
+                  </RoleRouteGuard>
+                }
+              />
+              <Route
+                path="/atualizacao-fiscal"
+                element={
+                  <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                    <AtualizacaoFiscal />
+                  </RoleRouteGuard>
+                }
+              />
+              <Route path="/processos-cadastrais" element={<ProcessosCadastrais />} />
+              <Route
+                path="/assistente-ia"
+                element={
+                  <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                    <AssistenteIA />
+                  </RoleRouteGuard>
+                }
+              />
+              <Route
+                path="/painel-acesso"
+                element={
+                  <RoleRouteGuard allowedRoles={['Admin']}>
+                    <PainelAcesso />
+                  </RoleRouteGuard>
+                }
+              />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
+      </TooltipProvider>
+    </BrowserRouter>
+  </ErrorBoundary>
 )
 
 export default App

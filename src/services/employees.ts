@@ -472,10 +472,25 @@ export async function getFuncionariosSummary(
 }
 
 /** Busca todos os funcionários aplicando os filtros informados, com paginação sequencial e retry para evitar 429. */
-export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<Employee[]> {
+/**
+ * Busca funcionários de forma paginada e sequencial controlada com retry e backoff para evitar erros 429.
+ * Permite customizar o tamanho da página (padrão 200 para balancear velocidade e carga no PocketBase)
+ * e callback de progresso opcional.
+ */
+export async function listEmployeesControlled(
+  filters: EmployeeFilters = {},
+  options: {
+    batchSize?: number
+    pageDelayMs?: number
+    onProgress?: (loaded: number, total: number) => void
+  } = {},
+): Promise<Employee[]> {
+  const batchSize = Math.min(options.batchSize ?? 200, 500)
+  const pageDelayMs = options.pageDelayMs ?? 250
   const filter = buildFilter(filters)
+
   const first = await withRetry(() =>
-    pb.collection<Employee>(COLLECTION).getList(1, PAGE_SIZE, {
+    pb.collection<Employee>(COLLECTION).getList(1, batchSize, {
       filter: filter || undefined,
       sort: filters.sort || 'chapa',
       requestKey: null,
@@ -484,21 +499,34 @@ export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<E
 
   const items = [...first.items]
   const totalPages = first.totalPages
+  const totalItems = first.totalItems
+
+  if (options.onProgress) {
+    options.onProgress(items.length, totalItems)
+  }
 
   for (let page = 2; page <= totalPages; page++) {
-    // Pausa breve entre páginas para não exceder o rate limit do backend (429)
-    await wait(150)
+    // Pausa controlada entre páginas para proteger contra rate limit (429)
+    await wait(pageDelayMs)
     const next = await withRetry(() =>
-      pb.collection<Employee>(COLLECTION).getList(page, PAGE_SIZE, {
+      pb.collection<Employee>(COLLECTION).getList(page, batchSize, {
         filter: filter || undefined,
         sort: filters.sort || 'chapa',
         requestKey: null,
       }),
     )
     items.push(...next.items)
+    if (options.onProgress) {
+      options.onProgress(items.length, totalItems)
+    }
   }
 
   return items
+}
+
+/** Busca todos os funcionários aplicando os filtros informados, com paginação sequencial e retry para evitar 429. */
+export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<Employee[]> {
+  return listEmployeesControlled(filters)
 }
 
 export async function getEmployee(id: string): Promise<Employee> {

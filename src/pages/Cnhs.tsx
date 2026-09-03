@@ -22,8 +22,8 @@ import { daysUntil, formatDate, formatCnh } from '@/lib/format'
 import {
   CNH_VALIDA_FIELD_FILTER,
   getCnhsSummary,
-  listAllEmployees,
   listEmployees,
+  listEmployeesControlled,
   type CnhsSummary,
   type EmployeeFilters,
 } from '@/services/employees'
@@ -119,10 +119,10 @@ export default function Cnhs() {
       })
       if (runId !== summaryRunId.current) return
       setCounts({
-        todas: res.summary.todas,
-        Válida: res.summary.valida,
-        'A vencer': res.summary.aVencer,
-        Vencida: res.summary.vencida,
+        todas: Number(res?.summary?.todas) || 0,
+        Válida: Number(res?.summary?.valida) || 0,
+        'A vencer': Number(res?.summary?.aVencer) || 0,
+        Vencida: Number(res?.summary?.vencida) || 0,
       })
     } catch (err) {
       if (runId === summaryRunId.current) {
@@ -166,9 +166,9 @@ export default function Cnhs() {
       const result = await listEmployees(activeFilters)
       if (runId !== listRunId.current) return
 
-      setEmployees(result.items)
-      setTotalItems(result.totalItems)
-      setTotalPages(Math.max(1, result.totalPages))
+      setEmployees(Array.isArray(result?.items) ? result.items : [])
+      setTotalItems(Number(result?.totalItems) || 0)
+      setTotalPages(Math.max(1, Number(result?.totalPages) || 1))
     } catch (err) {
       if (runId !== listRunId.current) return
       console.error('Erro ao listar página de CNHs:', err)
@@ -243,7 +243,8 @@ export default function Cnhs() {
 
   // Função auxiliar para obter o processo cadastral correspondente a um colaborador
   const getProcessoForEmployee = useCallback(
-    (emp: Employee): ProcessoCadastralRecord | undefined => {
+    (emp: Employee | null | undefined): ProcessoCadastralRecord | undefined => {
+      if (!emp || !processosMap) return undefined
       const chapa = String(emp.chapa || '').trim()
       const registro = String(emp.registro || '').trim()
       const nome = String(emp.name || '')
@@ -262,11 +263,12 @@ export default function Cnhs() {
     [processosMap],
   )
 
-  // Exportação para XLSX respeitando todos os filtros ativos no momento do clique
+  // Exportação para XLSX respeitando todos os filtros ativos no momento do clique,
+  // com carregamento sequencial controlado e retry/backoff para não gerar rajadas de 429
   const exportXlsx = useCallback(async () => {
     if (totalItems === 0 || exporting) return
     setExporting(true)
-    const toastId = toast.loading('Gerando arquivo da consulta…')
+    const toastId = toast.loading('Preparando dados para exportação…')
     try {
       const exportFilters: EmployeeFilters = {
         search: activeFilters.search,
@@ -275,13 +277,20 @@ export default function Cnhs() {
         customFilter: activeFilters.customFilter,
         sort: activeFilters.sort,
       }
-      const allData = await listAllEmployees(exportFilters)
+
+      const allData = await listEmployeesControlled(exportFilters, {
+        batchSize: 200,
+        pageDelayMs: 250,
+        onProgress: (loaded, total) => {
+          toast.loading(`Baixando CNHs para planilha (${loaded} de ${total})…`, { id: toastId })
+        },
+      })
 
       const rows = allData.map((employee) => {
         const days = daysUntil(employee.validade_cnh)
         return {
-          REGISTRO: employee.chapa,
-          Nome: employee.name,
+          REGISTRO: employee.chapa || employee.registro || '',
+          Nome: employee.name || '',
           Função: employee.funcao || '',
           'Filial/Garagem': employee.filial || '',
           'Situação Funcionário': employee.situacao || '',
@@ -544,7 +553,7 @@ export default function Cnhs() {
               </thead>
               <tbody>
                 {employees.map((employee) => {
-                  const days = daysUntil(employee.validade_cnh)
+                  const days = daysUntil(employee?.validade_cnh)
                   const proc = getProcessoForEmployee(employee)
                   const procSit = proc?.situacao
                   // Condição do requisito: colaboradores com SITUAÇÃO "Foto Bloqueada" ou "Impossibilitado de Trabalhar"
@@ -552,19 +561,25 @@ export default function Cnhs() {
                   const canEmitirCarta =
                     procSit === 'Foto Bloqueada' ||
                     procSit === 'Impossibilitado de Trabalhar' ||
-                    employee.situacao === ('Foto Bloqueada' as any) ||
-                    employee.situacao === ('Impossibilitado de Trabalhar' as any)
+                    employee?.situacao === ('Foto Bloqueada' as any) ||
+                    employee?.situacao === ('Impossibilitado de Trabalhar' as any)
+
+                  const empId = employee?.id || `emp-${employee?.chapa || Math.random()}`
+                  const empChapa = employee?.chapa || employee?.registro || '—'
+                  const empName = employee?.name || '—'
+                  const empFuncao = employee?.funcao || '—'
+                  const empFilial = employee?.filial || '—'
 
                   return (
                     <tr
-                      key={employee.id}
+                      key={empId}
                       className={`border-b transition-colors last:border-b-0 hover:bg-muted/40 ${
                         canEmitirCarta ? 'bg-amber-50/40' : ''
                       }`}
                     >
-                      <td className="tabular-nums px-4 py-3 font-medium">{employee.chapa}</td>
+                      <td className="tabular-nums px-4 py-3 font-medium">{empChapa}</td>
                       <td className="px-4 py-3 font-medium">
-                        <div>{employee.name}</div>
+                        <div>{empName}</div>
                         {procSit && (
                           <div className="text-[11px] text-muted-foreground">
                             Processo:{' '}
@@ -584,23 +599,23 @@ export default function Cnhs() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{empFuncao}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{empFilial}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge value={employee.situacao} />
+                        <StatusBadge value={employee?.situacao} />
                       </td>
                       <td className="tabular-nums px-4 py-3 font-medium">
-                        {formatCnh(employee.cnh_categoria, employee.cnh_numero)}
+                        {formatCnh(employee?.cnh_categoria, employee?.cnh_numero)}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {employee.cnh_categoria || '—'}
+                        {employee?.cnh_categoria || '—'}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {formatDate(employee.validade_cnh)}
+                        {formatDate(employee?.validade_cnh)}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{daysLabel(days)}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge value={employee.situacao_cnh} />
+                        <StatusBadge value={employee?.situacao_cnh} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         {canEmitirCarta ? (
@@ -613,7 +628,7 @@ export default function Cnhs() {
                               setCartaModalOpen(true)
                             }}
                             className="inline-flex h-8 items-center gap-1.5 border-emerald-600 bg-emerald-50 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900"
-                            title={`Emitir carta de regularização para ${employee.name}`}
+                            title={`Emitir carta de regularização para ${empName}`}
                           >
                             <CheckCircle className="h-4 w-4 text-emerald-600" />
                             <span>Carta</span>

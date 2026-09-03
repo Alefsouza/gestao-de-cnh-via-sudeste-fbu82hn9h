@@ -76,15 +76,16 @@ export default function NovaCartaModal({
   // Quando o colaborador muda ou o modal abre, reinicia o estado
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && employee) {
+      const sit = String(processoSituacao || employee.situacao || '')
       setNumeroCarta('')
       setTipoCarta(
-        processoSituacao === 'Foto Bloqueada'
+        sit === 'Foto Bloqueada'
           ? 'Foto Bloqueada'
-          : processoSituacao === 'Impossibilitado de Trabalhar'
+          : sit === 'Impossibilitado de Trabalhar'
             ? 'Impossibilitado de Trabalhar'
             : 'Regularização de CNH',
       )
-      setFuncaoCarta(employee.funcao || '')
+      setFuncaoCarta(String(employee.funcao || ''))
       setFiles({
         cnh: null,
         prontuario: null,
