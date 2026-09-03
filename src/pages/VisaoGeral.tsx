@@ -210,7 +210,7 @@ export default function VisaoGeral() {
               icon={UserMinus}
               tone="amber"
               trend="down"
-              caption="Base sincronizada da matriz"
+              caption="Base sincronizada do Globus"
               delay={80}
               to="/afastados"
             />
@@ -220,7 +220,7 @@ export default function VisaoGeral() {
               icon={CreditCard}
               tone="red"
               trend="down"
-              caption="Base sincronizada da matriz"
+              caption="Base sincronizada do Globus"
               delay={160}
               to="/cnhs"
             />
@@ -230,7 +230,7 @@ export default function VisaoGeral() {
               icon={FileCheck2}
               tone="teal"
               trend="up"
-              caption="Base sincronizada da matriz"
+              caption="Base sincronizada do Globus"
               delay={240}
               to="/atualizacao-fiscal"
             />
