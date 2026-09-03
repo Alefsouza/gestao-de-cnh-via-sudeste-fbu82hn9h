@@ -400,7 +400,9 @@ export default function Afastados() {
                     <td className="px-4 py-3">
                       <span className="block font-medium">{employee.name}</span>
                       <span className="block text-xs text-muted-foreground">
-                        Registro: {formatCnh(employee.cnh_categoria, employee.cnh_numero)}
+                        {employee.cnh_numero?.trim()
+                          ? `CNH: ${formatCnh(employee.cnh_categoria, employee.cnh_numero)}`
+                          : 'CNH: Sem CNH'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>
