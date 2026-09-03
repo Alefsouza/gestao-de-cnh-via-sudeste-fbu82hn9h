@@ -7,29 +7,18 @@ import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { triggerSync, listRuns } from '@/lib/sync'
 import type { SyncRun } from '@/lib/sync'
 import { formatDateTime, relativeDayLabel } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-type Perfil = 'Admin' | 'RH'
-
 interface Usuario {
   id: string
-  nome: string
+  name: string
   email: string
-  perfil: Perfil
-  ativo: boolean
 }
 
-const EMPTY_FORM = { nome: '', email: '', senha: '', perfil: 'RH' as Perfil }
+const EMPTY_FORM = { name: '', email: '', password: '' }
 
 function statusTone(status: string) {
   if (status === 'Sucesso') return 'bg-green-100 text-green-800'
@@ -70,7 +59,7 @@ export default function PainelAcesso() {
   async function carregar() {
     setCarregando(true)
     try {
-      const lista = await pb.collection('usuarios').getFullList<Usuario>()
+      const lista = await pb.collection('users').getFullList<Usuario>()
       setUsuarios(lista)
     } catch (erro) {
       toast.error('Não foi possível carregar os usuários.')
@@ -81,13 +70,22 @@ export default function PainelAcesso() {
   }
 
   async function salvar() {
-    if (!form.nome.trim() || !form.email.trim()) {
+    if (!form.name.trim() || !form.email.trim()) {
       toast.error('Informe o nome e o e-mail do usuário.')
+      return
+    }
+    if (!form.password) {
+      toast.error('Informe uma senha para o usuário.')
       return
     }
     setSalvando(true)
     try {
-      await pb.collection('usuarios').create(form)
+      await pb.collection('users').create({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        passwordConfirm: form.password,
+      })
       toast.success('Usuário criado com sucesso!')
       setForm(EMPTY_FORM)
       await carregar()
@@ -100,13 +98,16 @@ export default function PainelAcesso() {
   }
 
   async function excluir(id: string) {
+    setExcluindoId(id)
     try {
-      await pb.collection('usuarios').delete(id)
+      await pb.collection('users').delete(id)
       toast.success('Usuário excluído com sucesso!')
       await carregar()
     } catch (erro) {
       toast.error('Erro ao excluir o usuário.')
       console.error(erro)
+    } finally {
+      setExcluindoId(null)
     }
   }
 
@@ -228,8 +229,8 @@ export default function PainelAcesso() {
           <Label htmlFor="nome">Nome</Label>
           <Input
             id="nome"
-            value={form.nome}
-            onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Nome do usuário"
           />
         </div>
@@ -248,25 +249,10 @@ export default function PainelAcesso() {
           <Input
             id="senha"
             type="password"
-            value={form.senha}
-            onChange={(e) => setForm({ ...form, senha: e.target.value })}
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
             placeholder="Defina uma senha"
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="perfil">Perfil</Label>
-          <Select
-            value={form.perfil}
-            onValueChange={(value) => setForm({ ...form, perfil: value as Perfil })}
-          >
-            <SelectTrigger id="perfil">
-              <SelectValue placeholder="Selecione o perfil" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Admin">Admin</SelectItem>
-              <SelectItem value="RH">RH</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
         <Button type="submit" disabled={salvando}>
           {salvando ? 'Salvando…' : 'Salvar usuário'}
@@ -274,35 +260,40 @@ export default function PainelAcesso() {
       </form>
 
       <div className="rounded-lg border">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="px-4 py-2 font-semibold">Nome</th>
-              <th className="px-4 py-2 font-semibold">E-mail</th>
-              <th className="px-4 py-2 font-semibold">Perfil</th>
-              <th className="px-4 py-2 text-right font-semibold">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usuarios.map((usuario) => (
-              <tr key={usuario.id} className="border-b transition-colors hover:bg-muted/40">
-                <td className="px-4 py-2">{usuario.nome}</td>
-                <td className="px-4 py-2">{usuario.email}</td>
-                <td className="px-4 py-2">{usuario.perfil}</td>
-                <td className="px-4 py-2 text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void excluir(usuario.id)}
-                    disabled={excluindoId === usuario.id}
-                  >
-                    {excluindoId === usuario.id ? 'Excluindo…' : 'Excluir'}
-                  </Button>
-                </td>
+        {carregando ? (
+          <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Carregando usuários…
+          </div>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-2 font-semibold">Nome</th>
+                <th className="px-4 py-2 font-semibold">E-mail</th>
+                <th className="px-4 py-2 text-right font-semibold">Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {usuarios.map((usuario) => (
+                <tr key={usuario.id} className="border-b transition-colors hover:bg-muted/40">
+                  <td className="px-4 py-2">{usuario.name || '—'}</td>
+                  <td className="px-4 py-2">{usuario.email}</td>
+                  <td className="px-4 py-2 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void excluir(usuario.id)}
+                      disabled={excluindoId === usuario.id}
+                    >
+                      {excluindoId === usuario.id ? 'Excluindo…' : 'Excluir'}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
