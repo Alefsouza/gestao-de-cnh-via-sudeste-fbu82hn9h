@@ -477,6 +477,13 @@ export default function ProcessosCadastrais() {
   const handleUpdateSituacaoTrafego = useCallback(async () => {
     if (!processoAlterarSituacao) return
 
+    // Validação de perfil Tráfego: só pode alterar quando a situação atual for exatamente "Pendente"
+    if (isTrafego && processoAlterarSituacao.situacao !== 'Pendente') {
+      toast.error('O perfil Tráfego só pode alterar a situação de processos que estejam Pendentes.')
+      setProcessoAlterarSituacao(null)
+      return
+    }
+
     // Validação extra: o usuário do Tráfego só pode alterar processos da sua própria garagem
     if (
       isTrafego &&
@@ -759,23 +766,27 @@ export default function ProcessosCadastrais() {
                     <td className="px-4 py-3 text-right">
                       {isTrafego ? (
                         <div className="flex items-center justify-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setProcessoAlterarSituacao(processo)
-                              setNovaSituacaoTrafego(
-                                processo.situacao === 'Impossibilitado de Trabalhar'
-                                  ? 'Impossibilitado de Trabalhar'
-                                  : 'Foto Bloqueada',
-                              )
-                            }}
-                            className="h-8 gap-1.5 border-emerald-600/40 text-xs font-medium text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900"
-                          >
-                            <RefreshCcw className="h-3.5 w-3.5" />
-                            Alterar situação
-                          </Button>
+                          {processo.situacao === 'Pendente' ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setProcessoAlterarSituacao(processo)
+                                setNovaSituacaoTrafego(
+                                  processo.situacao === 'Impossibilitado de Trabalhar'
+                                    ? 'Impossibilitado de Trabalhar'
+                                    : 'Foto Bloqueada',
+                                )
+                              }}
+                              className="h-8 gap-1.5 border-emerald-600/40 text-xs font-medium text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900"
+                            >
+                              <RefreshCcw className="h-3.5 w-3.5" />
+                              Alterar situação
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">Sem ações</span>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-1.5">
