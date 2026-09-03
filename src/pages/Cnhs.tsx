@@ -152,7 +152,10 @@ export default function Cnhs() {
             <table className="w-full min-w-[860px] text-left text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-3 font-semibold">Chapa</th>
+                  <th className="px-4 py-3 font-semibold">
+                    REGISTRO
+                    <br />
+                  </th>
                   <th className="px-4 py-3 font-semibold">Nome</th>
                   <th className="px-4 py-3 font-semibold">Função</th>
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
