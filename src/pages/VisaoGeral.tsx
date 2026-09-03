@@ -204,6 +204,7 @@ export default function VisaoGeral() {
               trend="up"
               caption="Base sincronizada da matriz"
               delay={0}
+              to="/funcionarios"
             />
             <StatCard
               label="Colaboradores afastados"
@@ -213,6 +214,7 @@ export default function VisaoGeral() {
               trend="down"
               caption="Base sincronizada da matriz"
               delay={80}
+              to="/afastados"
             />
             <StatCard
               label="CNHs vencidas de motoristas"
@@ -222,6 +224,7 @@ export default function VisaoGeral() {
               trend="down"
               caption="Base sincronizada da matriz"
               delay={160}
+              to="/cnhs"
             />
             <StatCard
               label="Fiscais na base"
@@ -231,6 +234,7 @@ export default function VisaoGeral() {
               trend="up"
               caption="Base sincronizada da matriz"
               delay={240}
+              to="/atualizacao-fiscal"
             />
           </div>
 

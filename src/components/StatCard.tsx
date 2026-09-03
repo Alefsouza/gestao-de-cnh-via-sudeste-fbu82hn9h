@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { TrendingDown, TrendingUp } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -12,6 +13,7 @@ interface StatCardProps {
   caption: string
   trend?: 'up' | 'down'
   delay?: number
+  to?: string
 }
 
 const TONES: Record<StatCardProps['tone'], { bg: string; text: string; caption: string }> = {
@@ -51,18 +53,22 @@ export default function StatCard({
   caption,
   trend,
   delay = 0,
+  to,
 }: StatCardProps) {
   const display = useCountUp(value)
   const toneStyles = TONES[tone]
   const TrendIcon = trend === 'down' ? TrendingDown : TrendingUp
 
-  return (
-    <div
-      className="animate-fade-up rounded-xl border bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-      style={{ animationDelay: `${delay}ms` }}
-    >
+  const cardContent = (
+    <>
       <div className="flex items-start justify-between">
-        <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${toneStyles.bg}`}>
+        <div
+          className={cn(
+            'flex h-11 w-11 items-center justify-center rounded-lg transition-transform duration-200',
+            to && 'group-hover:scale-105',
+            toneStyles.bg,
+          )}
+        >
           <Icon className={`h-5 w-5 ${toneStyles.text}`} />
         </div>
       </div>
@@ -74,6 +80,32 @@ export default function StatCard({
         <TrendIcon className="h-3.5 w-3.5" />
         {caption}
       </p>
+    </>
+  )
+
+  const className = cn(
+    'animate-fade-up rounded-xl border bg-white p-5 shadow-sm transition-all duration-200',
+    to
+      ? 'group block cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+      : 'hover:-translate-y-0.5 hover:shadow-md',
+  )
+
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className={className}
+        style={{ animationDelay: `${delay}ms` }}
+        aria-label={`${label}: ${value} (${caption})`}
+      >
+        {cardContent}
+      </Link>
+    )
+  }
+
+  return (
+    <div className={className} style={{ animationDelay: `${delay}ms` }}>
+      {cardContent}
     </div>
   )
 }
