@@ -134,9 +134,12 @@ function SidebarFooter({
             </span>
             <span className="text-xs font-semibold text-emerald-200">Globus conectado</span>
           </div>
-          <p className="mt-1 truncate text-[11px] text-emerald-100/60">
-            Base sincronizada do Globus{lastSync ? ` · ${relativeDayLabel(lastSync)}` : ''}
-          </p>
+          <div className="mt-1 text-[11px] text-emerald-100/60">
+            <p>Base sincronizada do Globus</p>
+            <p className="text-emerald-100/70">
+              {lastSync ? relativeDayLabel(lastSync) : 'Sincronização pendente'}
+            </p>
+          </div>
         </div>
       )}
 
