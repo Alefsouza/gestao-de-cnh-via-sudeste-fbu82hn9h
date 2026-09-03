@@ -24,12 +24,15 @@ import { toast } from 'sonner'
 
 import NotificationBell from '@/components/NotificationBell'
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
+import ProfileModal from '@/components/ProfileModal'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useAuth } from '@/contexts/AuthContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useRealtime } from '@/hooks/use-realtime'
 import { greetingFor, initials, relativeDayLabel } from '@/lib/format'
 import { listRuns } from '@/lib/sync'
 import { listNotifications } from '@/services/notifications'
+import { getUserAvatarUrl } from '@/services/user'
 import type { Notification } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -112,15 +115,18 @@ function SidebarNav({ compact, onNavigate }: { compact?: boolean; onNavigate?: (
 function SidebarFooter({
   compact,
   onSignOut,
+  onOpenProfile,
   lastSync,
 }: {
   compact?: boolean
   onSignOut: () => void
+  onOpenProfile: () => void
   lastSync?: string | null
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { user } = useAuth()
   const name = user?.name || 'Administrador Via Sudeste'
+  const avatarUrl = getUserAvatarUrl(user, '100x100')
 
   return (
     <div className="border-t border-white/10 p-3">
@@ -154,9 +160,12 @@ function SidebarFooter({
           )}
           title={compact ? name : undefined}
         >
-          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-            {initials(name)}
-          </span>
+          <Avatar className="h-9 w-9 flex-none border border-emerald-400/20">
+            {avatarUrl && <AvatarImage src={avatarUrl} alt={name} className="object-cover" />}
+            <AvatarFallback className="bg-primary text-xs font-bold text-white uppercase">
+              {initials(name)}
+            </AvatarFallback>
+          </Avatar>
           {!compact && (
             <>
               <span className="min-w-0 flex-1 text-left">
@@ -170,12 +179,20 @@ function SidebarFooter({
           )}
         </button>
 
-        {!compact && menuOpen && (
-          <div className="absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-lg border border-white/10 bg-[#0F2A1C] shadow-xl">
+        {menuOpen && (
+          <div
+            className={cn(
+              'absolute bottom-full z-40 mb-2 overflow-hidden rounded-lg border border-white/10 bg-[#0F2A1C] shadow-xl',
+              compact ? 'left-0 w-48' : 'left-0 right-0',
+            )}
+          >
             <button
               type="button"
               className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-emerald-50 transition-colors hover:bg-white/5"
-              onClick={() => setMenuOpen(false)}
+              onClick={() => {
+                setMenuOpen(false)
+                onOpenProfile()
+              }}
             >
               <UserCircle className="h-4 w-4" />
               Meu perfil
@@ -250,6 +267,7 @@ function Header({
 export default function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [lastSync, setLastSync] = useState<string | null>(null)
   const { signOut } = useAuth()
@@ -311,7 +329,11 @@ export default function Layout() {
           <Brand />
         </div>
         <SidebarNav />
-        <SidebarFooter onSignOut={handleSignOut} lastSync={lastSync} />
+        <SidebarFooter
+          onSignOut={handleSignOut}
+          onOpenProfile={() => setProfileOpen(true)}
+          lastSync={lastSync}
+        />
       </aside>
 
       {/* Sidebar móvel (drawer) */}
@@ -331,7 +353,14 @@ export default function Layout() {
               </button>
             </div>
             <SidebarNav onNavigate={() => setDrawerOpen(false)} />
-            <SidebarFooter onSignOut={handleSignOut} lastSync={lastSync} />
+            <SidebarFooter
+              onSignOut={handleSignOut}
+              onOpenProfile={() => {
+                setDrawerOpen(false)
+                setProfileOpen(true)
+              }}
+              lastSync={lastSync}
+            />
           </aside>
         </div>
       )}
@@ -349,6 +378,7 @@ export default function Layout() {
       </div>
 
       <NovaMovimentacaoModal open={modalOpen} onOpenChange={setModalOpen} />
+      <ProfileModal open={profileOpen} onOpenChange={setProfileOpen} />
 
       {/* Botão flutuante de nova movimentação em telas muito pequenas */}
       {isMobile && (
