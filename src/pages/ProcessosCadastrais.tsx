@@ -141,6 +141,7 @@ interface ProcessoCadastral {
   etapa: Etapa
   prazo: string
   situacao: Situacao
+  garagem: 'CURSINO' | 'SAPOPEMBA' | string
 }
 
 // Dados de exemplo (genéricos, realistas) — cobrem os 5 tipos e várias etapas/situações
@@ -153,6 +154,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Documentos solicitados',
     prazo: '2026-09-10',
     situacao: 'Pendente',
+    garagem: 'CURSINO',
   },
   {
     matricula: '10015',
@@ -162,6 +164,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Aguardando documentos',
     prazo: '2026-09-05',
     situacao: 'Pendente',
+    garagem: 'SAPOPEMBA',
   },
   {
     matricula: '10018',
@@ -171,6 +174,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Em conferência',
     prazo: '2026-08-28',
     situacao: 'Bloqueado',
+    garagem: 'CURSINO',
   },
   {
     matricula: '10021',
@@ -180,6 +184,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Documentos solicitados',
     prazo: '2026-09-12',
     situacao: 'Pendente',
+    garagem: 'SAPOPEMBA',
   },
   {
     matricula: '10025',
@@ -189,6 +194,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Em conferência',
     prazo: '2026-09-01',
     situacao: 'Regular',
+    garagem: 'CURSINO',
   },
   {
     matricula: '10028',
@@ -198,6 +204,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Aguardando documentos',
     prazo: '2026-09-08',
     situacao: 'Bloqueado',
+    garagem: 'SAPOPEMBA',
   },
   {
     matricula: '10032',
@@ -207,6 +214,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Concluído',
     prazo: '2026-08-20',
     situacao: 'Regular',
+    garagem: 'CURSINO',
   },
   {
     matricula: '10035',
@@ -216,6 +224,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Concluído',
     prazo: '2026-08-15',
     situacao: 'Regular',
+    garagem: 'SAPOPEMBA',
   },
   {
     matricula: '10038',
@@ -225,6 +234,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Em conferência',
     prazo: '2026-09-03',
     situacao: 'Regular',
+    garagem: 'CURSINO',
   },
   {
     matricula: '10041',
@@ -234,6 +244,7 @@ const SEED: Omit<ProcessoCadastral, 'id'>[] = [
     etapa: 'Documentos solicitados',
     prazo: '2026-09-14',
     situacao: 'Pendente',
+    garagem: 'SAPOPEMBA',
   },
 ]
 
@@ -246,6 +257,8 @@ export default function ProcessosCadastrais() {
   const { user } = useAuth()
   const userRole = ((user?.role as string) || 'Admin').toLowerCase()
   const isTrafego = userRole === 'tráfego' || userRole === 'trafego'
+  // Garagem do usuário (para Tráfego: 'CURSINO' ou 'SAPOPEMBA')
+  const userGaragem = (user?.garagem as string) || (isTrafego ? 'CURSINO' : 'Todas')
 
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -274,6 +287,7 @@ export default function ProcessosCadastrais() {
             etapa: r.etapa,
             prazo: r.prazo,
             situacao: r.situacao,
+            garagem: r.garagem || 'CURSINO',
           })),
         )
       } else {
@@ -320,16 +334,28 @@ export default function ProcessosCadastrais() {
       })
   })
 
+  // Processos visíveis para o usuário:
+  // Se for perfil Tráfego, filtrar exclusivamente pela garagem do usuário (CURSINO ou SAPOPEMBA).
+  // Admin e RH veem todos os processos.
+  const visibleProcessos = useMemo(() => {
+    if (!isTrafego) return processos
+    const userGaragemUpper = userGaragem.toUpperCase()
+    return processos.filter((p) => {
+      const g = (p.garagem || '').toUpperCase()
+      return g === userGaragemUpper
+    })
+  }, [processos, isTrafego, userGaragem])
+
   const resumo = useMemo(() => {
     const counts = Object.fromEntries(CATEGORIAS.map((categoria) => [categoria, 0])) as Record<
       Categoria,
       number
     >
-    processos.forEach((processo) => {
+    visibleProcessos.forEach((processo) => {
       if (processo.processo in counts) counts[processo.processo] += 1
     })
     return counts
-  }, [processos])
+  }, [visibleProcessos])
 
   const handleCreate = useCallback(
     async (data: {
@@ -340,6 +366,7 @@ export default function ProcessosCadastrais() {
       etapa: Etapa
       prazo: string
       situacao: Situacao
+      garagem?: string
       employeeId?: string
     }) => {
       try {
@@ -351,6 +378,7 @@ export default function ProcessosCadastrais() {
           etapa: data.etapa,
           prazo: data.prazo ? new Date(`${data.prazo}T12:00:00Z`).toISOString() : '',
           situacao: data.situacao,
+          garagem: data.garagem || 'CURSINO',
         })
 
         setProcessos((prev) => [
@@ -363,6 +391,7 @@ export default function ProcessosCadastrais() {
             etapa: created.etapa,
             prazo: created.prazo,
             situacao: created.situacao,
+            garagem: created.garagem || data.garagem || 'CURSINO',
           },
           ...prev,
         ])
@@ -402,6 +431,7 @@ export default function ProcessosCadastrais() {
       etapa: Etapa
       prazo: string
       situacao: Situacao
+      garagem?: string
       employeeId?: string
     }) => {
       try {
@@ -413,6 +443,7 @@ export default function ProcessosCadastrais() {
           etapa: data.etapa,
           prazo: data.prazo ? new Date(`${data.prazo}T12:00:00Z`).toISOString() : '',
           situacao: data.situacao,
+          garagem: data.garagem,
         })
 
         setProcessos((prev) =>
@@ -427,6 +458,7 @@ export default function ProcessosCadastrais() {
                 etapa: data.etapa,
                 prazo: data.prazo,
                 situacao: data.situacao,
+                garagem: data.garagem || item.garagem,
               }
             }
             return item
@@ -444,6 +476,18 @@ export default function ProcessosCadastrais() {
 
   const handleUpdateSituacaoTrafego = useCallback(async () => {
     if (!processoAlterarSituacao) return
+
+    // Validação extra: o usuário do Tráfego só pode alterar processos da sua própria garagem
+    if (
+      isTrafego &&
+      processoAlterarSituacao.garagem &&
+      processoAlterarSituacao.garagem.toUpperCase() !== userGaragem.toUpperCase()
+    ) {
+      toast.error('Permissão negada: você só pode alterar processos da sua própria garagem.')
+      setProcessoAlterarSituacao(null)
+      return
+    }
+
     setSalvandoSituacaoTrafego(true)
     try {
       await updateProcessoSituacao(processoAlterarSituacao.id, novaSituacaoTrafego)
@@ -462,7 +506,7 @@ export default function ProcessosCadastrais() {
     } finally {
       setSalvandoSituacaoTrafego(false)
     }
-  }, [processoAlterarSituacao, novaSituacaoTrafego])
+  }, [processoAlterarSituacao, novaSituacaoTrafego, isTrafego, userGaragem])
 
   const handleDelete = useCallback(async (processo: ProcessoCadastral) => {
     try {
@@ -485,9 +529,9 @@ export default function ProcessosCadastrais() {
   }
 
   const filteredProcessos = useMemo(() => {
-    if (!selectedCategoria) return processos
-    return processos.filter((p) => p.processo === selectedCategoria)
-  }, [processos, selectedCategoria])
+    if (!selectedCategoria) return visibleProcessos
+    return visibleProcessos.filter((p) => p.processo === selectedCategoria)
+  }, [visibleProcessos, selectedCategoria])
 
   const handleExportXlsx = useCallback(() => {
     if (filteredProcessos.length === 0) {
@@ -500,6 +544,7 @@ export default function ProcessosCadastrais() {
       const rows = filteredProcessos.map((item) => ({
         Matrícula: item.matricula,
         Colaborador: item.colaborador,
+        Garagem: item.garagem,
         Função: item.funcao,
         Processo: item.processo,
         Etapa: item.etapa,
@@ -513,6 +558,7 @@ export default function ProcessosCadastrais() {
       const columnWidths = [
         { wch: 14 }, // Matrícula
         { wch: 32 }, // Colaborador
+        { wch: 16 }, // Garagem
         { wch: 26 }, // Função
         { wch: 22 }, // Processo
         { wch: 26 }, // Etapa
@@ -543,7 +589,13 @@ export default function ProcessosCadastrais() {
           <div>
             <h1 className="text-lg font-bold text-foreground">Processos Cadastrais</h1>
             <p className="text-xs text-muted-foreground">
-              {processos.length} processo(s) cadastrado(s)
+              {isTrafego ? (
+                <>
+                  Garagem <strong>{userGaragem}</strong> · {visibleProcessos.length} processo(s)
+                </>
+              ) : (
+                <>{visibleProcessos.length} processo(s) cadastrado(s)</>
+              )}
             </p>
           </div>
         </div>
@@ -634,7 +686,8 @@ export default function ProcessosCadastrais() {
             )}
           </div>
           <span className="text-xs text-muted-foreground">
-            Exibindo {filteredProcessos.length} de {processos.length} registro(s)
+            Exibindo {filteredProcessos.length} de {visibleProcessos.length} registro(s)
+            {isTrafego && ` (Garagem ${userGaragem})`}
           </span>
         </div>
         {loading ? (
@@ -649,6 +702,7 @@ export default function ProcessosCadastrais() {
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">REGISTRO</th>
                   <th className="px-4 py-3 font-semibold">Colaborador</th>
+                  <th className="px-4 py-3 font-semibold">Garagem</th>
                   <th className="px-4 py-3 font-semibold">Função</th>
                   <th className="px-4 py-3 font-semibold">Processo</th>
                   <th className="px-4 py-3 font-semibold">Etapa</th>
@@ -662,6 +716,18 @@ export default function ProcessosCadastrais() {
                   <tr key={processo.id} className="border-b last:border-b-0 hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium text-foreground">{processo.matricula}</td>
                     <td className="px-4 py-3 text-foreground">{processo.colaborador}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
+                          processo.garagem === 'CURSINO'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-sky-50 text-sky-700 border border-sky-200',
+                        )}
+                      >
+                        {processo.garagem || 'CURSINO'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{processo.funcao}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
@@ -813,6 +879,12 @@ export default function ProcessosCadastrais() {
                 {processoAlterarSituacao?.processo}
               </p>
               <p>
+                <span className="font-semibold text-foreground">Garagem:</span>{' '}
+                <span className="font-semibold text-emerald-800">
+                  {processoAlterarSituacao?.garagem || 'CURSINO'}
+                </span>
+              </p>
+              <p>
                 <span className="font-semibold text-foreground">Situação atual:</span>{' '}
                 <span
                   className={cn(
@@ -928,6 +1000,7 @@ interface ProcessoCadastralFormModalProps {
     etapa: Etapa
     prazo: string
     situacao: Situacao
+    garagem?: string
     employeeId?: string
   }) => Promise<void> | void
 }
@@ -947,6 +1020,7 @@ function ProcessoCadastralFormModal({
   const [etapa, setEtapa] = useState<Etapa>('Documentação' as Etapa)
   const [prazo, setPrazo] = useState('')
   const [situacao, setSituacao] = useState<Situacao>('Pendente')
+  const [garagem, setGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
   const [searchingEmployee, setSearchingEmployee] = useState(false)
   const [resolvedEmployeeId, setResolvedEmployeeId] = useState<string | undefined>(undefined)
   const [saving, setSaving] = useState(false)
@@ -961,6 +1035,7 @@ function ProcessoCadastralFormModal({
         setEtapa(initialData.etapa || 'Documentação')
         setPrazo(initialData.prazo || '')
         setSituacao(initialData.situacao || 'Pendente')
+        setGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
         setResolvedEmployeeId(undefined)
       } else {
         setProcesso('Inclusão')
@@ -970,6 +1045,7 @@ function ProcessoCadastralFormModal({
         setEtapa('Documentação')
         setPrazo('')
         setSituacao('Pendente')
+        setGaragem('CURSINO')
         setResolvedEmployeeId(undefined)
       }
     }
@@ -995,10 +1071,14 @@ function ProcessoCadastralFormModal({
         if (!isMounted) return
         if (localMatch.name) setNome(localMatch.name)
         if (localMatch.funcao) setFuncao(localMatch.funcao)
+        if (localMatch.filial) {
+          const f = localMatch.filial.toUpperCase()
+          if (f.includes('SAPOPEMBA')) setGaragem('SAPOPEMBA')
+          else if (f.includes('CURSINO')) setGaragem('CURSINO')
+        }
         setResolvedEmployeeId(localMatch.id)
         return
       }
-
       // 2. Se não encontrou em memória, busca na coleção employees do PocketBase
       setSearchingEmployee(true)
       try {
@@ -1015,6 +1095,11 @@ function ProcessoCadastralFormModal({
           const emp = records.items[0]
           if (emp.name) setNome(emp.name)
           if (emp.funcao) setFuncao(emp.funcao)
+          if (emp.filial) {
+            const f = emp.filial.toUpperCase()
+            if (f.includes('SAPOPEMBA')) setGaragem('SAPOPEMBA')
+            else if (f.includes('CURSINO')) setGaragem('CURSINO')
+          }
           setResolvedEmployeeId(emp.id)
         }
       } catch (error) {
@@ -1057,6 +1142,7 @@ function ProcessoCadastralFormModal({
         prazo,
         // Em novo processo a situação é sempre gravada automaticamente como "Pendente"
         situacao: isEditing ? situacao : 'Pendente',
+        garagem,
         employeeId: resolvedEmployeeId || selectedEmployee?.id,
       })
       onOpenChange(false)
@@ -1090,20 +1176,38 @@ function ProcessoCadastralFormModal({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="modal-processo">Tipo de movimentação</Label>
-            <Select value={processo} onValueChange={(value) => setProcesso(value as Categoria)}>
-              <SelectTrigger id="modal-processo">
-                <SelectValue placeholder="Selecione o tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIAS.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="modal-processo">Tipo de movimentação</Label>
+              <Select value={processo} onValueChange={(value) => setProcesso(value as Categoria)}>
+                <SelectTrigger id="modal-processo">
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="modal-garagem">Garagem</Label>
+              <Select
+                value={garagem}
+                onValueChange={(val) => setGaragem(val as 'CURSINO' | 'SAPOPEMBA')}
+              >
+                <SelectTrigger id="modal-garagem">
+                  <SelectValue placeholder="Selecione a garagem" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CURSINO">CURSINO</SelectItem>
+                  <SelectItem value="SAPOPEMBA">SAPOPEMBA</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-2">

@@ -11,7 +11,10 @@ export async function listProcessosCadastrais(): Promise<ProcessoCadastralRecord
 export async function createProcessoCadastral(
   data: Omit<ProcessoCadastralRecord, 'id' | 'created' | 'updated'>,
 ): Promise<ProcessoCadastralRecord> {
-  const record = await pb.collection('processos_cadastrais').create<ProcessoCadastralRecord>(data)
+  const record = await pb.collection('processos_cadastrais').create<ProcessoCadastralRecord>({
+    ...data,
+    garagem: data.garagem || 'CURSINO',
+  })
   return record
 }
 

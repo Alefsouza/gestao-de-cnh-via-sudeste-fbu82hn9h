@@ -64,6 +64,7 @@ export const MOVEMENT_STAGES: MovementStage[] = [
 ]
 
 export type UserRole = 'Admin' | 'RH' | 'Tráfego'
+export type GaragemOption = 'CURSINO' | 'SAPOPEMBA' | 'Todas'
 
 export type ProcessoCategoria =
   | 'Inclusão'
@@ -97,6 +98,7 @@ export interface ProcessoCadastralRecord {
   etapa: ProcessoEtapa
   prazo: string
   situacao: ProcessoSituacao
+  garagem?: 'CURSINO' | 'SAPOPEMBA' | string
   created?: string
   updated?: string
 }

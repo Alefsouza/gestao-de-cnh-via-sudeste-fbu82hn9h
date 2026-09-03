@@ -273,7 +273,7 @@ function Header({
           </p>
           <p className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3.5 w-3.5" />
-            Unidade CURSINO
+            Unidade {(user?.garagem as string) || 'CURSINO'}
           </p>
         </div>
 

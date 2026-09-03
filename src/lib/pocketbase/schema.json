@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-03T17:13:11.754Z",
+  "generatedAt": "2026-09-03T17:23:18.451Z",
   "collections": [
     {
       "name": "users",
@@ -44,6 +44,13 @@
           "required": false,
           "system": false,
           "selectValues": ["Admin", "RH", "Tráfego"]
+        },
+        {
+          "name": "garagem",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["CURSINO", "SAPOPEMBA", "Todas"]
         }
       ],
       "indexes": [
@@ -562,6 +569,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "garagem",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["CURSINO", "SAPOPEMBA"]
         }
       ],
       "indexes": [
