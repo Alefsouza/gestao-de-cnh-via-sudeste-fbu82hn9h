@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
-  Bus,
   ChevronDown,
   CreditCard,
   FileCheck2,
@@ -58,18 +57,31 @@ function pageLabel(pathname: string): string {
   return item?.label ?? 'Página'
 }
 
+const LOGO_SRC =
+  'https://wrnhfpncasqifaisvyaf.supabase.co/storage/v1/object/public/assets/logo_branco_transparente_nitido-80a6a-BIUCr1YD.png'
+
 function Brand({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-primary shadow-inner">
-        <Bus className="h-5 w-5 text-white" />
-      </div>
-      {!compact && (
-        <div className="min-w-0">
-          <p className="truncate text-[15px] font-bold leading-tight text-white">Via Sudeste</p>
-          <p className="truncate text-[11px] leading-tight text-emerald-200/70">Portal RH</p>
+  const [imgFailed, setImgFailed] = useState(false)
+
+  if (imgFailed) {
+    return (
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-primary/20 text-sm font-bold text-white">
+          VS
         </div>
-      )}
+        {!compact && <span className="truncate text-base font-bold text-white">Via Sudeste</span>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center">
+      <img
+        src={LOGO_SRC}
+        alt="Via Sudeste"
+        onError={() => setImgFailed(true)}
+        className={cn('h-10 w-auto max-w-[180px] object-contain', compact && 'h-8 max-w-[40px]')}
+      />
     </div>
   )
 }
