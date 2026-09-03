@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   FileDown,
   FilePlus2,
@@ -175,11 +178,40 @@ export default function ProcessosCadastrais() {
   const [salvandoSituacaoTrafego, setSalvandoSituacaoTrafego] = useState(false)
   const [processos, setProcessos] = useState<ProcessoCadastral[]>([])
   const [selectedCategoria, setSelectedCategoria] = useState<Categoria | null>(null)
+  const [viewRegulares, setViewRegulares] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [employees, setEmployees] = useState<Employee[]>([])
+
+  // Monta o filtro PocketBase garantindo regras no backend:
+  // 1. Tráfego: vê apenas sua garagem e nunca vê "Regular"
+  // 2. Admin/RH:
+  //    - Se viewRegulares === true: somente situacao = "Regular"
+  //    - Se viewRegulares === false (padrão): situacao != "Regular"
+  const backendFilter = useMemo(() => {
+    const parts: string[] = []
+
+    if (isTrafego) {
+      const g = userGaragem.toUpperCase()
+      parts.push(`garagem = "${g}"`)
+      parts.push(`situacao != "Regular"`)
+    } else {
+      if (viewRegulares) {
+        parts.push(`situacao = "Regular"`)
+      } else {
+        parts.push(`situacao != "Regular"`)
+      }
+    }
+
+    return parts.join(' && ')
+  }, [isTrafego, userGaragem, viewRegulares])
 
   const carregarProcessos = useCallback(async () => {
     try {
-      const records = await listProcessosCadastrais()
+      const records = await listProcessosCadastrais({
+        filter: backendFilter,
+        sort: '-created',
+      })
       setProcessos(
         records.map((r) => ({
           id: r.id,
@@ -200,7 +232,7 @@ export default function ProcessosCadastrais() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [backendFilter])
 
   useEffect(() => {
     void carregarProcessos()
@@ -238,17 +270,25 @@ export default function ProcessosCadastrais() {
   // Se for perfil Tráfego:
   // 1. Filtrar exclusivamente pela garagem do usuário (CURSINO ou SAPOPEMBA).
   // 2. Processos com situação "Regular" NÃO devem aparecer (nem na listagem, nem nos cards, nem no Excel).
-  // Admin e RH veem todos os processos (incluindo "Regular").
+  // Admin e RH:
+  // Se viewRegulares === true: somente "Regular"
+  // Se viewRegulares === false (listagem principal): NÃO contém "Regular"
   const visibleProcessos = useMemo(() => {
-    if (!isTrafego) return processos
-    const userGaragemUpper = userGaragem.toUpperCase()
-    return processos.filter((p) => {
-      const g = (p.garagem || '').toUpperCase()
-      const isSameGaragem = g === userGaragemUpper
-      const isNotRegular = p.situacao !== 'Regular'
-      return isSameGaragem && isNotRegular
-    })
-  }, [processos, isTrafego, userGaragem])
+    if (isTrafego) {
+      const userGaragemUpper = userGaragem.toUpperCase()
+      return processos.filter((p) => {
+        const g = (p.garagem || '').toUpperCase()
+        const isSameGaragem = g === userGaragemUpper
+        const isNotRegular = p.situacao !== 'Regular'
+        return isSameGaragem && isNotRegular
+      })
+    }
+    // Admin / RH:
+    if (viewRegulares) {
+      return processos.filter((p) => p.situacao === 'Regular')
+    }
+    return processos.filter((p) => p.situacao !== 'Regular')
+  }, [processos, isTrafego, userGaragem, viewRegulares])
 
   const resumo = useMemo(() => {
     const counts = Object.fromEntries(CATEGORIAS.map((categoria) => [categoria, 0])) as Record<
@@ -483,6 +523,18 @@ export default function ProcessosCadastrais() {
     return visibleProcessos.filter((p) => p.processo === selectedCategoria)
   }, [visibleProcessos, selectedCategoria])
 
+  // Resetar página atual quando filtros mudarem
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedCategoria, viewRegulares])
+
+  // Paginação da listagem
+  const totalPages = Math.max(1, Math.ceil(filteredProcessos.length / pageSize))
+  const paginatedProcessos = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredProcessos.slice(start, start + pageSize)
+  }, [filteredProcessos, currentPage, pageSize])
+
   const handleExportXlsx = useCallback(() => {
     if (filteredProcessos.length === 0) {
       toast.error('Nenhum processo disponível para exportação.')
@@ -522,15 +574,17 @@ export default function ProcessosCadastrais() {
       worksheet['!cols'] = columnWidths
 
       const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Processos Cadastrais')
+      const sheetName = viewRegulares ? 'Processos Regulares' : 'Processos Cadastrais'
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
 
-      XLSX.writeFile(workbook, 'processos-cadastrais.xlsx')
+      const fileName = viewRegulares ? 'processos-regulares.xlsx' : 'processos-cadastrais.xlsx'
+      XLSX.writeFile(workbook, fileName)
       toast.success(`Exportação concluída (${filteredProcessos.length} registro(s))`)
     } catch (error) {
       console.error('Erro ao exportar processos para XLSX:', error)
       toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
     }
-  }, [filteredProcessos])
+  }, [filteredProcessos, viewRegulares])
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
@@ -547,6 +601,8 @@ export default function ProcessosCadastrais() {
                 <>
                   Garagem <strong>{userGaragem}</strong> · {visibleProcessos.length} processo(s)
                 </>
+              ) : viewRegulares ? (
+                <>{visibleProcessos.length} processo(s) regular(es)</>
               ) : (
                 <>{visibleProcessos.length} processo(s) cadastrado(s)</>
               )}
@@ -639,8 +695,41 @@ export default function ProcessosCadastrais() {
       {/* Tabela de processos */}
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-foreground">Processos cadastrados</h2>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="text-sm font-semibold text-foreground">
+              {viewRegulares ? 'Processos cadastrados (Regulares)' : 'Processos cadastrados'}
+            </h2>
+
+            {/* Botão Regular: posicionado ao lado do título Processos cadastrados */}
+            {!isTrafego && (
+              <Button
+                type="button"
+                size="sm"
+                variant={viewRegulares ? 'default' : 'outline'}
+                onClick={() => setViewRegulares((prev) => !prev)}
+                className={cn(
+                  'h-7 px-2.5 text-xs font-medium transition-all gap-1.5',
+                  viewRegulares
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm border-emerald-600'
+                    : 'border-emerald-300 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900',
+                )}
+                aria-pressed={viewRegulares}
+                title={
+                  viewRegulares
+                    ? 'Voltar para a listagem principal de processos (sem Regulares)'
+                    : 'Filtrar somente processos com situação Regular'
+                }
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Regular
+                {viewRegulares && (
+                  <span className="ml-0.5 rounded-full bg-white/25 px-1.5 py-0.2 text-[10px] font-bold">
+                    Ativo
+                  </span>
+                )}
+              </Button>
+            )}
+
             {selectedCategoria && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
                 Filtro: {selectedCategoria}
@@ -656,7 +745,9 @@ export default function ProcessosCadastrais() {
             )}
           </div>
           <span className="text-xs text-muted-foreground">
-            Exibindo {filteredProcessos.length} de {visibleProcessos.length} registro(s)
+            Exibindo {filteredProcessos.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} a{' '}
+            {Math.min(currentPage * pageSize, filteredProcessos.length)} de{' '}
+            {filteredProcessos.length} registro(s)
             {isTrafego && ` (Garagem ${userGaragem})`}
           </span>
         </div>
@@ -682,7 +773,7 @@ export default function ProcessosCadastrais() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProcessos.map((processo) => (
+                {paginatedProcessos.map((processo) => (
                   <tr key={processo.id} className="border-b last:border-b-0 hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium text-foreground">{processo.matricula}</td>
                     <td className="px-4 py-3 text-foreground">{processo.colaborador}</td>
@@ -798,22 +889,91 @@ export default function ProcessosCadastrais() {
         )}
         {!loading && filteredProcessos.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">
-            Nenhum processo cadastral encontrado.
-            {selectedCategoria && (
+            {viewRegulares
+              ? 'Nenhum processo com situação "Regular" encontrado.'
+              : 'Nenhum processo cadastral encontrado.'}
+            {viewRegulares ? (
               <div className="mt-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedCategoria(null)}
+                  onClick={() => setViewRegulares(false)}
                   className="text-xs font-medium text-primary underline"
                 >
-                  Ver todos os processos
+                  Voltar para processos cadastrados
                 </button>
               </div>
+            ) : (
+              selectedCategoria && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoria(null)}
+                    className="text-xs font-medium text-primary underline"
+                  >
+                    Ver todos os processos
+                  </button>
+                </div>
+              )
             )}
           </div>
         )}
-      </div>
 
+        {/* Paginação */}
+        {!loading && filteredProcessos.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 bg-muted/10 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span>Linhas por página:</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(val) => {
+                  setPageSize(Number(val))
+                  setCurrentPage(1)
+                }}
+              >
+                <SelectTrigger className="h-8 w-16">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span>
+                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong>
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  title="Próxima página"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
       {/* Modal Novo processo */}
       <ProcessoCadastralFormModal
         open={modalOpen}

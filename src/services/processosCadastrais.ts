@@ -1,11 +1,49 @@
 import pb from '@/lib/pocketbase/client'
 import type { ProcessoCadastralRecord, ProcessoSituacao } from '@/lib/types'
 
-export async function listProcessosCadastrais(): Promise<ProcessoCadastralRecord[]> {
+export interface ListProcessosOptions {
+  filter?: string
+  sort?: string
+  page?: number
+  perPage?: number
+}
+
+export interface ListProcessosResult {
+  items: ProcessoCadastralRecord[]
+  totalItems: number
+  totalPages: number
+  page: number
+  perPage: number
+}
+
+export async function listProcessosCadastrais(
+  options?: ListProcessosOptions,
+): Promise<ProcessoCadastralRecord[]> {
   const records = await pb.collection('processos_cadastrais').getFullList<ProcessoCadastralRecord>({
-    sort: '-created',
+    sort: options?.sort ?? '-created',
+    filter: options?.filter,
   })
   return records
+}
+
+export async function listProcessosCadastraisPage(
+  page: number = 1,
+  perPage: number = 20,
+  options?: Omit<ListProcessosOptions, 'page' | 'perPage'>,
+): Promise<ListProcessosResult> {
+  const result = await pb
+    .collection('processos_cadastrais')
+    .getList<ProcessoCadastralRecord>(page, perPage, {
+      sort: options?.sort ?? '-created',
+      filter: options?.filter,
+    })
+  return {
+    items: result.items,
+    totalItems: result.totalItems,
+    totalPages: result.totalPages,
+    page: result.page,
+    perPage: result.perPage,
+  }
 }
 
 export async function createProcessoCadastral(
