@@ -142,6 +142,9 @@ export default function AtualizacaoFiscal() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [garagem, setGaragem] = useState('')
+  const [situacao, setSituacao] = useState('')
+  const [cnhFilter, setCnhFilter] = useState<'todos' | 'com_cnh' | 'sem_cnh'>('todos')
   const [cardFilter, setCardFilter] = useState<FiscalCardFilter>('todos')
   const [processoTarget, setProcessoTarget] = useState<Employee | null>(null)
   const [observacoes, setObservacoes] = useState('')
@@ -175,24 +178,59 @@ export default function AtualizacaoFiscal() {
     [employees],
   )
 
-  const resumo = useMemo(
-    () => ({
-      total: fiscais.length,
-      ativos: fiscais.filter((employee) => employee.situacao === 'Ativo').length,
-      afastados: fiscais.filter((employee) => employee.situacao === 'Afastado').length,
-    }),
+  const garagens = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          fiscais.map((e) => (e.filial ?? '').trim()).filter((val): val is string => Boolean(val)),
+        ),
+      ).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [fiscais],
   )
 
+  // Base filtrada pelos controles (busca + garagem + situacao + cnhFilter)
   const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return fiscais
-    return fiscais.filter(
-      (employee) =>
-        employee.name.toLowerCase().includes(term) || employee.chapa.toLowerCase().includes(term),
-    )
-  }, [fiscais, search])
+    return fiscais.filter((employee) => {
+      if (
+        term &&
+        !employee.name.toLowerCase().includes(term) &&
+        !employee.chapa.toLowerCase().includes(term)
+      ) {
+        return false
+      }
 
+      if (garagem && (employee.filial ?? '').trim() !== garagem) {
+        return false
+      }
+
+      if (situacao && employee.situacao !== situacao) {
+        return false
+      }
+
+      const hasCnh = Boolean(employee.cnh_numero && employee.cnh_numero.trim())
+      if (cnhFilter === 'com_cnh' && !hasCnh) {
+        return false
+      }
+      if (cnhFilter === 'sem_cnh' && hasCnh) {
+        return false
+      }
+
+      return true
+    })
+  }, [fiscais, search, garagem, situacao, cnhFilter])
+
+  // Contadores recalculados com base no universo filtrado pelos controles
+  const resumo = useMemo(
+    () => ({
+      total: baseFiltered.length,
+      ativos: baseFiltered.filter((employee) => employee.situacao === 'Ativo').length,
+      afastados: baseFiltered.filter((employee) => employee.situacao === 'Afastado').length,
+    }),
+    [baseFiltered],
+  )
+
+  // Lista final combinada com o clique no card de resumo
   const filtered = useMemo(() => {
     if (cardFilter === 'ativos') {
       return baseFiltered.filter((e) => e.situacao === 'Ativo')
@@ -210,6 +248,18 @@ export default function AtualizacaoFiscal() {
       setCardFilter(filter)
     }
   }
+
+  const clearFilters = () => {
+    setSearch('')
+    setGaragem('')
+    setSituacao('')
+    setCnhFilter('todos')
+    setCardFilter('todos')
+  }
+
+  const hasActiveFilters = Boolean(
+    search || garagem || situacao || cnhFilter !== 'todos' || cardFilter !== 'todos',
+  )
 
   const handleAbrirProcesso = async () => {
     if (!processoTarget) return
@@ -303,30 +353,11 @@ export default function AtualizacaoFiscal() {
         </div>
       </div>
 
-      {/* Tabela */}
+      {/* Filtros e Tabela */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-1">
-            <p className="text-sm text-muted-foreground">
-              Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
-              fiscal(is) localizado(s) na matriz
-            </p>
-            {cardFilter !== 'todos' && (
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                  Filtrando por card: {cardFilter === 'ativos' ? 'Ativos' : 'Afastados'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCardFilter('todos')}
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
-                >
-                  Limpar filtro de card
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="relative w-full sm:w-72">
+        {/* Barra de Filtros */}
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
@@ -335,6 +366,64 @@ export default function AtualizacaoFiscal() {
               className="h-10 w-full rounded-md border border-input bg-white pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
+
+          <select
+            value={garagem}
+            onChange={(e) => setGaragem(e.target.value)}
+            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">Todas as garagens</option>
+            {garagens.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={situacao}
+            onChange={(e) => setSituacao(e.target.value)}
+            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">Todas as situações</option>
+            <option value="Ativo">Ativo</option>
+            <option value="Afastado">Afastado</option>
+          </select>
+
+          <select
+            value={cnhFilter}
+            onChange={(e) => setCnhFilter(e.target.value as 'todos' | 'com_cnh' | 'sem_cnh')}
+            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="todos">Todos (CNH)</option>
+            <option value="com_cnh">Com CNH</option>
+            <option value="sem_cnh">Sem CNH</option>
+          </select>
+        </div>
+
+        {/* Linha de status e contagem de exibição */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted-foreground">
+              Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+              fiscal(is) localizado(s) na matriz
+            </p>
+            {cardFilter !== 'todos' && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                Filtrando por card: {cardFilter === 'ativos' ? 'Ativos' : 'Afastados'}
+              </span>
+            )}
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Limpar todos os filtros
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
