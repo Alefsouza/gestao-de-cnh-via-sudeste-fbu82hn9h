@@ -310,8 +310,8 @@ export default function Afastados() {
 
       {/* Filtros */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="relative">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-[10%]">
+          <div className="relative w-full md:w-[70%]">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
@@ -323,7 +323,7 @@ export default function Afastados() {
           <select
             value={cnhFilter}
             onChange={(e) => setCnhFilter(e.target.value as CnhFilter)}
-            className={inputClass}
+            className={cn(inputClass, 'w-full md:w-[20%]')}
           >
             <option value="todos">Todos os status da CNH</option>
             <option value="Vencida">Vencida</option>
