@@ -875,7 +875,8 @@ function ProcessoCadastralFormModal({
         funcao: funcao.trim(),
         etapa,
         prazo,
-        situacao,
+        // Em novo processo a situação é sempre gravada automaticamente como "Pendente"
+        situacao: isEditing ? situacao : 'Pendente',
         employeeId: resolvedEmployeeId || selectedEmployee?.id,
       })
       onOpenChange(false)
@@ -966,7 +967,41 @@ function ProcessoCadastralFormModal({
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {isEditing ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="modal-etapa">Etapa</Label>
+                <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
+                  <SelectTrigger id="modal-etapa">
+                    <SelectValue placeholder="Selecione a etapa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ETAPAS.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="modal-situacao">Situação</Label>
+                <Select value={situacao} onValueChange={(value) => setSituacao(value as Situacao)}>
+                  <SelectTrigger id="modal-situacao">
+                    <SelectValue placeholder="Selecione a situação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SITUACOES_VALIDAS.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : (
             <div className="space-y-2">
               <Label htmlFor="modal-etapa">Etapa</Label>
               <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
@@ -982,23 +1017,7 @@ function ProcessoCadastralFormModal({
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="modal-situacao">Situação</Label>
-              <Select value={situacao} onValueChange={(value) => setSituacao(value as Situacao)}>
-                <SelectTrigger id="modal-situacao">
-                  <SelectValue placeholder="Selecione a situação" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SITUACOES_VALIDAS.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="modal-prazo">Prazo</Label>
