@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays,
   ClipboardList,
+  FileDown,
   FilePlus2,
   FileSearch,
   FileX2,
@@ -12,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import {
@@ -411,6 +413,49 @@ export default function ProcessosCadastrais() {
     return processos.filter((p) => p.processo === selectedCategoria)
   }, [processos, selectedCategoria])
 
+  const handleExportXlsx = useCallback(() => {
+    if (filteredProcessos.length === 0) {
+      toast.error('Nenhum processo disponível para exportação.')
+      return
+    }
+
+    try {
+      // Mapeamento exato das colunas atuais da tabela
+      const rows = filteredProcessos.map((item) => ({
+        Matrícula: item.matricula,
+        Colaborador: item.colaborador,
+        Função: item.funcao,
+        Processo: item.processo,
+        Etapa: item.etapa,
+        Prazo: formatDate(item.prazo),
+        Situação: item.situacao,
+      }))
+
+      const worksheet = XLSX.utils.json_to_sheet(rows)
+
+      // Ajuste de largura das colunas para visualização adequada no Excel
+      const columnWidths = [
+        { wch: 14 }, // Matrícula
+        { wch: 32 }, // Colaborador
+        { wch: 26 }, // Função
+        { wch: 22 }, // Processo
+        { wch: 26 }, // Etapa
+        { wch: 14 }, // Prazo
+        { wch: 14 }, // Situação
+      ]
+      worksheet['!cols'] = columnWidths
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Processos Cadastrais')
+
+      XLSX.writeFile(workbook, 'processos-cadastrais.xlsx')
+      toast.success(`Exportação concluída (${filteredProcessos.length} registro(s))`)
+    } catch (error) {
+      console.error('Erro ao exportar processos para XLSX:', error)
+      toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
+    }
+  }, [filteredProcessos])
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       {/* Cabeçalho */}
@@ -426,14 +471,27 @@ export default function ProcessosCadastrais() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          Novo processo
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            onClick={handleExportXlsx}
+            disabled={filteredProcessos.length === 0}
+            className="inline-flex h-10 items-center gap-2"
+          >
+            <FileDown className="h-4 w-4" />
+            Exportar .xlsx
+          </Button>
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            Novo processo
+          </button>
+        </div>
       </div>
 
       {/* Cards de resumo clicáveis */}
