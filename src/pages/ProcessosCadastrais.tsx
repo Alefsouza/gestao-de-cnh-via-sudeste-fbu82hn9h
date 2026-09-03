@@ -642,47 +642,49 @@ export default function ProcessosCadastrais() {
         </div>
       </div>
 
-      {/* Cards de resumo clicáveis */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        {CATEGORIAS.map((categoria) => {
-          const style = CARD_STYLES[categoria]
-          const Icon = style.icon
-          const isSelected = selectedCategoria === categoria
-          return (
-            <button
-              key={categoria}
-              type="button"
-              onClick={() => handleCategoryClick(categoria)}
-              className={cn(
-                'group flex flex-col rounded-xl border bg-white p-4 text-left shadow-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:shadow-md cursor-pointer',
-                style.ring,
-                isSelected && 'ring-2 ring-primary border-primary bg-primary/[0.03]',
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-muted-foreground">{categoria}</span>
-                <span
-                  className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-lg transition-transform group-hover:scale-105',
-                    style.bg,
-                  )}
-                >
-                  <Icon className={cn('h-4 w-4', style.text)} />
-                </span>
-              </div>
-              <p className="mt-2 text-2xl font-bold text-foreground">{resumo[categoria]}</p>
-              <div className="mt-1 flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground">processos</p>
-                {isSelected && (
-                  <span className="rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-primary">
-                    Filtrando
-                  </span>
+      {/* Cards de resumo clicáveis (ocultos quando o perfil for Tráfego) */}
+      {!isTrafego && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          {CATEGORIAS.map((categoria) => {
+            const style = CARD_STYLES[categoria]
+            const Icon = style.icon
+            const isSelected = selectedCategoria === categoria
+            return (
+              <button
+                key={categoria}
+                type="button"
+                onClick={() => handleCategoryClick(categoria)}
+                className={cn(
+                  'group flex flex-col rounded-xl border bg-white p-4 text-left shadow-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:shadow-md cursor-pointer',
+                  style.ring,
+                  isSelected && 'ring-2 ring-primary border-primary bg-primary/[0.03]',
                 )}
-              </div>
-            </button>
-          )
-        })}
-      </div>
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">{categoria}</span>
+                  <span
+                    className={cn(
+                      'flex h-8 w-8 items-center justify-center rounded-lg transition-transform group-hover:scale-105',
+                      style.bg,
+                    )}
+                  >
+                    <Icon className={cn('h-4 w-4', style.text)} />
+                  </span>
+                </div>
+                <p className="mt-2 text-2xl font-bold text-foreground">{resumo[categoria]}</p>
+                <div className="mt-1 flex items-center justify-between">
+                  <p className="text-[11px] text-muted-foreground">processos</p>
+                  {isSelected && (
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-primary">
+                      Filtrando
+                    </span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Tabela de processos */}
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
