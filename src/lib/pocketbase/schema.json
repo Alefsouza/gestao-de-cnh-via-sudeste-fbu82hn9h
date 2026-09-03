@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-03T13:08:28.046Z",
+  "generatedAt": "2026-09-03T13:21:49.718Z",
   "collections": [
     {
       "name": "users",
@@ -370,6 +370,107 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "conversations",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && user = @request.auth.id",
+        "view": "@request.auth.id != \"\" && user = @request.auth.id",
+        "create": "@request.auth.id != \"\" && user = @request.auth.id",
+        "update": "@request.auth.id != \"\" && user = @request.auth.id",
+        "delete": "@request.auth.id != \"\" && user = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_conversations_user ON conversations (user)",
+        "CREATE INDEX idx_conversations_user_updated ON conversations (user, updated DESC)"
+      ]
+    },
+    {
+      "name": "messages",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && conversation.user = @request.auth.id",
+        "view": "@request.auth.id != \"\" && conversation.user = @request.auth.id",
+        "create": "@request.auth.id != \"\" && conversation.user = @request.auth.id",
+        "update": "@request.auth.id != \"\" && conversation.user = @request.auth.id",
+        "delete": "@request.auth.id != \"\" && conversation.user = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "conversation",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "conversations"
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["user", "assistant", "system"]
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "metadata",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_messages_conversation ON messages (conversation)",
+        "CREATE INDEX idx_messages_conversation_created ON messages (conversation, created ASC)"
+      ]
     }
   ]
 }
