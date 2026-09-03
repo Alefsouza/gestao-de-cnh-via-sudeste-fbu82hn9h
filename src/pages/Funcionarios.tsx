@@ -391,7 +391,7 @@ export default function Funcionarios() {
                     <td className="px-4 py-3">
                       <span className="block font-medium">{employee.name}</span>
                       <span className="block text-xs text-muted-foreground">
-                        {employee.cnh_numero ? `Registro: ${employee.cnh_numero}` : 'Sem registro'}
+                        {employee.cnh_numero ? `CNH: ${employee.cnh_numero}` : 'Sem CNH'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>
