@@ -27,7 +27,8 @@ import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import { useAuth } from '@/contexts/AuthContext'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useRealtime } from '@/hooks/use-realtime'
-import { greetingFor, initials } from '@/lib/format'
+import { greetingFor, initials, relativeDayLabel } from '@/lib/format'
+import { listRuns } from '@/lib/sync'
 import { listNotifications } from '@/services/notifications'
 import type { Notification } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -108,13 +109,37 @@ function SidebarNav({ compact, onNavigate }: { compact?: boolean; onNavigate?: (
   )
 }
 
-function SidebarFooter({ compact, onSignOut }: { compact?: boolean; onSignOut: () => void }) {
+function SidebarFooter({
+  compact,
+  onSignOut,
+  lastSync,
+}: {
+  compact?: boolean
+  onSignOut: () => void
+  lastSync?: string | null
+}) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { user } = useAuth()
   const name = user?.name || 'Administrador Via Sudeste'
 
   return (
     <div className="border-t border-white/10 p-3">
+      {/* Bloco de status "Matriz conectada" */}
+      {!compact && (
+        <div className="mb-2 rounded-lg bg-white/5 p-2.5">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2 items-center justify-center">
+              <span className="animate-ping-dot absolute inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+            </span>
+            <span className="text-xs font-semibold text-emerald-200">Matriz conectada</span>
+          </div>
+          <p className="mt-1 truncate text-[11px] text-emerald-100/60">
+            Base sincronizada do Globus{lastSync ? ` · ${relativeDayLabel(lastSync)}` : ''}
+          </p>
+        </div>
+      )}
+
       <div className="relative mt-2">
         {menuOpen && <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />}
         <button
@@ -223,10 +248,30 @@ export default function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [lastSync, setLastSync] = useState<string | null>(null)
   const { signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const isMobile = useIsMobile()
+
+  const loadLastSync = useCallback(async () => {
+    try {
+      const runs = await listRuns(1)
+      if (runs.length > 0 && runs[0].started_at) {
+        setLastSync(runs[0].started_at)
+      }
+    } catch {
+      // silencioso
+    }
+  }, [])
+
+  useEffect(() => {
+    loadLastSync()
+  }, [loadLastSync])
+
+  useRealtime('sync_runs', () => {
+    loadLastSync()
+  })
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -263,7 +308,7 @@ export default function Layout() {
           <Brand />
         </div>
         <SidebarNav />
-        <SidebarFooter onSignOut={handleSignOut} />
+        <SidebarFooter onSignOut={handleSignOut} lastSync={lastSync} />
       </aside>
 
       {/* Sidebar móvel (drawer) */}
@@ -283,7 +328,7 @@ export default function Layout() {
               </button>
             </div>
             <SidebarNav onNavigate={() => setDrawerOpen(false)} />
-            <SidebarFooter onSignOut={handleSignOut} />
+            <SidebarFooter onSignOut={handleSignOut} lastSync={lastSync} />
           </aside>
         </div>
       )}
