@@ -229,11 +229,6 @@ function Header({
           </p>
         </div>
 
-        <Button onClick={onNewMovement} className="hidden h-10 items-center gap-2 sm:inline-flex">
-          <Plus className="h-4 w-4" />
-          Nova movimentação
-        </Button>
-
         <NotificationBell notifications={notifications} onReload={onReloadNotifications} />
 
         <span className="hidden items-center gap-1.5 rounded-full border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary md:inline-flex">
