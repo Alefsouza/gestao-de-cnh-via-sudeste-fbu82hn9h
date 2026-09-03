@@ -87,9 +87,15 @@ function Brand({ compact = false }: { compact?: boolean }) {
 }
 
 function SidebarNav({ compact, onNavigate }: { compact?: boolean; onNavigate?: () => void }) {
+  const { user } = useAuth()
+  const userRole = ((user?.role as string) || 'Admin').toLowerCase()
+  const isTrafego = userRole === 'tráfego' || userRole === 'trafego'
+
+  const filteredMenu = isTrafego ? MENU.filter((item) => item.to === '/processos-cadastrais') : MENU
+
   return (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-      {MENU.map((item) => (
+      {filteredMenu.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
@@ -139,6 +145,7 @@ function SidebarFooter({
   const { user } = useAuth()
   const name = user?.name || 'Administrador Via Sudeste'
   const avatarUrl = getUserAvatarUrl(user, '100x100')
+  const userRole = (user?.role as string) || 'Admin'
 
   return (
     <div className="border-t border-white/10 p-3">
@@ -183,7 +190,7 @@ function SidebarFooter({
               <span className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-xs font-semibold text-white">{name}</span>
                 <span className="mt-0.5 inline-flex rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  Admin
+                  {userRole}
                 </span>
               </span>
               <ChevronDown className="h-4 w-4 flex-none text-emerald-200/60" />
@@ -282,7 +289,7 @@ export default function Layout() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [lastSync, setLastSync] = useState<string | null>(null)
-  const { signOut } = useAuth()
+  const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const isMobile = useIsMobile()
@@ -392,17 +399,21 @@ export default function Layout() {
       <NovaMovimentacaoModal open={modalOpen} onOpenChange={setModalOpen} />
       <ProfileModal open={profileOpen} onOpenChange={setProfileOpen} />
 
-      {/* Botão flutuante de nova movimentação em telas muito pequenas */}
-      {isMobile && (
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="fixed bottom-5 right-5 z-30 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-white shadow-lg sm:hidden"
-        >
-          <Plus className="h-4 w-4" />
-          Nova movimentação
-        </button>
-      )}
+      {/* Botão flutuante de nova movimentação em telas muito pequenas (apenas para Admin e RH) */}
+      {isMobile &&
+        !(
+          ((user?.role as string) || '').toLowerCase() === 'tráfego' ||
+          ((user?.role as string) || '').toLowerCase() === 'trafego'
+        ) && (
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="fixed bottom-5 right-5 z-30 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-white shadow-lg sm:hidden"
+          >
+            <Plus className="h-4 w-4" />
+            Nova movimentação
+          </button>
+        )}
     </div>
   )
 }

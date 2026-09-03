@@ -7,18 +7,32 @@ import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { triggerSync, listRuns } from '@/lib/sync'
 import type { SyncRun } from '@/lib/sync'
 import { formatDateTime, relativeDayLabel } from '@/lib/format'
+import type { UserRole } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 interface Usuario {
   id: string
   name: string
   email: string
+  role?: UserRole | string
 }
 
-const EMPTY_FORM = { name: '', email: '', password: '' }
+const EMPTY_FORM: { name: string; email: string; password: string; role: UserRole } = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'Tráfego',
+}
 
 function statusTone(status: string) {
   if (status === 'Sucesso') return 'bg-green-100 text-green-800'
@@ -85,8 +99,9 @@ export default function PainelAcesso() {
         email: form.email.trim(),
         password: form.password,
         passwordConfirm: form.password,
+        role: form.role,
       })
-      toast.success('Usuário criado com sucesso!')
+      toast.success(`Usuário criado com sucesso com o perfil ${form.role}!`)
       setForm(EMPTY_FORM)
       await carregar()
     } catch (erro: any) {
@@ -268,15 +283,37 @@ export default function PainelAcesso() {
             placeholder="email@exemplo.com"
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="senha">Senha</Label>
-          <Input
-            id="senha"
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder="Defina uma senha"
-          />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="senha">Senha</Label>
+            <Input
+              id="senha"
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="Defina uma senha"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="perfil">Perfil de Acesso (Role)</Label>
+            <Select
+              value={form.role}
+              onValueChange={(val) => setForm({ ...form, role: val as UserRole })}
+            >
+              <SelectTrigger id="perfil">
+                <SelectValue placeholder="Selecione o perfil" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Admin">Admin (Acesso Total)</SelectItem>
+                <SelectItem value="RH">RH (Gestão e Recursos Humanos)</SelectItem>
+                <SelectItem value="Tráfego">Tráfego (Exclusivo Processos Cadastrais)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              O perfil <strong>Tráfego</strong> acessa somente Processos Cadastrais para alterar
+              situação para &quot;Foto Bloqueada&quot; ou &quot;Impossibilitado de Trabalhar&quot;.
+            </p>
+          </div>
         </div>
         <Button type="submit" disabled={salvando}>
           {salvando ? 'Salvando…' : 'Salvar usuário'}
@@ -295,26 +332,46 @@ export default function PainelAcesso() {
               <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-2 font-semibold">Nome</th>
                 <th className="px-4 py-2 font-semibold">E-mail</th>
+                <th className="px-4 py-2 font-semibold">Perfil</th>
                 <th className="px-4 py-2 text-right font-semibold">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {usuarios.map((usuario) => (
-                <tr key={usuario.id} className="border-b transition-colors hover:bg-muted/40">
-                  <td className="px-4 py-2">{usuario.name || '—'}</td>
-                  <td className="px-4 py-2">{usuario.email}</td>
-                  <td className="px-4 py-2 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void excluir(usuario.id)}
-                      disabled={excluindoId === usuario.id}
-                    >
-                      {excluindoId === usuario.id ? 'Excluindo…' : 'Excluir'}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {usuarios.map((usuario) => {
+                const role = usuario.role || 'Admin'
+                const isTrafego =
+                  role.toLowerCase() === 'tráfego' || role.toLowerCase() === 'trafego'
+                return (
+                  <tr key={usuario.id} className="border-b transition-colors hover:bg-muted/40">
+                    <td className="px-4 py-2 font-medium">{usuario.name || '—'}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{usuario.email}</td>
+                    <td className="px-4 py-2">
+                      <span
+                        className={cn(
+                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                          isTrafego
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : role === 'RH'
+                              ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+                        )}
+                      >
+                        {role}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void excluir(usuario.id)}
+                        disabled={excluindoId === usuario.id}
+                      >
+                        {excluindoId === usuario.id ? 'Excluindo…' : 'Excluir'}
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

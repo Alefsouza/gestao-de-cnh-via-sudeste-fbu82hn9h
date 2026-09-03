@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-09-03T17:06:35.559Z",
+  "generatedAt": "2026-09-03T17:13:11.754Z",
   "collections": [
     {
       "name": "users",
       "type": "auth",
       "apiRules": {
-        "list": "id = @request.auth.id",
-        "view": "id = @request.auth.id",
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
         "create": "",
         "update": "id = @request.auth.id",
-        "delete": "id = @request.auth.id"
+        "delete": "@request.auth.id != \"\""
       },
       "fields": [
         {
@@ -37,6 +37,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Admin", "RH", "Tráfego"]
         }
       ],
       "indexes": [
@@ -470,6 +477,97 @@
       "indexes": [
         "CREATE INDEX idx_messages_conversation ON messages (conversation)",
         "CREATE INDEX idx_messages_conversation_created ON messages (conversation, created ASC)"
+      ]
+    },
+    {
+      "name": "processos_cadastrais",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "matricula",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "colaborador",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "funcao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "processo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Inclusão", "Alteração", "Exclusão", "Atualização", "Atualização Fiscal"]
+        },
+        {
+          "name": "etapa",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "Documentação",
+            "Análise",
+            "Aprovação",
+            "Concluído",
+            "Documentos solicitados",
+            "Aguardando documentos",
+            "Em conferência"
+          ]
+        },
+        {
+          "name": "prazo",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "situacao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "Pendente",
+            "Bloqueado",
+            "Regular",
+            "Foto Bloqueada",
+            "Impossibilitado de Trabalhar"
+          ]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_processos_matricula ON processos_cadastrais (matricula)",
+        "CREATE INDEX idx_processos_situacao ON processos_cadastrais (situacao)",
+        "CREATE INDEX idx_processos_processo ON processos_cadastrais (processo)"
       ]
     }
   ]

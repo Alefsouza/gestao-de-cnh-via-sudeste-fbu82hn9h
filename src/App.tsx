@@ -34,10 +34,42 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function RoleRouteGuard({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode
+  allowedRoles?: string[]
+}) {
+  const { user, loading } = useAuth()
+
+  if (loading) return null
+  if (!user) return <Navigate to="/login" replace />
+
+  const userRole = (user.role as string) || 'Admin'
+  const isTrafego = userRole.toLowerCase() === 'tráfego' || userRole.toLowerCase() === 'trafego'
+
+  // Tráfego só pode acessar /processos-cadastrais
+  if (isTrafego) {
+    if (allowedRoles && !allowedRoles.includes('Tráfego') && !allowedRoles.includes('trafego')) {
+      return <Navigate to="/processos-cadastrais" replace />
+    }
+  } else if (allowedRoles && !allowedRoles.includes(userRole)) {
+    // Para outros papéis caso haja restrição
+    return <Navigate to="/" replace />
+  }
+
+  return <>{children}</>
+}
+
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return null
-  if (user) return <Navigate to="/" replace />
+  if (user) {
+    const role = ((user.role as string) || '').toLowerCase()
+    const isTrafego = role === 'tráfego' || role === 'trafego'
+    return <Navigate to={isTrafego ? '/processos-cadastrais' : '/'} replace />
+  }
   return <>{children}</>
 }
 
@@ -63,14 +95,63 @@ const App = () => (
               </RequireAuth>
             }
           >
-            <Route path="/" element={<VisaoGeral />} />
-            <Route path="/funcionarios" element={<Funcionarios />} />
-            <Route path="/cnhs" element={<Cnhs />} />
-            <Route path="/afastados" element={<Afastados />} />
-            <Route path="/atualizacao-fiscal" element={<AtualizacaoFiscal />} />
+            <Route
+              path="/"
+              element={
+                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                  <VisaoGeral />
+                </RoleRouteGuard>
+              }
+            />
+            <Route
+              path="/funcionarios"
+              element={
+                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                  <Funcionarios />
+                </RoleRouteGuard>
+              }
+            />
+            <Route
+              path="/cnhs"
+              element={
+                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                  <Cnhs />
+                </RoleRouteGuard>
+              }
+            />
+            <Route
+              path="/afastados"
+              element={
+                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                  <Afastados />
+                </RoleRouteGuard>
+              }
+            />
+            <Route
+              path="/atualizacao-fiscal"
+              element={
+                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                  <AtualizacaoFiscal />
+                </RoleRouteGuard>
+              }
+            />
             <Route path="/processos-cadastrais" element={<ProcessosCadastrais />} />
-            <Route path="/assistente-ia" element={<AssistenteIA />} />
-            <Route path="/painel-acesso" element={<PainelAcesso />} />
+            <Route
+              path="/assistente-ia"
+              element={
+                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                  <AssistenteIA />
+                </RoleRouteGuard>
+              }
+            />
+            <Route
+              path="/painel-acesso"
+              element={
+                <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
+                  <PainelAcesso />
+                </RoleRouteGuard>
+              }
+            />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

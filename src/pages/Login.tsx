@@ -19,7 +19,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (user) navigate('/', { replace: true })
+    if (user) {
+      const role = ((user.role as string) || '').toLowerCase()
+      const isTrafego = role === 'tráfego' || role === 'trafego'
+      navigate(isTrafego ? '/processos-cadastrais' : '/', { replace: true })
+    }
   }, [user, navigate])
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -33,8 +37,10 @@ export default function Login() {
 
     setLoading(true)
     try {
-      await signIn(email.trim(), password)
-      navigate('/', { replace: true })
+      const loggedUser = await signIn(email.trim(), password)
+      const role = ((loggedUser?.role as string) || '').toLowerCase()
+      const isTrafego = role === 'tráfego' || role === 'trafego'
+      navigate(isTrafego ? '/processos-cadastrais' : '/', { replace: true })
     } catch {
       setError('Credenciais inválidas. Verifique seu e-mail e senha.')
     } finally {

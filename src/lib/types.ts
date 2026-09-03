@@ -62,3 +62,41 @@ export const MOVEMENT_STAGES: MovementStage[] = [
   'Treinamento',
   'Integração',
 ]
+
+export type UserRole = 'Admin' | 'RH' | 'Tráfego'
+
+export type ProcessoCategoria =
+  | 'Inclusão'
+  | 'Alteração'
+  | 'Exclusão'
+  | 'Atualização'
+  | 'Atualização Fiscal'
+
+export type ProcessoEtapa =
+  | 'Documentação'
+  | 'Análise'
+  | 'Aprovação'
+  | 'Concluído'
+  | 'Documentos solicitados'
+  | 'Aguardando documentos'
+  | 'Em conferência'
+
+export type ProcessoSituacao =
+  | 'Pendente'
+  | 'Bloqueado'
+  | 'Regular'
+  | 'Foto Bloqueada'
+  | 'Impossibilitado de Trabalhar'
+
+export interface ProcessoCadastralRecord {
+  id: string
+  matricula: string
+  colaborador: string
+  funcao: string
+  processo: ProcessoCategoria
+  etapa: ProcessoEtapa
+  prazo: string
+  situacao: ProcessoSituacao
+  created?: string
+  updated?: string
+}
