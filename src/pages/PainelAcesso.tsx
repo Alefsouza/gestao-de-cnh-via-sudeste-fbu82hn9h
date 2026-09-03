@@ -89,8 +89,32 @@ export default function PainelAcesso() {
       toast.success('Usuário criado com sucesso!')
       setForm(EMPTY_FORM)
       await carregar()
-    } catch (erro) {
-      toast.error('Erro ao salvar o usuário.')
+    } catch (erro: any) {
+      const data = erro?.response?.data || erro?.data
+      const emailErr = data?.email
+
+      if (
+        emailErr?.code === 'validation_not_unique' ||
+        emailErr?.message?.toLowerCase?.()?.includes('unique') ||
+        emailErr?.message?.toLowerCase?.()?.includes('já')
+      ) {
+        toast.error('Este e-mail já está cadastrado.')
+      } else if (data && typeof data === 'object') {
+        const fieldMessages = Object.entries(data)
+          .map(([field, err]: [string, any]) => {
+            const msg = typeof err === 'string' ? err : err?.message
+            return msg ? `${field}: ${msg}` : null
+          })
+          .filter(Boolean)
+
+        if (fieldMessages.length > 0) {
+          toast.error(`Erro de validação: ${fieldMessages.join(', ')}`)
+        } else {
+          toast.error(erro?.response?.message || erro?.message || 'Erro ao salvar o usuário.')
+        }
+      } else {
+        toast.error(erro?.response?.message || erro?.message || 'Erro ao salvar o usuário.')
+      }
       console.error(erro)
     } finally {
       setSalvando(false)
