@@ -436,7 +436,7 @@ export default function Funcionarios() {
           onClick={() => handleCardClick('afastados')}
         />
         <SummaryCard
-          label="CNHs vencidas (motoristas)"
+          label="CNHs vencidas"
           value={summary.cnhVencida}
           icon={CalendarX}
           tone="red"
