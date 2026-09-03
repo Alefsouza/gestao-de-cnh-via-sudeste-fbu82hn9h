@@ -16,15 +16,15 @@ import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate, formatCnh } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
-import { FILIAIS, SITUACOES } from '@/lib/types'
 import type { Employee } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { comparable, normalizeEmployees } from '@/lib/normalize'
+import { comparable, isCnhVencida, normalizeEmployees } from '@/lib/normalize'
 
 const inputClass =
   'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 type AfastadosCardFilter = 'todos' | 'cursino' | 'sapopemba'
+type CnhFilter = 'todos' | 'Vencida' | 'Regular' | 'Sem CNH'
 
 /** Resumo colorido exibido acima da tabela e clicável como filtro. */
 function SummaryCard({
@@ -107,11 +107,14 @@ type CnhStatus = {
 }
 
 function cnhStatus(employee: Employee): CnhStatus {
-  const situacaoCnh = employee.situacao_cnh as string | ''
-  if (!employee.cnh_numero || !situacaoCnh || situacaoCnh === 'Sem CNH') {
+  const hasCnh = Boolean(employee.cnh_numero && employee.cnh_numero.trim())
+  const situacaoRaw = (employee.situacao_cnh ?? '').trim()
+  const comp = comparable(situacaoRaw)
+
+  if (!hasCnh || !situacaoRaw || comp === 'sem cnh') {
     return { label: 'Sem CNH', tone: 'gray' }
   }
-  if (situacaoCnh === 'Vencida' || situacaoCnh === 'Vencida CNH') {
+  if (comp === 'vencida' || comp === 'vencida cnh' || isCnhVencida(employee)) {
     return { label: 'Vencida', tone: 'red', date: formatDate(employee.validade_cnh) }
   }
   return { label: 'Regular', tone: 'green', date: formatDate(employee.validade_cnh) }
@@ -144,9 +147,7 @@ export default function Afastados() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [empresa, setEmpresa] = useState('')
-  const [filial, setFilial] = useState('')
-  const [situacao, setSituacao] = useState('')
+  const [cnhFilter, setCnhFilter] = useState<CnhFilter>('todos')
   const [cardFilter, setCardFilter] = useState<AfastadosCardFilter>('todos')
 
   const load = useCallback(async () => {
@@ -168,20 +169,14 @@ export default function Afastados() {
     load()
   })
 
-  const empresas = useMemo(
-    () => Array.from(new Set(employees.map((e) => e.company).filter(Boolean))).sort(),
-    [employees],
-  )
-
   const afastados = useMemo(
     () => employees.filter((employee) => comparable(employee.situacao) === 'afastado'),
     [employees],
   )
 
-  // Base filtrada pelos seletores do formulário
+  // Base filtrada pelos controles do formulário (busca + filtro de CNH)
   const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const situacaoComp = comparable(situacao)
     return afastados.filter((employee) => {
       if (
         term &&
@@ -190,12 +185,15 @@ export default function Afastados() {
       ) {
         return false
       }
-      if (empresa && employee.company !== empresa) return false
-      if (filial && employee.filial !== filial) return false
-      if (situacao && comparable(employee.situacao) !== situacaoComp) return false
+      if (cnhFilter !== 'todos') {
+        const status = cnhStatus(employee)
+        if (status.label !== cnhFilter) {
+          return false
+        }
+      }
       return true
     })
-  }, [afastados, search, empresa, filial, situacao])
+  }, [afastados, search, cnhFilter])
 
   const summary = useMemo(() => {
     const cursino = baseFiltered.filter((e) => comparable(e.filial) === 'cursino').length
@@ -224,9 +222,7 @@ export default function Afastados() {
 
   const clearFilters = () => {
     setSearch('')
-    setEmpresa('')
-    setFilial('')
-    setSituacao('')
+    setCnhFilter('todos')
     setCardFilter('todos')
   }
 
@@ -314,7 +310,7 @@ export default function Afastados() {
 
       {/* Filtros */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -325,39 +321,17 @@ export default function Afastados() {
             />
           </div>
           <select
-            value={empresa}
-            onChange={(e) => setEmpresa(e.target.value)}
+            value={cnhFilter}
+            onChange={(e) => setCnhFilter(e.target.value as CnhFilter)}
             className={inputClass}
           >
-            <option value="">Todas as empresas</option>
-            {empresas.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-          <select value={filial} onChange={(e) => setFilial(e.target.value)} className={inputClass}>
-            <option value="">Todas as filiais</option>
-            {FILIAIS.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-          <select
-            value={situacao}
-            onChange={(e) => setSituacao(e.target.value)}
-            className={inputClass}
-          >
-            <option value="">Todas as situações</option>
-            {SITUACOES.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
+            <option value="todos">Todos os status da CNH</option>
+            <option value="Vencida">Vencida</option>
+            <option value="Regular">Regular</option>
+            <option value="Sem CNH">Sem CNH</option>
           </select>
         </div>
-        {(search || empresa || filial || situacao || cardFilter !== 'todos') && (
+        {(search || cnhFilter !== 'todos' || cardFilter !== 'todos') && (
           <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {cardFilter !== 'todos' && (
