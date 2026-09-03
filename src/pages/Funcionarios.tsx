@@ -27,37 +27,79 @@ const PAGE_SIZE = 10
 const inputClass =
   'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-/** Resumo colorido exibido acima da tabela. */
+type SummaryCardFilter = 'todos' | 'ativos' | 'afastados' | 'cnh_vencida'
+
+/** Resumo colorido exibido acima da tabela e clicável como filtro. */
 function SummaryCard({
   label,
   value,
   icon: Icon,
   tone,
+  active,
+  onClick,
 }: {
   label: string
   value: number
   icon: typeof Users
   tone: 'green' | 'orange' | 'red' | 'slate'
+  active?: boolean
+  onClick?: () => void
 }) {
   const tones = {
-    green: { bg: 'bg-green-100', text: 'text-green-700', ring: 'border-green-200' },
-    orange: { bg: 'bg-orange-100', text: 'text-orange-700', ring: 'border-orange-200' },
-    red: { bg: 'bg-red-100', text: 'text-red-700', ring: 'border-red-200' },
-    slate: { bg: 'bg-primary/10', text: 'text-primary', ring: 'border-border' },
+    green: {
+      bg: 'bg-green-100',
+      text: 'text-green-700',
+      ring: 'border-green-200',
+      activeRing: 'border-green-500 ring-2 ring-green-500/20 bg-green-50/50',
+    },
+    orange: {
+      bg: 'bg-orange-100',
+      text: 'text-orange-700',
+      ring: 'border-orange-200',
+      activeRing: 'border-orange-500 ring-2 ring-orange-500/20 bg-orange-50/50',
+    },
+    red: {
+      bg: 'bg-red-100',
+      text: 'text-red-700',
+      ring: 'border-red-200',
+      activeRing: 'border-red-500 ring-2 ring-red-500/20 bg-red-50/50',
+    },
+    slate: {
+      bg: 'bg-primary/10',
+      text: 'text-primary',
+      ring: 'border-border',
+      activeRing: 'border-primary ring-2 ring-primary/20 bg-primary/[0.04]',
+    },
   }[tone]
 
   return (
-    <div
-      className={cn('flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm', tones.ring)}
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group flex w-full items-center gap-3 rounded-xl border bg-white p-4 text-left shadow-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:shadow-md cursor-pointer',
+        tones.ring,
+        active && tones.activeRing,
+      )}
     >
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tones.bg}`}>
-        <Icon className={`h-5 w-5 ${tones.text}`} />
+      <div
+        className={cn(
+          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105',
+          tones.bg,
+        )}
+      >
+        <Icon className={cn('h-5 w-5', tones.text)} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="tabular-nums text-2xl font-bold leading-none text-foreground">{value}</p>
         <p className="mt-1 truncate text-xs text-muted-foreground">{label}</p>
       </div>
-    </div>
+      {active && (
+        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+          Ativo
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -108,6 +150,7 @@ export default function Funcionarios() {
   const [filial, setFilial] = useState('')
   const [funcao, setFuncao] = useState('')
   const [situacao, setSituacao] = useState('')
+  const [cardFilter, setCardFilter] = useState<SummaryCardFilter>('todos')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Employee | null>(null)
   const [movements, setMovements] = useState<Movement[]>([])
@@ -146,7 +189,8 @@ export default function Funcionarios() {
     [employees],
   )
 
-  const filtered = useMemo(() => {
+  // Lista base filtrada pelos seletores e busca (sem o cardFilter)
+  const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return employees.filter((employee) => {
       if (
@@ -166,19 +210,34 @@ export default function Funcionarios() {
     })
   }, [employees, search, empresa, filial, funcao, situacao])
 
+  // Contagens dos cards baseadas no universo filtrado pelos controles
   const summary = useMemo(() => {
-    const ativos = filtered.filter((e) => e.situacao === 'Ativo').length
-    const afastados = filtered.filter((e) => e.situacao === 'Afastado').length
-    const cnhVencida = filtered.filter((e) => e.situacao_cnh === 'Vencida').length
-    return { total: filtered.length, ativos, afastados, cnhVencida }
-  }, [filtered])
+    const ativos = baseFiltered.filter((e) => e.situacao === 'Ativo').length
+    const afastados = baseFiltered.filter((e) => e.situacao === 'Afastado').length
+    const cnhVencida = baseFiltered.filter((e) => e.situacao_cnh === 'Vencida').length
+    return { total: baseFiltered.length, ativos, afastados, cnhVencida }
+  }, [baseFiltered])
+
+  // Lista final exibida na tabela (combinando baseFiltered + cardFilter)
+  const filtered = useMemo(() => {
+    if (cardFilter === 'ativos') {
+      return baseFiltered.filter((e) => e.situacao === 'Ativo')
+    }
+    if (cardFilter === 'afastados') {
+      return baseFiltered.filter((e) => e.situacao === 'Afastado')
+    }
+    if (cardFilter === 'cnh_vencida') {
+      return baseFiltered.filter((e) => e.situacao_cnh === 'Vencida')
+    }
+    return baseFiltered
+  }, [baseFiltered, cardFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   useEffect(() => {
     setPage(1)
-  }, [search, empresa, filial, funcao, situacao])
+  }, [search, empresa, filial, funcao, situacao, cardFilter])
 
   const openDetail = async (employee: Employee) => {
     setSelected(employee)
@@ -194,12 +253,22 @@ export default function Funcionarios() {
     }
   }
 
+  const handleCardClick = (filter: SummaryCardFilter) => {
+    // Se clicar em 'todos' ou clicar no mesmo filtro já selecionado, desativa
+    if (filter === 'todos' || cardFilter === filter) {
+      setCardFilter('todos')
+    } else {
+      setCardFilter(filter)
+    }
+  }
+
   const clearFilters = () => {
     setSearch('')
     setEmpresa('')
     setFilial('')
     setFuncao('')
     setSituacao('')
+    setCardFilter('todos')
   }
 
   const exportCsv = () => {
@@ -313,34 +382,64 @@ export default function Funcionarios() {
             ))}
           </select>
         </div>
-        {(search || empresa || filial || funcao || situacao) && (
-          <div className="mt-3">
+        {(search || empresa || filial || funcao || situacao || cardFilter !== 'todos') && (
+          <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {cardFilter !== 'todos' && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                  Filtrando por card:{' '}
+                  {cardFilter === 'ativos'
+                    ? 'Ativos'
+                    : cardFilter === 'afastados'
+                      ? 'Afastados'
+                      : 'CNHs vencidas'}
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onClick={clearFilters}
               className="text-xs font-medium text-primary underline-offset-2 hover:underline"
             >
-              Limpar filtros
+              Limpar todos os filtros
             </button>
           </div>
         )}
       </div>
 
-      {/* Resumo */}
+      {/* Resumo clicável */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <SummaryCard
           label="Total de colaboradores"
           value={summary.total}
           icon={Users}
           tone="slate"
+          active={cardFilter === 'todos'}
+          onClick={() => handleCardClick('todos')}
         />
-        <SummaryCard label="Ativos" value={summary.ativos} icon={UserCheck} tone="green" />
-        <SummaryCard label="Afastados" value={summary.afastados} icon={UserMinus} tone="orange" />
+        <SummaryCard
+          label="Ativos"
+          value={summary.ativos}
+          icon={UserCheck}
+          tone="green"
+          active={cardFilter === 'ativos'}
+          onClick={() => handleCardClick('ativos')}
+        />
+        <SummaryCard
+          label="Afastados"
+          value={summary.afastados}
+          icon={UserMinus}
+          tone="orange"
+          active={cardFilter === 'afastados'}
+          onClick={() => handleCardClick('afastados')}
+        />
         <SummaryCard
           label="CNHs vencidas (motoristas)"
           value={summary.cnhVencida}
           icon={CalendarX}
           tone="red"
+          active={cardFilter === 'cnh_vencida'}
+          onClick={() => handleCardClick('cnh_vencida')}
         />
       </div>
 

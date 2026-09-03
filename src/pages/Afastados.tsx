@@ -23,37 +23,79 @@ import { cn } from '@/lib/utils'
 const inputClass =
   'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-/** Resumo colorido exibido acima da tabela. */
+type AfastadosCardFilter = 'todos' | 'principal' | 'outras'
+
+/** Resumo colorido exibido acima da tabela e clicável como filtro. */
 function SummaryCard({
   label,
   value,
   icon: Icon,
   tone,
+  active,
+  onClick,
 }: {
   label: string
   value: number
   icon: typeof Users
   tone: 'green' | 'orange' | 'red' | 'slate'
+  active?: boolean
+  onClick?: () => void
 }) {
   const tones = {
-    green: { bg: 'bg-green-100', text: 'text-green-700', ring: 'border-green-200' },
-    orange: { bg: 'bg-orange-100', text: 'text-orange-700', ring: 'border-orange-200' },
-    red: { bg: 'bg-red-100', text: 'text-red-700', ring: 'border-red-200' },
-    slate: { bg: 'bg-primary/10', text: 'text-primary', ring: 'border-border' },
+    green: {
+      bg: 'bg-green-100',
+      text: 'text-green-700',
+      ring: 'border-green-200',
+      activeRing: 'border-green-500 ring-2 ring-green-500/20 bg-green-50/50',
+    },
+    orange: {
+      bg: 'bg-orange-100',
+      text: 'text-orange-700',
+      ring: 'border-orange-200',
+      activeRing: 'border-orange-500 ring-2 ring-orange-500/20 bg-orange-50/50',
+    },
+    red: {
+      bg: 'bg-red-100',
+      text: 'text-red-700',
+      ring: 'border-red-200',
+      activeRing: 'border-red-500 ring-2 ring-red-500/20 bg-red-50/50',
+    },
+    slate: {
+      bg: 'bg-primary/10',
+      text: 'text-primary',
+      ring: 'border-border',
+      activeRing: 'border-primary ring-2 ring-primary/20 bg-primary/[0.04]',
+    },
   }[tone]
 
   return (
-    <div
-      className={cn('flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm', tones.ring)}
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group flex w-full items-center gap-3 rounded-xl border bg-white p-4 text-left shadow-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:shadow-md cursor-pointer',
+        tones.ring,
+        active && tones.activeRing,
+      )}
     >
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tones.bg}`}>
-        <Icon className={`h-5 w-5 ${tones.text}`} />
+      <div
+        className={cn(
+          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105',
+          tones.bg,
+        )}
+      >
+        <Icon className={cn('h-5 w-5', tones.text)} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="tabular-nums text-2xl font-bold leading-none text-foreground">{value}</p>
         <p className="mt-1 text-xs leading-snug text-muted-foreground">{label}</p>
       </div>
-    </div>
+      {active && (
+        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+          Ativo
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -106,6 +148,7 @@ export default function Afastados() {
   const [empresa, setEmpresa] = useState('')
   const [filial, setFilial] = useState('')
   const [situacao, setSituacao] = useState('')
+  const [cardFilter, setCardFilter] = useState<AfastadosCardFilter>('todos')
 
   const load = useCallback(async () => {
     try {
@@ -136,7 +179,8 @@ export default function Afastados() {
     [employees],
   )
 
-  const filtered = useMemo(() => {
+  // Base filtrada pelos seletores do formulário
+  const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return afastados.filter((employee) => {
       if (
@@ -154,18 +198,40 @@ export default function Afastados() {
   }, [afastados, search, empresa, filial, situacao])
 
   const summary = useMemo(() => {
-    const principal = filtered.filter(
+    const principal = baseFiltered.filter(
       (e) => e.company === PRINCIPAL_COMPANY && e.filial === 'CURSINO',
     ).length
-    const outras = filtered.length - principal
-    return { principal, outras, total: filtered.length }
-  }, [filtered])
+    const outras = baseFiltered.length - principal
+    return { principal, outras, total: baseFiltered.length }
+  }, [baseFiltered])
+
+  // Lista final exibida na tabela (combinando filtros do formulário + clique no card)
+  const filtered = useMemo(() => {
+    if (cardFilter === 'principal') {
+      return baseFiltered.filter((e) => e.company === PRINCIPAL_COMPANY && e.filial === 'CURSINO')
+    }
+    if (cardFilter === 'outras') {
+      return baseFiltered.filter(
+        (e) => !(e.company === PRINCIPAL_COMPANY && e.filial === 'CURSINO'),
+      )
+    }
+    return baseFiltered
+  }, [baseFiltered, cardFilter])
+
+  const handleCardClick = (filter: AfastadosCardFilter) => {
+    if (filter === 'todos' || cardFilter === filter) {
+      setCardFilter('todos')
+    } else {
+      setCardFilter(filter)
+    }
+  }
 
   const clearFilters = () => {
     setSearch('')
     setEmpresa('')
     setFilial('')
     setSituacao('')
+    setCardFilter('todos')
   }
 
   const exportCsv = () => {
@@ -222,21 +288,32 @@ export default function Afastados() {
         </div>
       </div>
 
-      {/* Resumo */}
+      {/* Resumo clicável */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SummaryCard
           label="Afastados na empresa principal com filial específica"
           value={summary.principal}
           icon={Building2}
           tone="orange"
+          active={cardFilter === 'principal'}
+          onClick={() => handleCardClick('principal')}
         />
         <SummaryCard
           label="Afastados em outras empresas com outras filiais"
           value={summary.outras}
           icon={CircleAlert}
           tone="red"
+          active={cardFilter === 'outras'}
+          onClick={() => handleCardClick('outras')}
         />
-        <SummaryCard label="Total de afastados" value={summary.total} icon={Users} tone="slate" />
+        <SummaryCard
+          label="Total de afastados"
+          value={summary.total}
+          icon={Users}
+          tone="slate"
+          active={cardFilter === 'todos'}
+          onClick={() => handleCardClick('todos')}
+        />
       </div>
 
       {/* Filtros */}
@@ -284,14 +361,24 @@ export default function Afastados() {
             ))}
           </select>
         </div>
-        {(search || empresa || filial || situacao) && (
-          <div className="mt-3">
+        {(search || empresa || filial || situacao || cardFilter !== 'todos') && (
+          <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {cardFilter !== 'todos' && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                  Filtrando por card:{' '}
+                  {cardFilter === 'principal'
+                    ? 'Empresa principal / CURSINO'
+                    : 'Outras empresas / filiais'}
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onClick={clearFilters}
               className="text-xs font-medium text-primary underline-offset-2 hover:underline"
             >
-              Limpar filtros
+              Limpar todos os filtros
             </button>
           </div>
         )}

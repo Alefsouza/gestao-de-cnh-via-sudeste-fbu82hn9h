@@ -72,34 +72,69 @@ function CnhBadge({ status }: { status: CnhStatus }) {
   )
 }
 
-/** Contador do banner de abertura. */
+type FiscalCardFilter = 'todos' | 'ativos' | 'afastados'
+
+/** Contador do banner de abertura com suporte a clique para filtrar a lista. */
 function Counter({
   label,
   value,
   icon: Icon,
   tone,
+  active,
+  onClick,
 }: {
   label: string
   value: number
   icon: typeof Users
   tone: 'green' | 'orange' | 'slate'
+  active?: boolean
+  onClick?: () => void
 }) {
   const tones = {
-    green: { bg: 'bg-green-100', text: 'text-green-700' },
-    orange: { bg: 'bg-orange-100', text: 'text-orange-700' },
-    slate: { bg: 'bg-primary/10', text: 'text-primary' },
+    green: {
+      bg: 'bg-green-100',
+      text: 'text-green-700',
+      activeRing: 'border-green-500 ring-2 ring-green-500/20 bg-green-50/60',
+    },
+    orange: {
+      bg: 'bg-orange-100',
+      text: 'text-orange-700',
+      activeRing: 'border-orange-500 ring-2 ring-orange-500/20 bg-orange-50/60',
+    },
+    slate: {
+      bg: 'bg-primary/10',
+      text: 'text-primary',
+      activeRing: 'border-primary ring-2 ring-primary/20 bg-primary/[0.04]',
+    },
   }[tone]
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-4">
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tones.bg}`}>
-        <Icon className={`h-5 w-5 ${tones.text}`} />
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group flex w-full items-center gap-3 rounded-xl border bg-muted/30 p-4 text-left shadow-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:shadow-md cursor-pointer hover:bg-white',
+        active && tones.activeRing,
+      )}
+    >
+      <div
+        className={cn(
+          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105',
+          tones.bg,
+        )}
+      >
+        <Icon className={cn('h-5 w-5', tones.text)} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="tabular-nums text-2xl font-bold leading-none text-foreground">{value}</p>
         <p className="mt-1 text-xs leading-snug text-muted-foreground">{label}</p>
       </div>
-    </div>
+      {active && (
+        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+          Ativo
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -107,6 +142,7 @@ export default function AtualizacaoFiscal() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [cardFilter, setCardFilter] = useState<FiscalCardFilter>('todos')
   const [processoTarget, setProcessoTarget] = useState<Employee | null>(null)
   const [observacoes, setObservacoes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -148,7 +184,7 @@ export default function AtualizacaoFiscal() {
     [fiscais],
   )
 
-  const filtered = useMemo(() => {
+  const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
     if (!term) return fiscais
     return fiscais.filter(
@@ -156,6 +192,24 @@ export default function AtualizacaoFiscal() {
         employee.name.toLowerCase().includes(term) || employee.chapa.toLowerCase().includes(term),
     )
   }, [fiscais, search])
+
+  const filtered = useMemo(() => {
+    if (cardFilter === 'ativos') {
+      return baseFiltered.filter((e) => e.situacao === 'Ativo')
+    }
+    if (cardFilter === 'afastados') {
+      return baseFiltered.filter((e) => e.situacao === 'Afastado')
+    }
+    return baseFiltered
+  }, [baseFiltered, cardFilter])
+
+  const handleCardClick = (filter: FiscalCardFilter) => {
+    if (filter === 'todos' || cardFilter === filter) {
+      setCardFilter('todos')
+    } else {
+      setCardFilter(filter)
+    }
+  }
 
   const handleAbrirProcesso = async () => {
     if (!processoTarget) return
@@ -213,9 +267,30 @@ export default function AtualizacaoFiscal() {
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Counter label="Total na matriz" value={resumo.total} icon={Users} tone="slate" />
-          <Counter label="Ativos" value={resumo.ativos} icon={UserCheck} tone="green" />
-          <Counter label="Afastados" value={resumo.afastados} icon={UserMinus} tone="orange" />
+          <Counter
+            label="Total na matriz"
+            value={resumo.total}
+            icon={Users}
+            tone="slate"
+            active={cardFilter === 'todos'}
+            onClick={() => handleCardClick('todos')}
+          />
+          <Counter
+            label="Ativos"
+            value={resumo.ativos}
+            icon={UserCheck}
+            tone="green"
+            active={cardFilter === 'ativos'}
+            onClick={() => handleCardClick('ativos')}
+          />
+          <Counter
+            label="Afastados"
+            value={resumo.afastados}
+            icon={UserMinus}
+            tone="orange"
+            active={cardFilter === 'afastados'}
+            onClick={() => handleCardClick('afastados')}
+          />
         </div>
       </div>
 
@@ -231,10 +306,26 @@ export default function AtualizacaoFiscal() {
       {/* Tabela */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
-            fiscal(is) localizado(s) na matriz
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm text-muted-foreground">
+              Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+              fiscal(is) localizado(s) na matriz
+            </p>
+            {cardFilter !== 'todos' && (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  Filtrando por card: {cardFilter === 'ativos' ? 'Ativos' : 'Afastados'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCardFilter('todos')}
+                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                >
+                  Limpar filtro de card
+                </button>
+              </div>
+            )}
+          </div>
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input

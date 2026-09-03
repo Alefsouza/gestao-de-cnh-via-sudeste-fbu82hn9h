@@ -211,6 +211,7 @@ export default function ProcessosCadastrais() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [processos, setProcessos] = useState<ProcessoCadastral[]>([])
+  const [selectedCategoria, setSelectedCategoria] = useState<Categoria | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
 
   // Carrega base local (seed + rascunhos) e a lista de colaboradores do banco
@@ -331,6 +332,19 @@ export default function ProcessosCadastrais() {
     [],
   )
 
+  const handleCategoryClick = (categoria: Categoria) => {
+    if (selectedCategoria === categoria) {
+      setSelectedCategoria(null)
+    } else {
+      setSelectedCategoria(categoria)
+    }
+  }
+
+  const filteredProcessos = useMemo(() => {
+    if (!selectedCategoria) return processos
+    return processos.filter((p) => p.processo === selectedCategoria)
+  }, [processos, selectedCategoria])
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       {/* Cabeçalho */}
@@ -356,36 +370,70 @@ export default function ProcessosCadastrais() {
         </button>
       </div>
 
-      {/* Cards de resumo */}
+      {/* Cards de resumo clicáveis */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {CATEGORIAS.map((categoria) => {
           const style = CARD_STYLES[categoria]
           const Icon = style.icon
+          const isSelected = selectedCategoria === categoria
           return (
-            <div
+            <button
               key={categoria}
-              className={cn('rounded-xl border bg-white p-4 shadow-sm', style.ring)}
+              type="button"
+              onClick={() => handleCategoryClick(categoria)}
+              className={cn(
+                'group flex flex-col rounded-xl border bg-white p-4 text-left shadow-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:shadow-md cursor-pointer',
+                style.ring,
+                isSelected && 'ring-2 ring-primary border-primary bg-primary/[0.03]',
+              )}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-muted-foreground">{categoria}</span>
                 <span
-                  className={cn('flex h-8 w-8 items-center justify-center rounded-lg', style.bg)}
+                  className={cn(
+                    'flex h-8 w-8 items-center justify-center rounded-lg transition-transform group-hover:scale-105',
+                    style.bg,
+                  )}
                 >
                   <Icon className={cn('h-4 w-4', style.text)} />
                 </span>
               </div>
               <p className="mt-2 text-2xl font-bold text-foreground">{resumo[categoria]}</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">processos</p>
-            </div>
+              <div className="mt-1 flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground">processos</p>
+                {isSelected && (
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-primary">
+                    Filtrando
+                  </span>
+                )}
+              </div>
+            </button>
           )
         })}
       </div>
 
       {/* Tabela de processos */}
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="text-sm font-semibold text-foreground">Processos cadastrados</h2>
-          <span className="text-xs text-muted-foreground">{processos.length} registro(s)</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Processos cadastrados</h2>
+            {selectedCategoria && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                Filtro: {selectedCategoria}
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoria(null)}
+                  className="hover:text-primary/70 font-bold ml-0.5"
+                  title="Limpar filtro"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground">
+            Exibindo {filteredProcessos.length} de {processos.length} registro(s)
+          </span>
         </div>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -407,7 +455,7 @@ export default function ProcessosCadastrais() {
                 </tr>
               </thead>
               <tbody>
-                {processos.map((processo) => (
+                {filteredProcessos.map((processo) => (
                   <tr key={processo.id} className="border-b last:border-b-0 hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium text-foreground">{processo.matricula}</td>
                     <td className="px-4 py-3 text-foreground">{processo.colaborador}</td>
@@ -445,9 +493,20 @@ export default function ProcessosCadastrais() {
             </table>
           </div>
         )}
-        {!loading && processos.length === 0 && (
+        {!loading && filteredProcessos.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">
             Nenhum processo cadastral encontrado.
+            {selectedCategoria && (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoria(null)}
+                  className="text-xs font-medium text-primary underline"
+                >
+                  Ver todos os processos
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

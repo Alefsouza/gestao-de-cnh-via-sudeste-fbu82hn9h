@@ -142,17 +142,44 @@ export default function Cnhs() {
       </div>
 
       {vencidasCount > 0 && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 flex-none text-red-600" />
-          <div>
-            <p className="text-sm font-semibold text-red-800">
-              {vencidasCount} {vencidasCount === 1 ? 'CNH vencida' : 'CNHs vencidas'}
-            </p>
-            <p className="text-xs text-red-700/80">
-              Regularize a situação dos colaboradores com CNH fora da validade antes da próxima
-              escala.
-            </p>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setTab(tab === 'Vencida' ? 'todas' : 'Vencida')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setTab(tab === 'Vencida' ? 'todas' : 'Vencida')
+            }
+          }}
+          className={`group flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-4 transition-all ${
+            tab === 'Vencida'
+              ? 'border-red-500 bg-red-100/70 ring-2 ring-red-500/20'
+              : 'border-red-200 bg-red-50 hover:bg-red-100/50 hover:shadow-sm'
+          }`}
+          title="Clique para filtrar apenas as CNHs vencidas"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-none text-red-600" />
+            <div>
+              <p className="text-sm font-semibold text-red-800">
+                {vencidasCount} {vencidasCount === 1 ? 'CNH vencida' : 'CNHs vencidas'}
+              </p>
+              <p className="text-xs text-red-700/80">
+                Regularize a situação dos colaboradores com CNH fora da validade antes da próxima
+                escala. Clique para filtrar a lista.
+              </p>
+            </div>
           </div>
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${
+              tab === 'Vencida'
+                ? 'bg-red-600 text-white'
+                : 'bg-red-200/80 text-red-800 group-hover:bg-red-200'
+            }`}
+          >
+            {tab === 'Vencida' ? 'Filtro ativo' : 'Ver vencidas'}
+          </span>
         </div>
       )}
 
