@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CreditCard, Loader2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  CreditCard,
+  Loader2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import StatusBadge from '@/components/StatusBadge'
@@ -10,6 +17,8 @@ import { FILIAIS } from '@/lib/types'
 import type { Employee } from '@/lib/types'
 
 type StatusFilter = 'todas' | 'Válida' | 'A vencer' | 'Vencida'
+type SortField = 'validade' | 'dias'
+type SortDirection = 'asc' | 'desc'
 
 const TABS: { key: StatusFilter; label: string }[] = [
   { key: 'todas', label: 'Todas' },
@@ -30,6 +39,17 @@ export default function Cnhs() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<StatusFilter>('todas')
   const [garagem, setGaragem] = useState('')
+  const [sortField, setSortField] = useState<SortField>('validade')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -77,8 +97,34 @@ export default function Cnhs() {
       employeesWithCnh
         .filter((employee) => (tab === 'todas' ? true : employee.situacao_cnh === tab))
         .filter((employee) => (garagem ? employee.filial === garagem : true))
-        .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? '')),
-    [employeesWithCnh, tab, garagem],
+        .sort((a, b) => {
+          if (sortField === 'validade') {
+            const valA = a.validade_cnh
+              ? new Date(a.validade_cnh).getTime()
+              : sortDirection === 'asc'
+                ? Infinity
+                : -Infinity
+            const valB = b.validade_cnh
+              ? new Date(b.validade_cnh).getTime()
+              : sortDirection === 'asc'
+                ? Infinity
+                : -Infinity
+            const diff = valA - valB
+            return sortDirection === 'asc' ? diff : -diff
+          }
+
+          if (sortField === 'dias') {
+            const daysA = daysUntil(a.validade_cnh)
+            const daysB = daysUntil(b.validade_cnh)
+            const numA = daysA === null ? (sortDirection === 'asc' ? Infinity : -Infinity) : daysA
+            const numB = daysB === null ? (sortDirection === 'asc' ? Infinity : -Infinity) : daysB
+            const diff = numA - numB
+            return sortDirection === 'asc' ? diff : -diff
+          }
+
+          return 0
+        }),
+    [employeesWithCnh, tab, garagem, sortField, sortDirection],
   )
 
   const vencidasCount = counts['Vencida']
@@ -161,8 +207,44 @@ export default function Cnhs() {
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
                   <th className="px-4 py-3 font-semibold">CNH</th>
                   <th className="px-4 py-3 font-semibold">Categoria</th>
-                  <th className="px-4 py-3 font-semibold">Validade</th>
-                  <th className="px-4 py-3 font-semibold">Dias para vencer</th>
+                  <th className="px-4 py-3 font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('validade')}
+                      className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 py-0.5 -mx-1"
+                      title="Ordenar por Validade"
+                    >
+                      <span>Validade</span>
+                      {sortField === 'validade' ? (
+                        sortDirection === 'asc' ? (
+                          <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                        )
+                      ) : (
+                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('dias')}
+                      className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 py-0.5 -mx-1"
+                      title="Ordenar por Dias para Vencer"
+                    >
+                      <span>Dias para vencer</span>
+                      {sortField === 'dias' ? (
+                        sortDirection === 'asc' ? (
+                          <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                        )
+                      ) : (
+                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 font-semibold">Situação</th>
                 </tr>
               </thead>
