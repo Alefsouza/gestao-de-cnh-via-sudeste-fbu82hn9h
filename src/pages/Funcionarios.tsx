@@ -21,6 +21,7 @@ import { listMovementsByEmployee } from '@/services/movements'
 import { FILIAIS, SITUACOES } from '@/lib/types'
 import type { Employee, Movement } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { comparable, normalizeEmployees } from '@/lib/normalize'
 
 const PAGE_SIZE = 10
 
@@ -160,7 +161,7 @@ export default function Funcionarios() {
   const load = useCallback(async () => {
     try {
       const data = await listAllEmployees()
-      setEmployees(data)
+      setEmployees(normalizeEmployees(data))
     } catch {
       toast.error('Não foi possível carregar a matriz de funcionários')
     } finally {
@@ -192,6 +193,7 @@ export default function Funcionarios() {
   // Lista base filtrada pelos seletores e busca (sem o cardFilter)
   const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
+    const situacaoComp = comparable(situacao)
     return employees.filter((employee) => {
       if (
         term &&
@@ -205,29 +207,29 @@ export default function Funcionarios() {
       if (empresa && employee.company !== empresa) return false
       if (filial && employee.filial !== filial) return false
       if (funcao && employee.funcao !== funcao) return false
-      if (situacao && employee.situacao !== situacao) return false
+      if (situacao && comparable(employee.situacao) !== situacaoComp) return false
       return true
     })
   }, [employees, search, empresa, filial, funcao, situacao])
 
   // Contagens dos cards baseadas no universo filtrado pelos controles
   const summary = useMemo(() => {
-    const ativos = baseFiltered.filter((e) => e.situacao === 'Ativo').length
-    const afastados = baseFiltered.filter((e) => e.situacao === 'Afastado').length
-    const cnhVencida = baseFiltered.filter((e) => e.situacao_cnh === 'Vencida').length
+    const ativos = baseFiltered.filter((e) => comparable(e.situacao) === 'ativo').length
+    const afastados = baseFiltered.filter((e) => comparable(e.situacao) === 'afastado').length
+    const cnhVencida = baseFiltered.filter((e) => comparable(e.situacao_cnh) === 'vencida').length
     return { total: baseFiltered.length, ativos, afastados, cnhVencida }
   }, [baseFiltered])
 
   // Lista final exibida na tabela (combinando baseFiltered + cardFilter)
   const filtered = useMemo(() => {
     if (cardFilter === 'ativos') {
-      return baseFiltered.filter((e) => e.situacao === 'Ativo')
+      return baseFiltered.filter((e) => comparable(e.situacao) === 'ativo')
     }
     if (cardFilter === 'afastados') {
-      return baseFiltered.filter((e) => e.situacao === 'Afastado')
+      return baseFiltered.filter((e) => comparable(e.situacao) === 'afastado')
     }
     if (cardFilter === 'cnh_vencida') {
-      return baseFiltered.filter((e) => e.situacao_cnh === 'Vencida')
+      return baseFiltered.filter((e) => comparable(e.situacao_cnh) === 'vencida')
     }
     return baseFiltered
   }, [baseFiltered, cardFilter])

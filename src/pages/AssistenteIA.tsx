@@ -6,6 +6,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { daysUntil, formatDate } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import type { Employee } from '@/lib/types'
+import { comparable, normalizeEmployees } from '@/lib/normalize'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -71,7 +72,7 @@ function buildAnswer(rawQuestion: string, employees: Employee[]): string {
     return 'A base de colaboradores não possui registros no momento. Assim que houver dados importados, poderei responder suas consultas.'
   }
 
-  const afastados = employees.filter((employee) => employee.situacao === 'Afastado')
+  const afastados = employees.filter((employee) => comparable(employee.situacao) === 'afastado')
   const afastadosOutra = afastados.filter(isOutraEmpresa)
   const outrasEmpresas = employees.filter(isOutraEmpresa)
   const motoristas = employees.filter((employee) =>
@@ -81,9 +82,9 @@ function buildAnswer(rawQuestion: string, employees: Employee[]): string {
     .filter(isCnhVencida)
     .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
   const fiscais = employees.filter((employee) => normalize(employee.funcao).includes('fiscal'))
-  const fiscaisAtivos = fiscais.filter((employee) => employee.situacao === 'Ativo')
-  const ativos = employees.filter((employee) => employee.situacao === 'Ativo')
-  const desligados = employees.filter((employee) => employee.situacao === 'Desligado')
+  const fiscaisAtivos = fiscais.filter((employee) => comparable(employee.situacao) === 'ativo')
+  const ativos = employees.filter((employee) => comparable(employee.situacao) === 'ativo')
+  const desligados = employees.filter((employee) => comparable(employee.situacao) === 'desligado')
 
   // --- Afastados -----------------------------------------------------------
   if (question.includes('afastad')) {
@@ -171,8 +172,12 @@ function buildAnswer(rawQuestion: string, employees: Employee[]): string {
   const garagemDetectada = GARAGENS.find((garagem) => question.includes(normalize(garagem)))
   if (garagemDetectada) {
     const naGaragem = employees.filter((employee) => employee.filial === garagemDetectada)
-    const ativosGaragem = naGaragem.filter((employee) => employee.situacao === 'Ativo').length
-    const afastadosGaragem = naGaragem.filter((employee) => employee.situacao === 'Afastado').length
+    const ativosGaragem = naGaragem.filter(
+      (employee) => comparable(employee.situacao) === 'ativo',
+    ).length
+    const afastadosGaragem = naGaragem.filter(
+      (employee) => comparable(employee.situacao) === 'afastado',
+    ).length
     return [
       `Há ${naGaragem.length} colaborador(es) na garagem ${garagemDetectada}:`,
       `• Ativos: ${ativosGaragem}`,
@@ -260,7 +265,7 @@ export default function AssistenteIA() {
   const loadEmployees = () => {
     listAllEmployees()
       .then((items) => {
-        setEmployees(items)
+        setEmployees(normalizeEmployees(items))
         setLoaded(true)
       })
       .catch(() => setLoaded(true))
@@ -275,8 +280,9 @@ export default function AssistenteIA() {
   const stats = useMemo(
     () => ({
       total: employees.length,
-      ativos: employees.filter((employee) => employee.situacao === 'Ativo').length,
-      afastados: employees.filter((employee) => employee.situacao === 'Afastado').length,
+      ativos: employees.filter((employee) => comparable(employee.situacao) === 'ativo').length,
+      afastados: employees.filter((employee) => comparable(employee.situacao) === 'afastado')
+        .length,
       motoristas: employees.filter((employee) => normalize(employee.funcao).includes('motorista'))
         .length,
       fiscais: employees.filter((employee) => normalize(employee.funcao).includes('fiscal')).length,

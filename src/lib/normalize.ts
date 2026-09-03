@@ -40,11 +40,11 @@ export function normalizeFuncao(value?: string | null): string {
 }
 
 /** Situação canônica (Ativo/Afastado/Desligado), sem depender de caixa. */
-export function normalizeSituacao(value?: string | null): string {
+export function normalizeSituacao(value?: string | null, fallback = 'Ativo'): string {
   const raw = String(value ?? '')
     .trim()
     .replace(/\s+/g, ' ')
-  if (!raw) return ''
+  if (!raw) return fallback
   const k = key(raw)
   if (k.startsWith('deslig')) return 'Desligado'
   if (
@@ -88,7 +88,7 @@ export function normalizeEmployees(employees: Employee[]): Employee[] {
     company: (employee.company ?? '').trim(),
     filial: ((employee.filial ?? '') as Employee['filial']).trim() as Employee['filial'],
     funcao: normalizeFuncao(employee.funcao),
-    situacao: normalizeSituacao(employee.situacao) as Employee['situacao'],
+    situacao: normalizeSituacao(employee.situacao, 'Ativo') as Employee['situacao'],
     cnh_numero: (employee.cnh_numero ?? '').trim(),
     cnh_categoria: (employee.cnh_categoria ?? '').trim(),
     validade_cnh: parseFlexibleDate(employee.validade_cnh),

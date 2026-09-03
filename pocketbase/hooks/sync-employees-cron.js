@@ -108,20 +108,31 @@ cronAdd('sync_employees', '*/5 * * * *', () => {
     }
 
     const normSituacao = (norm) => {
-      const value = stripAccents(
-        pick(norm, ['situacao', 'status', 'situacao_do_colaborador']),
-      ).toLowerCase()
-      if (!value) return ''
-      if (value.indexOf('deslig') !== -1) return 'Desligado'
-      if (
-        value.indexOf('afast') !== -1 ||
-        value.indexOf('licen') !== -1 ||
-        value.indexOf('feria') !== -1 ||
-        value.indexOf('suspend') !== -1
+      // SITUACAO da view SQL Server VW_CONTROLE_CNH é a fonte oficial ('ATIVO' / 'AFASTADO')
+      const raw = pick(norm, ['situacao', 'status', 'situacao_do_colaborador'])
+      const value = stripAccents(raw).toLowerCase().trim().replace(/\s+/g, ' ')
+      if (value) {
+        if (value.indexOf('deslig') !== -1) return 'Desligado'
+        if (
+          value.indexOf('afast') !== -1 ||
+          value.indexOf('licen') !== -1 ||
+          value.indexOf('feria') !== -1 ||
+          value.indexOf('suspend') !== -1
+        ) {
+          return 'Afastado'
+        }
+        if (value.indexOf('ativ') !== -1) return 'Ativo'
+      }
+
+      // Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo' como padrão oficial
+      const motivo = stripAccents(
+        pick(norm, ['motivo_afastamento', 'motivo_do_afastamento', 'motivo']),
       )
-        return 'Afastado'
-      if (value.indexOf('ativ') !== -1) return 'Ativo'
-      return ''
+        .toLowerCase()
+        .trim()
+      if (motivo) return 'Afastado'
+
+      return 'Ativo'
     }
 
     const normSituacaoCnh = (norm) => {

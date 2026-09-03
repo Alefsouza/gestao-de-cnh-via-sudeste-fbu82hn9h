@@ -108,9 +108,9 @@ routerAdd(
       }
 
       const normSituacao = (norm) => {
-        const value = stripAccents(
-          pick(norm, ['situacao', 'status', 'situacao_do_colaborador']),
-        ).toLowerCase()
+        // SITUACAO da view SQL Server VW_CONTROLE_CNH é a fonte oficial ('ATIVO' / 'AFASTADO')
+        const raw = pick(norm, ['situacao', 'status', 'situacao_do_colaborador'])
+        const value = stripAccents(raw).toLowerCase().trim().replace(/\s+/g, ' ')
         if (value) {
           if (value.indexOf('deslig') !== -1) return 'Desligado'
           if (
@@ -118,17 +118,21 @@ routerAdd(
             value.indexOf('licen') !== -1 ||
             value.indexOf('feria') !== -1 ||
             value.indexOf('suspend') !== -1
-          )
+          ) {
             return 'Afastado'
+          }
           if (value.indexOf('ativ') !== -1) return 'Ativo'
-          return ''
         }
-        // Sem campo de situação explícito na view: usa o motivo de afastamento
-        // como indicador de afastamento. Sem motivo, não há o que inventar.
+
+        // Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo' como padrão oficial
         const motivo = stripAccents(
           pick(norm, ['motivo_afastamento', 'motivo_do_afastamento', 'motivo']),
-        ).toLowerCase()
-        return motivo ? 'Afastado' : ''
+        )
+          .toLowerCase()
+          .trim()
+        if (motivo) return 'Afastado'
+
+        return 'Ativo'
       }
 
       const normSituacaoCnh = (norm) => {

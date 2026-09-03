@@ -19,6 +19,7 @@ import { listAllEmployees } from '@/services/employees'
 import { FILIAIS, SITUACOES } from '@/lib/types'
 import type { Employee } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { comparable, normalizeEmployees } from '@/lib/normalize'
 
 const inputClass =
   'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -153,7 +154,7 @@ export default function Afastados() {
   const load = useCallback(async () => {
     try {
       const data = await listAllEmployees()
-      setEmployees(data)
+      setEmployees(normalizeEmployees(data))
     } catch {
       toast.error('Não foi possível carregar os afastados')
     } finally {
@@ -175,13 +176,14 @@ export default function Afastados() {
   )
 
   const afastados = useMemo(
-    () => employees.filter((employee) => employee.situacao === 'Afastado'),
+    () => employees.filter((employee) => comparable(employee.situacao) === 'afastado'),
     [employees],
   )
 
   // Base filtrada pelos seletores do formulário
   const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
+    const situacaoComp = comparable(situacao)
     return afastados.filter((employee) => {
       if (
         term &&
@@ -192,7 +194,7 @@ export default function Afastados() {
       }
       if (empresa && employee.company !== empresa) return false
       if (filial && employee.filial !== filial) return false
-      if (situacao && employee.situacao !== situacao) return false
+      if (situacao && comparable(employee.situacao) !== situacaoComp) return false
       return true
     })
   }, [afastados, search, empresa, filial, situacao])

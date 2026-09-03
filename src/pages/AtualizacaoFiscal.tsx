@@ -31,6 +31,7 @@ import { createMovement } from '@/services/movements'
 import { createNotification } from '@/services/notifications'
 import type { Employee } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { comparable, normalizeEmployees } from '@/lib/normalize'
 
 type CnhStatusCategory = 'Vencida' | 'A vencer' | 'Válida' | 'Sem CNH'
 
@@ -192,7 +193,7 @@ export default function AtualizacaoFiscal() {
   const load = useCallback(async () => {
     try {
       const data = await listAllEmployees()
-      setEmployees(data)
+      setEmployees(normalizeEmployees(data))
     } catch {
       toast.error('Não foi possível carregar os fiscais')
     } finally {
@@ -258,8 +259,9 @@ export default function AtualizacaoFiscal() {
   const resumo = useMemo(
     () => ({
       total: baseFiltered.length,
-      ativos: baseFiltered.filter((employee) => employee.situacao === 'Ativo').length,
-      afastados: baseFiltered.filter((employee) => employee.situacao === 'Afastado').length,
+      ativos: baseFiltered.filter((employee) => comparable(employee.situacao) === 'ativo').length,
+      afastados: baseFiltered.filter((employee) => comparable(employee.situacao) === 'afastado')
+        .length,
     }),
     [baseFiltered],
   )
@@ -267,10 +269,10 @@ export default function AtualizacaoFiscal() {
   // Lista final combinada com o clique no card de resumo
   const filtered = useMemo(() => {
     if (cardFilter === 'ativos') {
-      return baseFiltered.filter((e) => e.situacao === 'Ativo')
+      return baseFiltered.filter((e) => comparable(e.situacao) === 'ativo')
     }
     if (cardFilter === 'afastados') {
-      return baseFiltered.filter((e) => e.situacao === 'Afastado')
+      return baseFiltered.filter((e) => comparable(e.situacao) === 'afastado')
     }
     return baseFiltered
   }, [baseFiltered, cardFilter])
