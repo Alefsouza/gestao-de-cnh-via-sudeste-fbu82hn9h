@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 
 import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -226,44 +227,49 @@ export default function Afastados() {
     setCardFilter('todos')
   }
 
-  const exportCsv = () => {
-    const header = [
-      'Chapa',
-      'Nome',
-      'Empresa',
-      'Filial/Garagem',
-      'Função',
-      'Situação',
-      'CNH',
-      'Validade CNH',
-    ]
-    const escape = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`
-    const rows = filtered.map((employee) => {
-      const status = cnhStatus(employee)
-      return [
-        employee.chapa,
-        employee.name,
-        employee.company || '',
-        employee.filial || '',
-        employee.funcao || '',
-        employee.situacao || '',
-        status.label,
-        status.date ?? '',
+  const exportXlsx = () => {
+    if (filtered.length === 0) {
+      toast.error('Nenhum colaborador afastado para exportar.')
+      return
+    }
+
+    try {
+      const rows = filtered.map((employee) => {
+        const status = cnhStatus(employee)
+        return {
+          Chapa: employee.chapa,
+          Nome: employee.name,
+          Empresa: employee.company || '',
+          'Filial/Garagem': employee.filial || '',
+          Função: employee.funcao || '',
+          Situação: employee.situacao || '',
+          CNH: status.label,
+          'Validade CNH': status.date ?? '',
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(rows)
+      worksheet['!cols'] = [
+        { wch: 12 }, // Chapa
+        { wch: 32 }, // Nome
+        { wch: 20 }, // Empresa
+        { wch: 18 }, // Filial/Garagem
+        { wch: 24 }, // Função
+        { wch: 16 }, // Situação
+        { wch: 14 }, // CNH
+        { wch: 16 }, // Validade CNH
       ]
-        .map(escape)
-        .join(';')
-    })
-    const csv = '\uFEFF' + [header.map(escape).join(';'), ...rows].join('\r\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `afastados-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    toast.success(`Consulta exportada (${filtered.length} registro(s))`)
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Afastados')
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(workbook, `afastados-${dateStr}.xlsx`)
+      toast.success(`Exportação concluída (${filtered.length} registro(s))`)
+    } catch (error) {
+      console.error('Erro ao exportar afastados para XLSX:', error)
+      toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
+    }
   }
 
   return (
@@ -359,9 +365,9 @@ export default function Afastados() {
             Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
             afastado(s)
           </p>
-          <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
+          <Button variant="outline" size="sm" onClick={exportXlsx} disabled={filtered.length === 0}>
             <FileDown className="mr-2 h-4 w-4" />
-            Exportar consulta
+            Exportar .xlsx
           </Button>
         </div>
 
