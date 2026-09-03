@@ -290,9 +290,12 @@ export default function Funcionarios() {
     void loadPage()
   }, [loadPage])
 
-  // Disparo dos contadores dos cards
+  // Disparo dos contadores dos cards com debounce para não concorrer com loadPage nem gerar rajadas ao digitar
   useEffect(() => {
-    void loadSummary()
+    const timer = setTimeout(() => {
+      void loadSummary()
+    }, 150)
+    return () => clearTimeout(timer)
   }, [loadSummary])
 
   // Throttled reload para evitar 429 nas atualizações via realtime

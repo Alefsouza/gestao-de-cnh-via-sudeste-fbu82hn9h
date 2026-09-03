@@ -11,9 +11,9 @@ const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
 /** Número máximo de tentativas extras antes de desistir. */
 const MAX_RETRIES = 5
 /** Atraso base do backoff exponencial (ms). */
-const RETRY_BASE_DELAY_MS = 500
+const RETRY_BASE_DELAY_MS = 800
 /** Jitter máximo somado ao backoff (ms), para não sincronizar retries concorrentes. */
-const RETRY_JITTER_MS = 250
+const RETRY_JITTER_MS = 400
 
 function isRetryableError(error: unknown): boolean {
   return (
@@ -39,7 +39,8 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       return await fn()
     } catch (error) {
       if (attempt >= MAX_RETRIES || !isRetryableError(error)) throw error
-      await wait(RETRY_BASE_DELAY_MS * 2 ** attempt + Math.random() * RETRY_JITTER_MS)
+      const delay = RETRY_BASE_DELAY_MS * 2 ** attempt + Math.random() * RETRY_JITTER_MS
+      await wait(delay)
     }
   }
 }
@@ -248,12 +249,31 @@ export async function getFuncionariosSummary(
     }
   }
 
-  const [total, ativos, afastados, cnhVencida] = await Promise.all([
-    countSafe(),
-    countSafe('situacao = "Ativo"'),
-    countSafe('situacao = "Afastado"'),
-    countSafe(CNH_VENCIDA_FILTER),
+  // Executa com Promise.allSettled e pequena pausa sequencial/controlada para não disparar rajadas no backend
+  const results = await Promise.allSettled([
+    (async () => countSafe())(),
+    (async () => {
+      await wait(120)
+      return countSafe('situacao = "Ativo"')
+    })(),
+    (async () => {
+      await wait(240)
+      return countSafe('situacao = "Afastado"')
+    })(),
+    (async () => {
+      await wait(360)
+      return countSafe(CNH_VENCIDA_FILTER)
+    })(),
   ])
+
+  const total = results[0].status === 'fulfilled' ? results[0].value : 0
+  const ativos = results[1].status === 'fulfilled' ? results[1].value : 0
+  const afastados = results[2].status === 'fulfilled' ? results[2].value : 0
+  const cnhVencida = results[3].status === 'fulfilled' ? results[3].value : 0
+
+  if (results.some((r) => r.status === 'rejected')) {
+    hasError = true
+  }
 
   return {
     summary: {
