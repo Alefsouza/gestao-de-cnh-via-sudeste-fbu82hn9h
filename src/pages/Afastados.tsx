@@ -24,7 +24,7 @@ import { comparable, normalizeEmployees } from '@/lib/normalize'
 const inputClass =
   'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-type AfastadosCardFilter = 'todos' | 'principal' | 'outras'
+type AfastadosCardFilter = 'todos' | 'cursino' | 'sapopemba'
 
 /** Resumo colorido exibido acima da tabela e clicável como filtro. */
 function SummaryCard({
@@ -140,8 +140,6 @@ function CnhBadge({ status }: { status: CnhStatus }) {
   )
 }
 
-const PRINCIPAL_COMPANY = 'Via Sudeste Transportes'
-
 export default function Afastados() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -200,22 +198,18 @@ export default function Afastados() {
   }, [afastados, search, empresa, filial, situacao])
 
   const summary = useMemo(() => {
-    const principal = baseFiltered.filter(
-      (e) => e.company === PRINCIPAL_COMPANY && e.filial === 'CURSINO',
-    ).length
-    const outras = baseFiltered.length - principal
-    return { principal, outras, total: baseFiltered.length }
+    const cursino = baseFiltered.filter((e) => comparable(e.filial) === 'cursino').length
+    const sapopemba = baseFiltered.filter((e) => comparable(e.filial) === 'sapopemba').length
+    return { cursino, sapopemba, total: baseFiltered.length }
   }, [baseFiltered])
 
   // Lista final exibida na tabela (combinando filtros do formulário + clique no card)
   const filtered = useMemo(() => {
-    if (cardFilter === 'principal') {
-      return baseFiltered.filter((e) => e.company === PRINCIPAL_COMPANY && e.filial === 'CURSINO')
+    if (cardFilter === 'cursino') {
+      return baseFiltered.filter((e) => comparable(e.filial) === 'cursino')
     }
-    if (cardFilter === 'outras') {
-      return baseFiltered.filter(
-        (e) => !(e.company === PRINCIPAL_COMPANY && e.filial === 'CURSINO'),
-      )
+    if (cardFilter === 'sapopemba') {
+      return baseFiltered.filter((e) => comparable(e.filial) === 'sapopemba')
     }
     return baseFiltered
   }, [baseFiltered, cardFilter])
@@ -293,28 +287,28 @@ export default function Afastados() {
       {/* Resumo clicável */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SummaryCard
-          label="Afastados na empresa principal com filial específica"
-          value={summary.principal}
-          icon={Building2}
-          tone="orange"
-          active={cardFilter === 'principal'}
-          onClick={() => handleCardClick('principal')}
-        />
-        <SummaryCard
-          label="Afastados em outras empresas com outras filiais"
-          value={summary.outras}
-          icon={CircleAlert}
-          tone="red"
-          active={cardFilter === 'outras'}
-          onClick={() => handleCardClick('outras')}
-        />
-        <SummaryCard
-          label="Total de afastados"
+          label="Total de Afastados"
           value={summary.total}
           icon={Users}
           tone="slate"
           active={cardFilter === 'todos'}
           onClick={() => handleCardClick('todos')}
+        />
+        <SummaryCard
+          label="Afastados da Cursino"
+          value={summary.cursino}
+          icon={Building2}
+          tone="orange"
+          active={cardFilter === 'cursino'}
+          onClick={() => handleCardClick('cursino')}
+        />
+        <SummaryCard
+          label="Afastados da Sapopemba"
+          value={summary.sapopemba}
+          icon={CircleAlert}
+          tone="red"
+          active={cardFilter === 'sapopemba'}
+          onClick={() => handleCardClick('sapopemba')}
         />
       </div>
 
@@ -369,9 +363,7 @@ export default function Afastados() {
               {cardFilter !== 'todos' && (
                 <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
                   Filtrando por card:{' '}
-                  {cardFilter === 'principal'
-                    ? 'Empresa principal / CURSINO'
-                    : 'Outras empresas / filiais'}
+                  {cardFilter === 'cursino' ? 'Afastados da Cursino' : 'Afastados da Sapopemba'}
                 </span>
               )}
             </div>
