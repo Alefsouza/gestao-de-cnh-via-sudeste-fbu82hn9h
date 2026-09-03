@@ -58,9 +58,14 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
 
-  // Carrega as cartas sempre que o modal abrir
+  // Carrega as cartas sempre que o modal abrir e reseta estados ao abrir/fechar
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setExpandedIds({})
+      return
+    }
+    // Ao abrir, limpa expansões anteriores para que todos venham recolhidos por padrão
+    setExpandedIds({})
     let active = true
     setLoading(true)
     listCartas()
@@ -170,13 +175,11 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
     })
   }, [cartas, selectedNumeroCarta, normalizedQuery])
 
-  // Se houver apenas 1 colaborador vinculado, auto-expande para conveniência
+  // Reseta os itens expandidos sempre que o número da carta selecionada mudar,
+  // garantindo que todos os colaboradores venham recolhidos (collapsed) por padrão
   useEffect(() => {
-    if (colaboradoresDaCarta.length === 1) {
-      const singleId = colaboradoresDaCarta[0].id
-      setExpandedIds((prev) => (prev[singleId] ? prev : { ...prev, [singleId]: true }))
-    }
-  }, [colaboradoresDaCarta])
+    setExpandedIds({})
+  }, [selectedNumeroCarta])
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => ({
