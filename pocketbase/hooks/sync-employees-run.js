@@ -119,17 +119,15 @@ routerAdd(
       }
 
       const normSituacao = (norm) => {
-        // A coluna da view externa VW_CONTROLE_CNH foi renomeada de SITUACAO para STATUSCNH.
-        // Lê STATUSCNH (com suporte tolerante a cabeçalho e aliases) e normaliza:
-        // ATIVO -> "Ativo" e AFASTADO -> "Afastado" (case-insensitive, tolerante a espaços),
-        // mantendo fallback para "Ativo" quando vazio.
+        // 1. Coluna SITUACAO da VW_CONTROLE_CNH: situação do colaborador (ATIVO / AFASTADO).
+        // Normalizada para "Ativo" e "Afastado" (ou "Desligado").
         const raw = pick(norm, [
-          'statuscnh',
-          'status_cnh',
           'situacao',
-          'status',
           'situacaocolaborador',
+          'situacao_colaborador',
           'situacao_do_colaborador',
+          'status_colaborador',
+          'status',
         ])
         const value = stripAccents(raw).toLowerCase().trim().replace(/\s+/g, ' ')
         if (value) {
@@ -162,22 +160,30 @@ routerAdd(
       }
 
       const normSituacaoCnh = (norm) => {
-        const value = stripAccents(
-          pick(norm, [
-            'situacao_cnh',
-            'situacaocnh',
-            'situacao_da_cnh',
-            'situacaodacnh',
-            'cnh_status',
-            'cnhstatus',
-          ]),
-        ).toLowerCase()
+        // 2. Coluna STATUSCNH da VW_CONTROLE_CNH: status da CNH ("NO PRAZO" / "VENCIDA").
+        // Normalizada para "Válida" (quando "NO PRAZO") e "Vencida" (quando "VENCIDA").
+        const raw = pick(norm, [
+          'statuscnh',
+          'status_cnh',
+          'situacao_cnh',
+          'situacaocnh',
+          'cnh_status',
+          'cnhstatus',
+          'situacao_da_cnh',
+        ])
+        const value = stripAccents(raw).toLowerCase().trim().replace(/\s+/g, ' ')
         if (!value) return ''
-        if (value.indexOf('sem') !== -1) return 'Sem CNH'
+        if (
+          value.indexOf('no prazo') !== -1 ||
+          value.indexOf('prazo') !== -1 ||
+          value.indexOf('valid') !== -1
+        ) {
+          return 'Válida'
+        }
         if (value.indexOf('vencida cnh') !== -1) return 'Vencida CNH'
         if (value.indexOf('vencid') !== -1) return 'Vencida'
         if (value.indexOf('vencer') !== -1) return 'A vencer'
-        if (value.indexOf('valid') !== -1) return 'Válida'
+        if (value.indexOf('sem') !== -1) return 'Sem CNH'
         return ''
       }
 
@@ -197,7 +203,13 @@ routerAdd(
           funcao: pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador']),
           situacao: normSituacao(norm),
           cnh_numero: pick(norm, ['cnh_numero', 'numero_cnh', 'registro_cnh', 'cnh']),
-          cnh_categoria: pick(norm, ['cnh_categoria', 'categoria_cnh', 'categoria']),
+          cnh_categoria: pick(norm, [
+            'catcnh',
+            'cat_cnh',
+            'cnh_categoria',
+            'categoria_cnh',
+            'categoria',
+          ]),
           validade_cnh: parseDate(
             pick(norm, [
               'validade_cnh',
@@ -249,6 +261,14 @@ routerAdd(
       let updated = 0
       let removed = 0
       const rowErrors = []
+
+      if (payload.length > 0) {
+        console.log('sync:sample_keys:', Object.keys(payload[0]).join(', '))
+        console.log('sync:sample_row_0:', JSON.stringify(payload[0]))
+        if (payload.length > 8) {
+          console.log('sync:sample_row_8:', JSON.stringify(payload[8]))
+        }
+      }
 
       // ---- upsert dos registros da view ----------------------------------------
       for (const raw of payload) {
