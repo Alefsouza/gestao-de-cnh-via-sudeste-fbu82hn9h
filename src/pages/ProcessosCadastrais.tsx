@@ -1266,22 +1266,6 @@ function ProcessoCadastralFormModal({
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="modal-situacao">Situação</Label>
-                <Select value={situacao} onValueChange={(value) => setSituacao(value as Situacao)}>
-                  <SelectTrigger id="modal-situacao">
-                    <SelectValue placeholder="Selecione a situação" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SITUACOES_VALIDAS.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           ) : (
             <div className="space-y-2">
