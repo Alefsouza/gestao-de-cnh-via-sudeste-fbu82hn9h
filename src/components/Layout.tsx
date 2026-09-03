@@ -75,12 +75,12 @@ function Brand({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div className="flex items-center">
+    <div className="flex w-full items-center justify-center text-center">
       <img
         src={LOGO_SRC}
         alt="Via Sudeste"
         onError={() => setImgFailed(true)}
-        className="text-center"
+        className="mx-auto text-center"
       />
     </div>
   )
@@ -337,7 +337,7 @@ export default function Layout() {
     <div className="flex min-h-screen bg-background">
       {/* Sidebar desktop */}
       <aside className="sticky top-0 z-40 hidden h-screen w-[264px] shrink-0 flex-col bg-[#0C1B14] md:flex">
-        <div className="flex h-[68px] items-center border-b border-white/10 px-5">
+        <div className="flex h-[68px] items-center justify-center border-b border-white/10 px-5 text-center">
           <Brand />
         </div>
         <SidebarNav />
