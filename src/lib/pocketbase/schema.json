@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T21:22:11.260Z",
+  "generatedAt": "2026-09-03T00:05:13.257Z",
   "collections": [
     {
       "name": "users",
@@ -161,13 +161,26 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "registro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_employees_chapa ON employees (chapa)",
         "CREATE INDEX idx_employees_situacao_cnh ON employees (situacao_cnh)",
         "CREATE INDEX idx_employees_situacao ON employees (situacao)",
-        "CREATE INDEX idx_employees_validade_cnh ON employees (validade_cnh)"
+        "CREATE INDEX idx_employees_validade_cnh ON employees (validade_cnh)",
+        "CREATE INDEX `idx_employees_registro` ON `employees` (registro)"
       ]
     },
     {
@@ -340,6 +353,20 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -20,21 +20,21 @@ import StatCard from '@/components/StatCard'
 import StatusBadge from '@/components/StatusBadge'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate, relativeDayLabel } from '@/lib/format'
-import { listAllEmployees } from '@/services/employees'
+import { listEmployeesPage } from '@/services/employees'
+import { triggerSync } from '@/lib/sync'
 import type { Employee } from '@/lib/types'
 
 const GARAGENS = ['CURSINO', 'SAPOPEMBA'] as const
+
+/** Tamanho de cada página de carregamento da base (evita 429 do backend). */
+const BASE_PAGE_SIZE = 500
+/** Pausa entre lotes de carregamento (respeita o rate limit do backend). */
+const PAGE_DELAY_MS = 300
 
 /** Cores das barras por garagem (gradiente escuro -> claro). */
 const BAR_STYLES: Record<(typeof GARAGENS)[number], string> = {
   CURSINO: 'bg-gradient-to-r from-[#14532D] to-[#16A34A]',
   SAPOPEMBA: 'bg-gradient-to-r from-[#8FA398] to-[#B9C7BE]',
-}
-
-/** Percentual ilustrativo fixo por garagem, conforme especificação. */
-const BAR_PERCENT: Record<(typeof GARAGENS)[number], number> = {
-  CURSINO: 57,
-  SAPOPEMBA: 43,
 }
 
 function DistribuitionBar({
@@ -78,29 +78,43 @@ export default function VisaoGeral() {
   const [syncing, setSyncing] = useState(false)
   const [lastSync, setLastSync] = useState<string | null>(null)
 
-  const load = async () => {
+  /**
+   * Carrega a base paginada (500 por página, sequencial) para não estourar
+   * o limite de requisições do backend (429) com a base completa.
+   */
+  const load = useCallback(async () => {
     try {
-      const data = await listAllEmployees()
-      setEmployees(data)
+      const first = await listEmployeesPage(1, BASE_PAGE_SIZE)
+      const collected = [...first.items]
+      const totalPages = first.totalPages
+      for (let page = 2; page <= totalPages; page++) {
+        // Pequena pausa entre lotes para respeitar o rate limit do backend.
+        await new Promise((resolve) => setTimeout(resolve, PAGE_DELAY_MS))
+        const next = await listEmployeesPage(page, BASE_PAGE_SIZE)
+        collected.push(...next.items)
+      }
+      setEmployees(collected)
     } catch {
       toast.error('Não foi possível carregar os dados da matriz')
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    load()
   }, [])
 
+  useEffect(() => {
+    void load()
+  }, [load])
+
   useRealtime('employees', () => {
-    load()
+    void load()
   })
 
   const stats = useMemo(() => {
     const ativos = employees.filter((employee) => employee.situacao === 'Ativo').length
     const afastados = employees.filter((employee) => employee.situacao === 'Afastado').length
-    const vencidas = employees.filter((employee) => employee.situacao_cnh === 'Vencida').length
+    const vencidas = employees.filter(
+      (employee) => employee.funcao === 'Motorista' && employee.situacao_cnh === 'Vencida',
+    ).length
     const fiscais = employees.filter((employee) => employee.funcao === 'Fiscal de Viajem').length
     const porGaragem = Object.fromEntries(
       GARAGENS.map((garagem) => [
@@ -114,20 +128,33 @@ export default function VisaoGeral() {
   const vencidasList = useMemo(
     () =>
       employees
-        .filter((employee) => employee.situacao_cnh === 'Vencida')
+        .filter(
+          (employee) => employee.funcao === 'Motorista' && employee.situacao_cnh === 'Vencida',
+        )
         .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
         .slice(0, 5),
     [employees],
   )
 
-  const handleSync = () => {
+  const hasBaseData = employees.length > 0
+
+  const handleSync = async () => {
     if (syncing) return
     setSyncing(true)
-    setTimeout(() => {
-      setSyncing(false)
+    try {
+      const result = await triggerSync()
+      if (result.status === 'Sucesso') {
+        toast.success(`Matriz atualizada: ${result.records_updated} registros sincronizados`)
+      } else {
+        toast.error(result.error || 'A sincronização falhou — verifique a conexão com a matriz')
+      }
       setLastSync(new Date().toISOString())
-      toast.success('Matriz atualizada com sucesso')
-    }, 2000)
+      await load()
+    } catch {
+      toast.error('Não foi possível disparar a sincronização da matriz')
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const totalGaragem = stats.porGaragem.CURSINO + stats.porGaragem.SAPOPEMBA
@@ -140,38 +167,38 @@ export default function VisaoGeral() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Colaboradores ativos"
-              value={312}
+              value={stats.ativos}
               icon={Users}
               tone="green"
               trend="up"
-              caption="+8 neste mês"
+              caption="Base sincronizada da matriz"
               delay={0}
             />
             <StatCard
               label="Colaboradores afastados"
-              value={18}
+              value={stats.afastados}
               icon={UserMinus}
               tone="amber"
               trend="down"
-              caption="6 por saúde ocupacional"
+              caption="Base sincronizada da matriz"
               delay={80}
             />
             <StatCard
               label="CNHs vencidas de motoristas"
-              value={9}
+              value={stats.vencidas}
               icon={CreditCard}
               tone="red"
               trend="down"
-              caption="3 vencem em 30 dias"
+              caption="Base sincronizada da matriz"
               delay={160}
             />
             <StatCard
               label="Fiscais na base"
-              value={24}
+              value={stats.fiscais}
               icon={FileCheck2}
               tone="teal"
               trend="up"
-              caption="100% com documentos em dia"
+              caption="Base sincronizada da matriz"
               delay={240}
             />
           </div>
@@ -200,7 +227,7 @@ export default function VisaoGeral() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Carregando…
                 </div>
-              ) : (
+              ) : hasBaseData ? (
                 <table className="w-full min-w-[760px] text-left text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
@@ -256,6 +283,16 @@ export default function VisaoGeral() {
                     )}
                   </tbody>
                 </table>
+              ) : (
+                <div className="flex flex-col items-center gap-1 px-5 py-12 text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    Nenhum colaborador na base ainda
+                  </p>
+                  <p className="max-w-md text-xs text-muted-foreground">
+                    Use “Atualizar matriz” ao lado para buscar os dados reais da matriz Via Sudeste
+                    — os dados de exemplo somem após a sincronização.
+                  </p>
+                </div>
               )}
             </div>
           </section>
@@ -278,13 +315,13 @@ export default function VisaoGeral() {
               <p className="text-sm font-semibold text-foreground">Base de dados conectada</p>
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <MapPin className="h-3.5 w-3.5" />
-                Última sincronização: {lastSync ? relativeDayLabel(lastSync) : 'hoje às 06:00'}
+                Última sincronização: {lastSync ? relativeDayLabel(lastSync) : 'aguardando…'}
               </p>
             </div>
             <Button
               variant="outline"
               className="mt-4 w-full border-primary/50 text-primary hover:bg-primary/5 hover:text-primary"
-              onClick={handleSync}
+              onClick={() => void handleSync()}
               disabled={syncing}
             >
               {syncing ? (
@@ -313,13 +350,19 @@ export default function VisaoGeral() {
               <DistribuitionBar
                 garagem="CURSINO"
                 total={stats.porGaragem.CURSINO}
-                percent={BAR_PERCENT.CURSINO}
+                percent={
+                  totalGaragem > 0 ? Math.round((stats.porGaragem.CURSINO / totalGaragem) * 100) : 0
+                }
                 delay={150}
               />
               <DistribuitionBar
                 garagem="SAPOPEMBA"
                 total={stats.porGaragem.SAPOPEMBA}
-                percent={BAR_PERCENT.SAPOPEMBA}
+                percent={
+                  totalGaragem > 0
+                    ? Math.round((stats.porGaragem.SAPOPEMBA / totalGaragem) * 100)
+                    : 0
+                }
                 delay={300}
               />
             </div>
@@ -362,7 +405,7 @@ export default function VisaoGeral() {
           >
             <CheckCircle2 className="h-5 w-5 flex-none text-green-600" />
             <p className="text-xs leading-relaxed text-green-900">
-              Dados de exemplo carregados da base de demonstração via Sudeste.
+              Exibindo os dados reais carregados da matriz Via Sudeste.
             </p>
           </section>
         </aside>

@@ -37,6 +37,14 @@ export async function listEmployees(filters: EmployeeFilters = {}) {
   })
 }
 
+/**
+ * Busca uma única página da base, sem filtros — usada pelo carregamento
+ * paginado do dashboard (evita estourar o limite de requisições do backend).
+ */
+export async function listEmployeesPage(page: number, perPage: number) {
+  return pb.collection<Employee>(COLLECTION).getList(page, perPage, { sort: 'chapa' })
+}
+
 /** Busca todos os funcionários (até PAGE_SIZE) aplicando os filtros informados. */
 export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<Employee[]> {
   const result = await pb.collection<Employee>(COLLECTION).getFullList({
