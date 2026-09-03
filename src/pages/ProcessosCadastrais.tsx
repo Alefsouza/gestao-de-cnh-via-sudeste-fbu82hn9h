@@ -258,6 +258,15 @@ export default function ProcessosCadastrais() {
     return counts
   }, [visibleProcessos])
 
+  const toSafeIsoString = (val?: string | null): string => {
+    if (!val || typeof val !== 'string') return ''
+    const trimmed = val.trim()
+    if (!trimmed) return ''
+    const date = trimmed.includes('T') ? new Date(trimmed) : new Date(`${trimmed}T12:00:00Z`)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toISOString()
+  }
+
   const handleCreate = useCallback(
     async (data: {
       processo: Categoria
@@ -272,13 +281,14 @@ export default function ProcessosCadastrais() {
       employeeId?: string
     }) => {
       try {
+        const isoPrazo = toSafeIsoString(data.prazo)
         const created = await createProcessoCadastral({
           matricula: data.matricula,
           colaborador: data.nome,
           funcao: data.funcao,
           processo: data.processo,
           etapa: data.etapa,
-          prazo: data.prazo ? new Date(`${data.prazo}T12:00:00Z`).toISOString() : '',
+          prazo: isoPrazo,
           situacao: data.situacao,
           garagem: data.garagem || 'CURSINO',
           alerta_trafego: data.alerta_trafego || '',
@@ -303,12 +313,11 @@ export default function ProcessosCadastrais() {
         // Persiste também como movimentação no banco se houver colaborador vinculado
         if (data.employeeId) {
           try {
+            const movementDate = isoPrazo || new Date().toISOString()
             await createMovement({
               employee: data.employeeId,
               type: data.processo as never,
-              date: data.prazo
-                ? new Date(`${data.prazo}T12:00:00`).toISOString()
-                : new Date().toISOString(),
+              date: movementDate,
               notes: `Processo cadastral ${data.processo} — matrícula ${data.matricula}`,
             })
           } catch {
@@ -340,13 +349,14 @@ export default function ProcessosCadastrais() {
       employeeId?: string
     }) => {
       try {
+        const isoPrazo = toSafeIsoString(data.prazo)
         await updateProcessoCadastral(data.id, {
           matricula: data.matricula,
           colaborador: data.nome,
           funcao: data.funcao,
           processo: data.processo,
           etapa: data.etapa,
-          prazo: data.prazo ? new Date(`${data.prazo}T12:00:00Z`).toISOString() : '',
+          prazo: isoPrazo,
           situacao: data.situacao,
           garagem: data.garagem,
           alerta_trafego: data.alerta_trafego ?? '',
@@ -362,7 +372,7 @@ export default function ProcessosCadastrais() {
                 funcao: data.funcao,
                 processo: data.processo,
                 etapa: data.etapa,
-                prazo: data.prazo,
+                prazo: isoPrazo || data.prazo,
                 situacao: data.situacao,
                 garagem: data.garagem || item.garagem,
                 alerta_trafego: data.alerta_trafego ?? item.alerta_trafego,
@@ -1105,6 +1115,19 @@ function ProcessoCadastralFormModal({
 
   const handleSubmit = async () => {
     if (!canSubmit) return
+
+    // Se houver valor no campo prazo, valida se é uma data válida antes de submeter
+    if (prazo && prazo.trim() !== '') {
+      const trimmedPrazo = prazo.trim()
+      const parsedDate = trimmedPrazo.includes('T')
+        ? new Date(trimmedPrazo)
+        : new Date(`${trimmedPrazo}T12:00:00Z`)
+      if (Number.isNaN(parsedDate.getTime())) {
+        toast.error('Por favor, informe uma data de prazo válida.')
+        return
+      }
+    }
+
     setSaving(true)
     try {
       await onSubmit({

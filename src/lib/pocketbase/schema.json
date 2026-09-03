@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-03T18:51:15.206Z",
+  "generatedAt": "2026-09-03T20:06:25.539Z",
   "collections": [
     {
       "name": "users",
@@ -588,6 +588,97 @@
         "CREATE INDEX idx_processos_matricula ON processos_cadastrais (matricula)",
         "CREATE INDEX idx_processos_situacao ON processos_cadastrais (situacao)",
         "CREATE INDEX idx_processos_processo ON processos_cadastrais (processo)"
+      ]
+    },
+    {
+      "name": "cartas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "numero_carta",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "colaborador",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "matricula",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "funcao_carta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_carta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cnh",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prontuario",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "comprovante_residencia",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "atestado",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "doc_assinado_gestora",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_cartas_numero ON cartas (numero_carta)",
+        "CREATE INDEX idx_cartas_colaborador ON cartas (colaborador)"
       ]
     }
   ]
