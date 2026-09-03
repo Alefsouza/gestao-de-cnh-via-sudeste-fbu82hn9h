@@ -50,29 +50,35 @@ export default function Cnhs() {
     load()
   })
 
-  const motoristas = useMemo(
-    () => employees.filter((employee) => employee.situacao_cnh !== ''),
+  const employeesWithCnh = useMemo(
+    () =>
+      employees.filter(
+        (employee) =>
+          Boolean(employee.cnh_numero && employee.cnh_numero.trim()) &&
+          employee.situacao_cnh !== 'Sem CNH' &&
+          employee.situacao_cnh !== '',
+      ),
     [employees],
   )
 
   const counts = useMemo(() => {
     const byStatus = (status: StatusFilter) =>
-      motoristas.filter((item) => item.situacao_cnh === status).length
+      employeesWithCnh.filter((item) => item.situacao_cnh === status).length
     return {
-      todas: motoristas.length,
+      todas: employeesWithCnh.length,
       Válida: byStatus('Válida'),
       'A vencer': byStatus('A vencer'),
       Vencida: byStatus('Vencida'),
     } as Record<StatusFilter, number>
-  }, [motoristas])
+  }, [employeesWithCnh])
 
   const filtered = useMemo(
     () =>
-      motoristas
+      employeesWithCnh
         .filter((employee) => (tab === 'todas' ? true : employee.situacao_cnh === tab))
         .filter((employee) => (garagem ? employee.filial === garagem : true))
         .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? '')),
-    [motoristas, tab, garagem],
+    [employeesWithCnh, tab, garagem],
   )
 
   const vencidasCount = counts['Vencida']
@@ -84,8 +90,8 @@ export default function Cnhs() {
           <CreditCard className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-foreground">CNHs de motoristas</h1>
-          <p className="text-xs text-muted-foreground">Controle de validade das CNHs da frota</p>
+          <h1 className="text-lg font-bold text-foreground">CNHs dos colaboradores</h1>
+          <p className="text-xs text-muted-foreground">Controle de validade das CNHs cadastradas</p>
         </div>
       </div>
 
@@ -97,7 +103,8 @@ export default function Cnhs() {
               {vencidasCount} {vencidasCount === 1 ? 'CNH vencida' : 'CNHs vencidas'}
             </p>
             <p className="text-xs text-red-700/80">
-              Regularize a situação dos motoristas com CNH fora da validade antes da próxima escala.
+              Regularize a situação dos colaboradores com CNH fora da validade antes da próxima
+              escala.
             </p>
           </div>
         </div>
@@ -147,6 +154,7 @@ export default function Cnhs() {
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">Chapa</th>
                   <th className="px-4 py-3 font-semibold">Nome</th>
+                  <th className="px-4 py-3 font-semibold">Função</th>
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
                   <th className="px-4 py-3 font-semibold">CNH</th>
                   <th className="px-4 py-3 font-semibold">Categoria</th>
@@ -165,6 +173,7 @@ export default function Cnhs() {
                     >
                       <td className="tabular-nums px-4 py-3 font-medium">{employee.chapa}</td>
                       <td className="px-4 py-3 font-medium">{employee.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
                       <td className="tabular-nums px-4 py-3">{employee.cnh_numero || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">
@@ -182,7 +191,7 @@ export default function Cnhs() {
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum registro encontrado.
                     </td>
                   </tr>

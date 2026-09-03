@@ -9,7 +9,7 @@ export interface Employee {
   cnh_numero: string
   cnh_categoria: string
   validade_cnh: string
-  situacao_cnh: 'Válida' | 'A vencer' | 'Vencida' | ''
+  situacao_cnh: 'Válida' | 'A vencer' | 'Vencida' | 'Vencida CNH' | 'Sem CNH' | ''
   motivo_afastamento: string
   inicio_afastamento: string
   previsao_retorno: string
