@@ -225,7 +225,7 @@ function Header({
 
       <div className="min-w-0">
         <h1 className="truncate text-base font-bold leading-tight text-foreground md:text-[17px]">
-          Via Sudeste - Portal RH / Treinamento
+          Via Sudeste - Gestão de CNH
         </h1>
         <p className="truncate text-xs text-muted-foreground">{pageLabel(location.pathname)}</p>
       </div>
