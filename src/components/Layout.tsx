@@ -115,21 +115,6 @@ function SidebarFooter({ compact, onSignOut }: { compact?: boolean; onSignOut: (
 
   return (
     <div className="border-t border-white/10 p-3">
-      <div className="flex items-center gap-2.5 rounded-lg bg-white/5 px-3 py-2.5">
-        <span className="relative flex h-2 w-2 flex-none items-center justify-center">
-          <span className="animate-ping-dot absolute inline-flex h-2 w-2 rounded-full bg-green-500" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-        </span>
-        {!compact && (
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-white">Matriz conectada</p>
-            <p className="truncate text-[10px] text-emerald-200/60">
-              Base sincronizada · hoje às 06:00
-            </p>
-          </div>
-        )}
-      </div>
-
       <div className="relative mt-2">
         {menuOpen && <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />}
         <button
@@ -229,11 +214,6 @@ function Header({
         </div>
 
         <NotificationBell notifications={notifications} onReload={onReloadNotifications} />
-
-        <span className="hidden items-center gap-1.5 rounded-full border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary md:inline-flex">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Acesso protegido
-        </span>
       </div>
     </header>
   )
