@@ -200,7 +200,7 @@ export default function VisaoGeral() {
               icon={Users}
               tone="green"
               trend="up"
-              caption="Base sincronizada da matriz"
+              caption="Base sincronizada do Globus"
               delay={0}
               to="/funcionarios"
             />
