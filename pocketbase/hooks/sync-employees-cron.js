@@ -137,13 +137,40 @@ cronAdd('sync_employees', '*/5 * * * *', () => {
       return ''
     }
 
+    /**
+     * Normalização de função: trim + colapso de espaços + capitalização
+     * canônica. Regras mínimas exigidas:
+     *   MOTORISTA / motorista / Motorista → "Motorista"
+     *   FISCAL / FISCAL DE VIAJEM / FISCAL DE VIAGEM (e variações) →
+     *     "Fiscal de Viajem"
+     *   COBRADOR / COBRADOR (com espaço) → "Cobrador"
+     */
+    const normalizeFuncao = (value) => {
+      const raw = String(value ?? '')
+        .trim()
+        .replace(/\s+/g, ' ')
+      if (!raw) return ''
+      const key = stripAccents(raw).toLowerCase()
+      if (key === 'motorista') return 'Motorista'
+      if (key === 'fiscal' || key === 'fiscal de viajem' || key === 'fiscal de viagem') {
+        return 'Fiscal de Viajem'
+      }
+      if (key === 'cobrador') return 'Cobrador'
+      return raw
+        .toLowerCase()
+        .split(' ')
+        .map(function (word) {
+          return word ? word.charAt(0).toUpperCase() + word.slice(1) : ''
+        })
+        .join(' ')
+    }
     const mapRow = (norm) => ({
       chapa: pick(norm, ['chapa', 'matricula']),
       registro: pick(norm, ['registro', 'registro_rh', 'numero_registro']),
       name: pick(norm, ['nome', 'name', 'nome_colaborador', 'colaborador']),
       company: pick(norm, ['empresa', 'company', 'razao_social']),
       filial: normFilial(norm),
-      funcao: pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador']),
+      funcao: normalizeFuncao(pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador'])),
       situacao: normSituacao(norm),
       cnh_numero: pick(norm, ['cnh_numero', 'numero_cnh', 'registro_cnh', 'cnh']),
       cnh_categoria: pick(norm, ['cnh_categoria', 'categoria_cnh', 'categoria']),

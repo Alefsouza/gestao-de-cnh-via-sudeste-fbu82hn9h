@@ -23,7 +23,7 @@ import { formatDate, relativeDayLabel } from '@/lib/format'
 import { listEmployeesPage } from '@/services/employees'
 import { triggerSync } from '@/lib/sync'
 import type { Employee } from '@/lib/types'
-
+import { comparable, isCnhVencida, normalizeEmployees, normalizeFuncao } from '@/lib/normalize'
 const GARAGENS = ['CURSINO', 'SAPOPEMBA'] as const
 
 /** Tamanho de cada página de carregamento da base (evita 429 do backend). */
@@ -133,31 +133,38 @@ export default function VisaoGeral() {
     requestLoad()
   })
 
+  // Normalização aplicada UMA VEZ, sobre a lista carregada — as contagens dos
+  // cards e da tabela comparam valores canônicos, sem depender de caixa.
+  const normalized = useMemo(() => normalizeEmployees(employees), [employees])
+
   const stats = useMemo(() => {
-    const ativos = employees.filter((employee) => employee.situacao === 'Ativo').length
-    const afastados = employees.filter((employee) => employee.situacao === 'Afastado').length
-    const vencidas = employees.filter(
-      (employee) => employee.funcao === 'Motorista' && employee.situacao_cnh === 'Vencida',
+    const ativos = normalized.filter((employee) => comparable(employee.situacao) === 'ativo').length
+    const afastados = normalized.filter(
+      (employee) => comparable(employee.situacao) === 'afastado',
     ).length
-    const fiscais = employees.filter((employee) => employee.funcao === 'Fiscal de Viajem').length
+    const vencidas = normalized.filter(
+      (employee) => comparable(employee.funcao) === 'motorista' && isCnhVencida(employee),
+    ).length
+    const fiscais = normalized.filter((employee) =>
+      comparable(employee.funcao).startsWith('fiscal'),
+    ).length
     const porGaragem = Object.fromEntries(
       GARAGENS.map((garagem) => [
         garagem,
-        employees.filter((employee) => employee.filial === garagem).length,
+        normalized.filter((employee) => comparable(employee.filial) === garagem.toLowerCase())
+          .length,
       ]),
     ) as Record<(typeof GARAGENS)[number], number>
     return { ativos, afastados, vencidas, fiscais, porGaragem }
-  }, [employees])
+  }, [normalized])
 
   const vencidasList = useMemo(
     () =>
-      employees
-        .filter(
-          (employee) => employee.funcao === 'Motorista' && employee.situacao_cnh === 'Vencida',
-        )
+      normalized
+        .filter((employee) => comparable(employee.funcao) === 'motorista' && isCnhVencida(employee))
         .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
         .slice(0, 5),
-    [employees],
+    [normalized],
   )
 
   const hasBaseData = employees.length > 0

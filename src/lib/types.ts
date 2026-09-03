@@ -15,6 +15,8 @@ export interface Employee {
   previsao_retorno: string
   documento_fiscal: string
   validade_documento_fiscal: string
+  registro?: string
+  cpf?: string
   created: string
   updated: string
   expand?: { employee?: Employee }
