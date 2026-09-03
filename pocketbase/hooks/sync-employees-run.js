@@ -69,17 +69,28 @@ routerAdd(
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
 
+      const normalizeKey = (k) =>
+        stripAccents(k)
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '')
+
       const normalizeRow = (row) => {
         const norm = {}
         for (const key in row) {
-          norm[stripAccents(key).toLowerCase().trim()] = row[key]
+          const rawKey = stripAccents(key).toLowerCase().trim()
+          norm[rawKey] = row[key]
+          const cleanKey = normalizeKey(key)
+          if (cleanKey && cleanKey !== rawKey) {
+            norm[cleanKey] = row[key]
+          }
         }
         return norm
       }
 
       const pick = (norm, names) => {
         for (const name of names) {
-          const v = norm[name]
+          const clean = normalizeKey(name)
+          const v = norm[name] !== undefined ? norm[name] : norm[clean]
           if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim()
         }
         return ''
@@ -108,8 +119,18 @@ routerAdd(
       }
 
       const normSituacao = (norm) => {
-        // SITUACAO da view SQL Server VW_CONTROLE_CNH é a fonte oficial ('ATIVO' / 'AFASTADO')
-        const raw = pick(norm, ['situacao', 'status', 'situacao_do_colaborador'])
+        // A coluna da view externa VW_CONTROLE_CNH foi renomeada de SITUACAO para STATUSCNH.
+        // Lê STATUSCNH (com suporte tolerante a cabeçalho e aliases) e normaliza:
+        // ATIVO -> "Ativo" e AFASTADO -> "Afastado" (case-insensitive, tolerante a espaços),
+        // mantendo fallback para "Ativo" quando vazio.
+        const raw = pick(norm, [
+          'statuscnh',
+          'status_cnh',
+          'situacao',
+          'status',
+          'situacaocolaborador',
+          'situacao_do_colaborador',
+        ])
         const value = stripAccents(raw).toLowerCase().trim().replace(/\s+/g, ' ')
         if (value) {
           if (value.indexOf('deslig') !== -1) return 'Desligado'
@@ -126,7 +147,12 @@ routerAdd(
 
         // Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo' como padrão oficial
         const motivo = stripAccents(
-          pick(norm, ['motivo_afastamento', 'motivo_do_afastamento', 'motivo']),
+          pick(norm, [
+            'motivo_afastamento',
+            'motivo_do_afastamento',
+            'motivo',
+            'motivoafastamento',
+          ]),
         )
           .toLowerCase()
           .trim()
@@ -137,7 +163,14 @@ routerAdd(
 
       const normSituacaoCnh = (norm) => {
         const value = stripAccents(
-          pick(norm, ['situacao_cnh', 'status_cnh', 'situacao_da_cnh']),
+          pick(norm, [
+            'situacao_cnh',
+            'situacaocnh',
+            'situacao_da_cnh',
+            'situacaodacnh',
+            'cnh_status',
+            'cnhstatus',
+          ]),
         ).toLowerCase()
         if (!value) return ''
         if (value.indexOf('sem') !== -1) return 'Sem CNH'
