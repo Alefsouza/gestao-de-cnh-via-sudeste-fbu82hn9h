@@ -5,11 +5,15 @@ import {
   ChevronUp,
   ChevronsUpDown,
   CreditCard,
+  FileDown,
   Loader2,
+  Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 
 import StatusBadge from '@/components/StatusBadge'
+import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
 import { daysUntil, formatDate, formatCnh } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
@@ -38,6 +42,7 @@ export default function Cnhs() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<StatusFilter>('todas')
+  const [search, setSearch] = useState('')
   const [garagem, setGaragem] = useState('')
   const [sortField, setSortField] = useState<SortField>('validade')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -95,6 +100,14 @@ export default function Cnhs() {
   const filtered = useMemo(
     () =>
       employeesWithCnh
+        .filter((employee) => {
+          const term = search.trim().toLowerCase()
+          if (!term) return true
+          const nameMatch = (employee.name ?? '').toLowerCase().includes(term)
+          const chapaMatch = (employee.chapa ?? '').toLowerCase().includes(term)
+          const cnhMatch = (employee.cnh_numero ?? '').toLowerCase().includes(term)
+          return nameMatch || chapaMatch || cnhMatch
+        })
         .filter((employee) => (tab === 'todas' ? true : employee.situacao_cnh === tab))
         .filter((employee) => (garagem ? employee.filial === garagem : true))
         .sort((a, b) => {
@@ -124,20 +137,84 @@ export default function Cnhs() {
 
           return 0
         }),
-    [employeesWithCnh, tab, garagem, sortField, sortDirection],
+    [employeesWithCnh, search, tab, garagem, sortField, sortDirection],
   )
+
+  const exportXlsx = useCallback(() => {
+    if (filtered.length === 0) {
+      toast.error('Nenhuma CNH para exportar.')
+      return
+    }
+
+    try {
+      const rows = filtered.map((employee) => {
+        const days = daysUntil(employee.validade_cnh)
+        return {
+          REGISTRO: employee.chapa,
+          Nome: employee.name,
+          Função: employee.funcao || '',
+          'Filial/Garagem': employee.filial || '',
+          CNH: formatCnh(employee.cnh_categoria, employee.cnh_numero),
+          Categoria: employee.cnh_categoria || '',
+          Validade: formatDate(employee.validade_cnh),
+          'Dias para vencer': daysLabel(days),
+          Situação: employee.situacao_cnh || '',
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(rows)
+      worksheet['!cols'] = [
+        { wch: 14 }, // REGISTRO
+        { wch: 32 }, // Nome
+        { wch: 24 }, // Função
+        { wch: 20 }, // Filial/Garagem
+        { wch: 20 }, // CNH
+        { wch: 12 }, // Categoria
+        { wch: 16 }, // Validade
+        { wch: 20 }, // Dias para vencer
+        { wch: 16 }, // Situação
+      ]
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'CNHs')
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(workbook, `cnhs-${dateStr}.xlsx`)
+      toast.success(`Exportação concluída (${filtered.length} registro(s))`)
+    } catch (error) {
+      console.error('Erro ao exportar CNHs para XLSX:', error)
+      toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
+    }
+  }, [filtered])
 
   const vencidasCount = counts['Vencida']
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-          <CreditCard className="h-5 w-5 text-primary" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+            <CreditCard className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-foreground">CNHs dos colaboradores</h1>
+            <p className="text-xs text-muted-foreground">
+              Controle de validade das CNHs cadastradas
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground">CNHs dos colaboradores</h1>
-          <p className="text-xs text-muted-foreground">Controle de validade das CNHs cadastradas</p>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            onClick={exportXlsx}
+            disabled={filtered.length === 0}
+            className="inline-flex h-10 items-center gap-2"
+          >
+            <FileDown className="h-4 w-4" />
+            Exportar .xlsx
+          </Button>
         </div>
       </div>
 
@@ -201,18 +278,30 @@ export default function Cnhs() {
               </button>
             ))}
           </div>
-          <select
-            value={garagem}
-            onChange={(event) => setGaragem(event.target.value)}
-            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">Todas as garagens</option>
-            {FILIAIS.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar por nome, chapa ou CNH…"
+                className="h-10 w-full min-w-[220px] rounded-md border border-input bg-white pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-64"
+              />
+            </div>
+            <select
+              value={garagem}
+              onChange={(event) => setGaragem(event.target.value)}
+              className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">Todas as garagens</option>
+              {FILIAIS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
