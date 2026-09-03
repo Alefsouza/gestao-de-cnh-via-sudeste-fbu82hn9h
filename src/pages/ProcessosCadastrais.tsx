@@ -6,11 +6,24 @@ import {
   FileSearch,
   FileX2,
   Loader2,
+  Pencil,
   Plus,
   RefreshCcw,
+  Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -32,8 +45,8 @@ import {
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
-import { listMovementsByType, createMovement } from '@/services/movements'
-import type { Employee, Movement } from '@/lib/types'
+import { createMovement } from '@/services/movements'
+import type { Employee } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 // Categorias exibidas nos cards de resumo (ordem exata solicitada)
@@ -210,6 +223,8 @@ const ETAPA_INICIAL: Etapa = 'Documentos solicitados'
 export default function ProcessosCadastrais() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingProcesso, setEditingProcesso] = useState<ProcessoCadastral | null>(null)
+  const [deletingProcesso, setDeletingProcesso] = useState<ProcessoCadastral | null>(null)
   const [processos, setProcessos] = useState<ProcessoCadastral[]>([])
   const [selectedCategoria, setSelectedCategoria] = useState<Categoria | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -304,9 +319,7 @@ export default function ProcessosCadastrais() {
       setProcessos((prev) => {
         const next = [novo, ...prev]
         try {
-          const saved = localStorage.getItem(SEED_KEY)
-          const base: ProcessoCadastral[] = saved ? JSON.parse(saved) : []
-          localStorage.setItem(SEED_KEY, JSON.stringify([novo, ...base]))
+          localStorage.setItem(SEED_KEY, JSON.stringify(next))
         } catch {
           // silencioso
         }
@@ -328,9 +341,62 @@ export default function ProcessosCadastrais() {
           // silencioso: processo local já registrado
         }
       }
+
+      toast.success('Processo cadastrado com sucesso')
     },
     [],
   )
+
+  const handleUpdate = useCallback(
+    async (data: {
+      id: string
+      processo: Categoria
+      matricula: string
+      nome: string
+      funcao: string
+      prazo: string
+      employeeId?: string
+    }) => {
+      setProcessos((prev) => {
+        const next = prev.map((item) => {
+          if (item.id === data.id) {
+            return {
+              ...item,
+              matricula: data.matricula,
+              colaborador: data.nome,
+              funcao: data.funcao,
+              processo: data.processo,
+              prazo: data.prazo,
+            }
+          }
+          return item
+        })
+        try {
+          localStorage.setItem(SEED_KEY, JSON.stringify(next))
+        } catch {
+          // silencioso
+        }
+        return next
+      })
+
+      toast.success('Processo atualizado com sucesso')
+    },
+    [],
+  )
+
+  const handleDelete = useCallback((processo: ProcessoCadastral) => {
+    setProcessos((prev) => {
+      const next = prev.filter((p) => p.id !== processo.id)
+      try {
+        localStorage.setItem(SEED_KEY, JSON.stringify(next))
+      } catch {
+        // silencioso
+      }
+      return next
+    })
+    setDeletingProcesso(null)
+    toast.success('Processo excluído com sucesso')
+  }, [])
 
   const handleCategoryClick = (categoria: Categoria) => {
     if (selectedCategoria === categoria) {
@@ -452,6 +518,7 @@ export default function ProcessosCadastrais() {
                   <th className="px-4 py-3 font-semibold">Etapa</th>
                   <th className="px-4 py-3 font-semibold">Prazo</th>
                   <th className="px-4 py-3 font-semibold">Situação</th>
+                  <th className="px-4 py-3 font-semibold text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -487,9 +554,31 @@ export default function ProcessosCadastrais() {
                         {processo.situacao}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setEditingProcesso(processo)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          title="Editar processo"
+                          aria-label={`Editar processo de ${processo.colaborador}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingProcesso(processo)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                          title="Excluir processo"
+                          aria-label={`Excluir processo de ${processo.colaborador}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
-              </tbody>
+              </tbody>{' '}
             </table>
           </div>
         )}
@@ -511,23 +600,79 @@ export default function ProcessosCadastrais() {
         )}
       </div>
 
-      <NovoProcessoCadastralModal
+      {/* Modal Novo processo */}
+      <ProcessoCadastralFormModal
         open={modalOpen}
         onOpenChange={setModalOpen}
         employees={employees}
-        onCreate={handleCreate}
+        onSubmit={async (data) => {
+          await handleCreate(data)
+        }}
       />
+
+      {/* Modal Editar processo */}
+      <ProcessoCadastralFormModal
+        open={editingProcesso !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingProcesso(null)
+        }}
+        initialData={editingProcesso}
+        employees={employees}
+        onSubmit={async (data) => {
+          if (editingProcesso) {
+            await handleUpdate({
+              id: editingProcesso.id,
+              ...data,
+            })
+          }
+        }}
+      />
+
+      {/* Confirmação de exclusão */}
+      <AlertDialog
+        open={deletingProcesso !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingProcesso(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir processo cadastral?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o processo{' '}
+              <strong className="text-foreground">{deletingProcesso?.processo}</strong> do
+              colaborador{' '}
+              <strong className="text-foreground">{deletingProcesso?.colaborador}</strong> (Registro{' '}
+              {deletingProcesso?.matricula})? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deletingProcesso) {
+                  handleDelete(deletingProcesso)
+                }
+              }}
+            >
+              Excluir processo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
 
-// ---------- Modal "Novo processo" (padrão do modal Nova movimentação) ----------
+// ---------- Modal "Formulário de processo" (Criar / Editar) ----------
 
-interface NovoProcessoCadastralModalProps {
+interface ProcessoCadastralFormModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialData?: ProcessoCadastral | null
   employees: Employee[]
-  onCreate: (data: {
+  onSubmit: (data: {
     processo: Categoria
     matricula: string
     nome: string
@@ -537,12 +682,14 @@ interface NovoProcessoCadastralModalProps {
   }) => Promise<void> | void
 }
 
-function NovoProcessoCadastralModal({
+function ProcessoCadastralFormModal({
   open,
   onOpenChange,
+  initialData,
   employees,
-  onCreate,
-}: NovoProcessoCadastralModalProps) {
+  onSubmit,
+}: ProcessoCadastralFormModalProps) {
+  const isEditing = Boolean(initialData)
   const [processo, setProcesso] = useState<Categoria>('Inclusão')
   const [matricula, setMatricula] = useState('')
   const [nome, setNome] = useState('')
@@ -552,13 +699,21 @@ function NovoProcessoCadastralModal({
 
   useEffect(() => {
     if (open) {
-      setProcesso('Inclusão')
-      setMatricula('')
-      setNome('')
-      setFuncao('')
-      setPrazo('')
+      if (initialData) {
+        setProcesso(initialData.processo)
+        setMatricula(initialData.matricula || '')
+        setNome(initialData.colaborador || '')
+        setFuncao(initialData.funcao || '')
+        setPrazo(initialData.prazo || '')
+      } else {
+        setProcesso('Inclusão')
+        setMatricula('')
+        setNome('')
+        setFuncao('')
+        setPrazo('')
+      }
     }
-  }, [open])
+  }, [open, initialData])
 
   const selectedEmployee = useMemo(
     () =>
@@ -576,7 +731,7 @@ function NovoProcessoCadastralModal({
     if (!canSubmit) return
     setSaving(true)
     try {
-      await onCreate({
+      await onSubmit({
         processo,
         matricula: matricula.trim(),
         nome: nome.trim(),
@@ -595,19 +750,30 @@ function NovoProcessoCadastralModal({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5 text-primary" />
-            Novo processo
+            {isEditing ? (
+              <>
+                <Pencil className="h-5 w-5 text-primary" />
+                Editar processo
+              </>
+            ) : (
+              <>
+                <Plus className="h-5 w-5 text-primary" />
+                Novo processo
+              </>
+            )}
           </DialogTitle>
           <DialogDescription>
-            Cadastre manualmente uma movimentação de colaborador.
+            {isEditing
+              ? 'Edite os dados cadastrais do processo selecionado.'
+              : 'Cadastre manualmente uma movimentação de colaborador.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="processo">Tipo de movimentação</Label>
+            <Label htmlFor="modal-processo">Tipo de movimentação</Label>
             <Select value={processo} onValueChange={(value) => setProcesso(value as Categoria)}>
-              <SelectTrigger id="processo">
+              <SelectTrigger id="modal-processo">
                 <SelectValue placeholder="Selecione o tipo" />
               </SelectTrigger>
               <SelectContent>
@@ -621,9 +787,9 @@ function NovoProcessoCadastralModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="matricula">Registro</Label>
+            <Label htmlFor="modal-matricula">Registro</Label>
             <Input
-              id="matricula"
+              id="modal-matricula"
               placeholder="Número da matrícula / registro"
               value={matricula}
               onChange={(event) => setMatricula(event.target.value)}
@@ -632,9 +798,9 @@ function NovoProcessoCadastralModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="nome">Nome Completo</Label>
+            <Label htmlFor="modal-nome">Nome Completo</Label>
             <Input
-              id="nome"
+              id="modal-nome"
               placeholder="Nome completo do colaborador"
               value={nome}
               onChange={(event) => setNome(event.target.value)}
@@ -643,9 +809,9 @@ function NovoProcessoCadastralModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="funcao">Função</Label>
+            <Label htmlFor="modal-funcao">Função</Label>
             <Input
-              id="funcao"
+              id="modal-funcao"
               placeholder="Função do colaborador"
               value={funcao}
               onChange={(event) => setFuncao(event.target.value)}
@@ -654,9 +820,9 @@ function NovoProcessoCadastralModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="prazo">Prazo</Label>
+            <Label htmlFor="modal-prazo">Prazo</Label>
             <Input
-              id="prazo"
+              id="modal-prazo"
               type="date"
               value={prazo}
               onChange={(event) => setPrazo(event.target.value)}
@@ -668,7 +834,7 @@ function NovoProcessoCadastralModal({
               Cancelar
             </Button>
             <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-              {saving ? 'Salvando…' : 'Registrar processo'}
+              {saving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Registrar processo'}
             </Button>
           </DialogFooter>
         </div>
