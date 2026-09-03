@@ -335,14 +335,18 @@ export default function ProcessosCadastrais() {
   })
 
   // Processos visíveis para o usuário:
-  // Se for perfil Tráfego, filtrar exclusivamente pela garagem do usuário (CURSINO ou SAPOPEMBA).
-  // Admin e RH veem todos os processos.
+  // Se for perfil Tráfego:
+  // 1. Filtrar exclusivamente pela garagem do usuário (CURSINO ou SAPOPEMBA).
+  // 2. Processos com situação "Regular" NÃO devem aparecer (nem na listagem, nem nos cards, nem no Excel).
+  // Admin e RH veem todos os processos (incluindo "Regular").
   const visibleProcessos = useMemo(() => {
     if (!isTrafego) return processos
     const userGaragemUpper = userGaragem.toUpperCase()
     return processos.filter((p) => {
       const g = (p.garagem || '').toUpperCase()
-      return g === userGaragemUpper
+      const isSameGaragem = g === userGaragemUpper
+      const isNotRegular = p.situacao !== 'Regular'
+      return isSameGaragem && isNotRegular
     })
   }, [processos, isTrafego, userGaragem])
 
@@ -477,9 +481,16 @@ export default function ProcessosCadastrais() {
   const handleUpdateSituacaoTrafego = useCallback(async () => {
     if (!processoAlterarSituacao) return
 
-    // Validação de perfil Tráfego: só pode alterar quando a situação atual for exatamente "Pendente"
-    if (isTrafego && processoAlterarSituacao.situacao !== 'Pendente') {
-      toast.error('O perfil Tráfego só pode alterar a situação de processos que estejam Pendentes.')
+    // Validação de perfil Tráfego: só pode alterar quando a situação atual for "Pendente", "Foto Bloqueada" ou "Impossibilitado de Trabalhar"
+    const situacoesEditaveisTrafego: Situacao[] = [
+      'Pendente',
+      'Foto Bloqueada',
+      'Impossibilitado de Trabalhar',
+    ]
+    if (isTrafego && !situacoesEditaveisTrafego.includes(processoAlterarSituacao.situacao)) {
+      toast.error(
+        'O perfil Tráfego só pode alterar a situação de processos com situação Pendente, Foto Bloqueada ou Impossibilitado de Trabalhar.',
+      )
       setProcessoAlterarSituacao(null)
       return
     }
@@ -766,7 +777,9 @@ export default function ProcessosCadastrais() {
                     <td className="px-4 py-3 text-right">
                       {isTrafego ? (
                         <div className="flex items-center justify-end">
-                          {processo.situacao === 'Pendente' ? (
+                          {processo.situacao === 'Pendente' ||
+                          processo.situacao === 'Foto Bloqueada' ||
+                          processo.situacao === 'Impossibilitado de Trabalhar' ? (
                             <Button
                               type="button"
                               size="sm"
