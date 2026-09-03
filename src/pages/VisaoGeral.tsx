@@ -190,10 +190,7 @@ export default function VisaoGeral() {
     }
   }
 
-  const totalColaboradores =
-    stats.totalColaboradores > 0
-      ? stats.totalColaboradores
-      : stats.garagens.reduce((acc, g) => acc + g.total, 0)
+  const totalColaboradores = stats.totalColaboradores
 
   return (
     <div className="mx-auto max-w-7xl">

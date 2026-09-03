@@ -46,33 +46,44 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 
 export interface EmployeeFilters {
   search?: string
+  empresa?: string
   filial?: string
   funcao?: string
   situacao?: string
   situacaoCnh?: string
+  customFilter?: string
   page?: number
   perPage?: number
+  sort?: string
 }
 
-function buildFilter(filters: EmployeeFilters): string {
+export function buildFilter(filters: EmployeeFilters): string {
   const parts: string[] = []
   const search = (filters.search ?? '').trim()
   if (search) {
     const escaped = search.replace(/"/g, '\\"')
-    parts.push(`(name ~ "${escaped}" || chapa ~ "${escaped}")`)
+    parts.push(
+      `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+    )
   }
+  if (filters.empresa) parts.push(`company = "${filters.empresa}"`)
   if (filters.filial) parts.push(`filial = "${filters.filial}"`)
   if (filters.funcao) parts.push(`funcao = "${filters.funcao}"`)
   if (filters.situacao) parts.push(`situacao = "${filters.situacao}"`)
   if (filters.situacaoCnh) parts.push(`situacao_cnh = "${filters.situacaoCnh}"`)
+  if (filters.customFilter) parts.push(`(${filters.customFilter})`)
   return parts.join(' && ')
 }
 
 export async function listEmployees(filters: EmployeeFilters = {}) {
-  return pb.collection<Employee>(COLLECTION).getList(filters.page ?? 1, filters.perPage ?? 10, {
-    filter: buildFilter(filters),
-    sort: 'chapa',
-  })
+  const filter = buildFilter(filters)
+  return withRetry(() =>
+    pb.collection<Employee>(COLLECTION).getList(filters.page ?? 1, filters.perPage ?? 10, {
+      filter: filter || undefined,
+      sort: filters.sort || 'chapa',
+      requestKey: null,
+    }),
+  )
 }
 
 /**
@@ -147,7 +158,7 @@ export async function getVisaoGeralStats(): Promise<{ stats: VisaoGeralStats; ha
   // Consulta em paralelo todas as métricas e as contagens por filial/garagem
   const [totalColaboradores, ativos, afastados, vencidas, fiscais, ...filialCounts] =
     await Promise.all([
-      countSafe(), // total geral de colaboradores na base employees
+      countSafe(), // total geral de colaboradores na base employees (todas as 3165 registros)
       countSafe('situacao = "Ativo"'),
       countSafe('situacao = "Afastado"'),
       countSafe(CNH_VENCIDA_FILTER),
@@ -166,7 +177,7 @@ export async function getVisaoGeralStats(): Promise<{ stats: VisaoGeralStats; ha
     }
   })
 
-  // Se houver registros sem filial ou em filial não listada, verifica a diferença
+  // Se houver registros sem filial ou em filial não listada, verifica a diferença para totalColaboradores
   const somaConhecidas = Object.values(porGaragem).reduce((acc, curr) => acc + curr, 0)
   if (totalColaboradores > somaConhecidas) {
     const outros = totalColaboradores - somaConhecidas
@@ -203,12 +214,66 @@ export async function listCnhsVencidasTop(limit = 5): Promise<Employee[]> {
 }
 
 /** Busca todos os funcionários aplicando os filtros informados, com paginação sequencial e retry para evitar 429. */
+export interface FuncionariosSummary {
+  total: number
+  ativos: number
+  afastados: number
+  cnhVencida: number
+}
+
+/**
+ * Calcula os cards de resumo da tela Matriz de Funcionários
+ * em paralelo diretamente no backend PocketBase com tratamento individual de erro.
+ * Se houver filtros de busca/empresa/filial/função ativos, eles são incorporados.
+ */
+export async function getFuncionariosSummary(
+  baseFilters: Omit<
+    EmployeeFilters,
+    'situacao' | 'situacaoCnh' | 'customFilter' | 'page' | 'perPage'
+  > = {},
+): Promise<{ summary: FuncionariosSummary; hasError: boolean }> {
+  let hasError = false
+
+  const countSafe = async (extraFilter?: string): Promise<number> => {
+    try {
+      const combined = buildFilter({
+        ...baseFilters,
+        customFilter: extraFilter,
+      })
+      return await countEmployees(combined || undefined)
+    } catch (err) {
+      console.error('Erro ao contar colaboradores no backend:', err)
+      hasError = true
+      return 0
+    }
+  }
+
+  const [total, ativos, afastados, cnhVencida] = await Promise.all([
+    countSafe(),
+    countSafe('situacao = "Ativo"'),
+    countSafe('situacao = "Afastado"'),
+    countSafe(CNH_VENCIDA_FILTER),
+  ])
+
+  return {
+    summary: {
+      total,
+      ativos,
+      afastados,
+      cnhVencida,
+    },
+    hasError,
+  }
+}
+
+/** Busca todos os funcionários aplicando os filtros informados, com paginação sequencial e retry para evitar 429. */
 export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<Employee[]> {
   const filter = buildFilter(filters)
   const first = await withRetry(() =>
     pb.collection<Employee>(COLLECTION).getList(1, PAGE_SIZE, {
-      filter,
-      sort: 'chapa',
+      filter: filter || undefined,
+      sort: filters.sort || 'chapa',
+      requestKey: null,
     }),
   )
 
@@ -220,8 +285,9 @@ export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<E
     await wait(150)
     const next = await withRetry(() =>
       pb.collection<Employee>(COLLECTION).getList(page, PAGE_SIZE, {
-        filter,
-        sort: 'chapa',
+        filter: filter || undefined,
+        sort: filters.sort || 'chapa',
+        requestKey: null,
       }),
     )
     items.push(...next.items)

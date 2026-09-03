@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarX,
   Eye,
@@ -10,20 +10,29 @@ import {
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 
 import StatusBadge from '@/components/StatusBadge'
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate, formatCnh } from '@/lib/format'
-import { listAllEmployees } from '@/services/employees'
+import {
+  CNH_VENCIDA_FILTER,
+  getFuncionariosSummary,
+  listAllEmployees,
+  listEmployees,
+  type EmployeeFilters,
+  type FuncionariosSummary,
+} from '@/services/employees'
 import { listMovementsByEmployee } from '@/services/movements'
 import { FILIAIS, SITUACOES } from '@/lib/types'
 import type { Employee, Movement } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { comparable, normalizeEmployees } from '@/lib/normalize'
+import { normalizeEmployees } from '@/lib/normalize'
 
 const PAGE_SIZE = 10
+const RELOAD_THROTTLE_MS = 5_000
 
 const inputClass =
   'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -145,7 +154,11 @@ function CnhBadge({ status }: { status: CnhStatus }) {
 
 export default function Funcionarios() {
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+
   const [search, setSearch] = useState('')
   const [empresa, setEmpresa] = useState('')
   const [filial, setFilial] = useState('')
@@ -153,89 +166,146 @@ export default function Funcionarios() {
   const [situacao, setSituacao] = useState('')
   const [cardFilter, setCardFilter] = useState<SummaryCardFilter>('todos')
   const [page, setPage] = useState(1)
+
+  const [summary, setSummary] = useState<FuncionariosSummary>({
+    total: 0,
+    ativos: 0,
+    afastados: 0,
+    cnhVencida: 0,
+  })
+
   const [selected, setSelected] = useState<Employee | null>(null)
   const [movements, setMovements] = useState<Movement[]>([])
   const [movementsLoading, setMovementsLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
 
-  const load = useCallback(async () => {
-    try {
-      const data = await listAllEmployees()
-      setEmployees(normalizeEmployees(data))
-    } catch {
-      toast.error('Não foi possível carregar a matriz de funcionários')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Guardas para controle de recarregamento e prevenção de rajadas/429
+  const listRunId = useRef(0)
+  const summaryRunId = useRef(0)
+  const loadInProgress = useRef(false)
+  const lastLoadedAt = useRef(0)
 
-  useEffect(() => {
-    load()
-  }, [load])
-
-  useRealtime('employees', () => {
-    load()
-  })
-
-  const empresas = useMemo(
-    () => Array.from(new Set(employees.map((e) => e.company).filter(Boolean))).sort(),
-    [employees],
-  )
-
+  // Opções para filtros de empresa e função (conhecidas na base Via Sudeste)
+  const empresas = useMemo(() => ['VIA SUDESTE'], [])
   const funcoes = useMemo(
     () =>
-      Array.from(new Set(employees.map((e) => (e.funcao ?? '').trim()).filter(Boolean))).sort(
-        (a, b) => a.localeCompare(b, 'pt-BR'),
-      ),
-    [employees],
+      [
+        'Ag.terminal Ii',
+        'Auxiliar Administrativo',
+        'Cobrador',
+        'Eletricista',
+        'Encar.operaciona',
+        'Fiscal de Viajem',
+        'Funileiro',
+        'Gerente',
+        'Inspetor',
+        'Instrutor',
+        'Lavad/abast/manobr',
+        'Lider Manutencao',
+        'Mecanico',
+        'Mecanico Socorr',
+        'Mecanico Validador',
+        'Motorista',
+        'Motorista Manutenc',
+        'Motorista-socorris',
+        'Motorista-van',
+        'Pintor',
+        'Supervisor',
+      ].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [],
   )
 
-  // Lista base filtrada pelos seletores e busca (sem o cardFilter)
-  const baseFiltered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    const situacaoComp = comparable(situacao)
-    return employees.filter((employee) => {
-      if (
-        term &&
-        !employee.name.toLowerCase().includes(term) &&
-        !employee.chapa.toLowerCase().includes(term) &&
-        !(employee.cnh_numero ?? '').toLowerCase().includes(term) &&
-        !employee.funcao.toLowerCase().includes(term)
-      ) {
-        return false
+  // Carrega os dados dos cards de resumo diretamente no backend com contagens pontuais
+  const loadSummary = useCallback(async () => {
+    const runId = ++summaryRunId.current
+    try {
+      const res = await getFuncionariosSummary({
+        search: search.trim(),
+        empresa: empresa || undefined,
+        filial: filial || undefined,
+        funcao: funcao || undefined,
+      })
+      if (runId !== summaryRunId.current) return
+      setSummary(res.summary)
+    } catch (err) {
+      if (runId === summaryRunId.current) {
+        console.error('Erro ao carregar resumo de funcionários:', err)
       }
-      if (empresa && employee.company !== empresa) return false
-      if (filial && employee.filial !== filial) return false
-      if (funcao && employee.funcao !== funcao) return false
-      if (situacao && comparable(employee.situacao) !== situacaoComp) return false
-      return true
-    })
-  }, [employees, search, empresa, filial, funcao, situacao])
+    }
+  }, [search, empresa, filial, funcao])
 
-  // Contagens dos cards baseadas no universo filtrado pelos controles
-  const summary = useMemo(() => {
-    const ativos = baseFiltered.filter((e) => comparable(e.situacao) === 'ativo').length
-    const afastados = baseFiltered.filter((e) => comparable(e.situacao) === 'afastado').length
-    const cnhVencida = baseFiltered.filter((e) => comparable(e.situacao_cnh) === 'vencida').length
-    return { total: baseFiltered.length, ativos, afastados, cnhVencida }
-  }, [baseFiltered])
+  // Monta os filtros da listagem paginada no servidor
+  const activeFilters = useMemo<EmployeeFilters>(() => {
+    const filters: EmployeeFilters = {
+      search: search.trim() || undefined,
+      empresa: empresa || undefined,
+      filial: filial || undefined,
+      funcao: funcao || undefined,
+      page,
+      perPage: PAGE_SIZE,
+      sort: 'chapa',
+    }
 
-  // Lista final exibida na tabela (combinando baseFiltered + cardFilter)
-  const filtered = useMemo(() => {
     if (cardFilter === 'ativos') {
-      return baseFiltered.filter((e) => comparable(e.situacao) === 'ativo')
+      filters.situacao = 'Ativo'
+    } else if (cardFilter === 'afastados') {
+      filters.situacao = 'Afastado'
+    } else if (cardFilter === 'cnh_vencida') {
+      filters.customFilter = CNH_VENCIDA_FILTER
+    } else if (situacao) {
+      filters.situacao = situacao
     }
-    if (cardFilter === 'afastados') {
-      return baseFiltered.filter((e) => comparable(e.situacao) === 'afastado')
-    }
-    if (cardFilter === 'cnh_vencida') {
-      return baseFiltered.filter((e) => comparable(e.situacao_cnh) === 'vencida')
-    }
-    return baseFiltered
-  }, [baseFiltered, cardFilter])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    return filters
+  }, [search, empresa, filial, funcao, situacao, cardFilter, page])
+
+  // Busca apenas a página corrente do servidor
+  const loadPage = useCallback(async () => {
+    const runId = ++listRunId.current
+    loadInProgress.current = true
+    setLoading(true)
+    try {
+      const result = await listEmployees(activeFilters)
+      if (runId !== listRunId.current) return
+
+      setEmployees(normalizeEmployees(result.items))
+      setTotalItems(result.totalItems)
+      setTotalPages(Math.max(1, result.totalPages))
+    } catch (err) {
+      if (runId === listRunId.current) {
+        console.error('Erro ao listar página de funcionários:', err)
+        toast.error('Não foi possível carregar a lista de funcionários')
+      }
+    } finally {
+      if (runId === listRunId.current) {
+        loadInProgress.current = false
+        lastLoadedAt.current = Date.now()
+        setLoading(false)
+      }
+    }
+  }, [activeFilters])
+
+  // Disparo da listagem paginada
+  useEffect(() => {
+    void loadPage()
+  }, [loadPage])
+
+  // Disparo dos contadores dos cards
+  useEffect(() => {
+    void loadSummary()
+  }, [loadSummary])
+
+  // Throttled reload para evitar 429 nas atualizações via realtime
+  const requestReload = useCallback(() => {
+    if (loadInProgress.current) return
+    if (Date.now() - lastLoadedAt.current < RELOAD_THROTTLE_MS) return
+    void loadPage()
+    void loadSummary()
+  }, [loadPage, loadSummary])
+
+  useRealtime('employees', () => {
+    requestReload()
+  })
 
   useEffect(() => {
     setPage(1)
@@ -273,46 +343,65 @@ export default function Funcionarios() {
     setCardFilter('todos')
   }
 
-  const exportCsv = () => {
-    const header = [
-      'Chapa',
-      'Nome',
-      'Registro CNH',
-      'Empresa',
-      'Filial/Garagem',
-      'Função',
-      'Situação',
-      'CNH',
-      'Validade CNH',
-    ]
-    const escape = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`
-    const rows = filtered.map((employee) => {
-      const status = cnhStatus(employee)
-      return [
-        employee.chapa,
-        employee.name,
-        employee.cnh_numero || '',
-        employee.company || '',
-        employee.filial || '',
-        employee.funcao || '',
-        employee.situacao || '',
-        status.label,
-        status.date ?? '',
+  const exportData = async () => {
+    if (totalItems === 0 || exporting) return
+    setExporting(true)
+    const toastId = toast.loading('Gerando arquivo da consulta…')
+    try {
+      // Baixa os registros que batem com o filtro atual para exportar
+      const exportFilters: EmployeeFilters = {
+        search: activeFilters.search,
+        empresa: activeFilters.empresa,
+        filial: activeFilters.filial,
+        funcao: activeFilters.funcao,
+        situacao: activeFilters.situacao,
+        customFilter: activeFilters.customFilter,
+      }
+      const allData = await listAllEmployees(exportFilters)
+      const normalized = normalizeEmployees(allData)
+
+      const rows = normalized.map((employee) => {
+        const status = cnhStatus(employee)
+        return {
+          Chapa: employee.chapa,
+          Nome: employee.name,
+          'Registro CNH': employee.cnh_numero || '',
+          Empresa: employee.company || '',
+          'Filial/Garagem': employee.filial || '',
+          Função: employee.funcao || '',
+          Situação: employee.situacao || '',
+          CNH: status.label,
+          'Validade CNH': status.date ?? '',
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(rows)
+      worksheet['!cols'] = [
+        { wch: 14 },
+        { wch: 32 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 16 },
       ]
-        .map(escape)
-        .join(';')
-    })
-    const csv = '\uFEFF' + [header.map(escape).join(';'), ...rows].join('\r\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `matriz-funcionarios-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    toast.success(`Consulta exportada (${filtered.length} registro(s))`)
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Matriz')
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(workbook, `matriz-funcionarios-${dateStr}.xlsx`)
+      toast.dismiss(toastId)
+      toast.success(`Exportação concluída (${rows.length} registro(s))`)
+    } catch (error) {
+      console.error('Erro ao exportar funcionários:', error)
+      toast.dismiss(toastId)
+      toast.error('Não foi possível gerar a planilha de exportação')
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -449,12 +538,26 @@ export default function Funcionarios() {
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
-            colaborador(es)
+            Total de <span className="font-semibold text-foreground">{totalItems}</span>{' '}
+            colaborador(es) encontrado(s)
           </p>
-          <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
-            <FileDown className="mr-2 h-4 w-4" />
-            Exportar consulta
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void exportData()}
+            disabled={totalItems === 0 || exporting}
+          >
+            {exporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Exportando…
+              </>
+            ) : (
+              <>
+                <FileDown className="mr-2 h-4 w-4" />
+                Exportar .xlsx
+              </>
+            )}
           </Button>
         </div>
 
@@ -479,7 +582,7 @@ export default function Funcionarios() {
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((employee) => (
+                {employees.map((employee) => (
                   <tr
                     key={employee.id}
                     className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
@@ -514,7 +617,7 @@ export default function Funcionarios() {
                     </td>
                   </tr>
                 ))}
-                {pageItems.length === 0 && (
+                {employees.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum funcionário encontrado.
