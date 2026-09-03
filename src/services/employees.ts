@@ -225,6 +225,95 @@ export interface FuncionariosSummary {
   cnhVencida: number
 }
 
+export interface FiscaisSummary {
+  total: number
+  ativos: number
+  afastados: number
+}
+
+/**
+ * Calcula os contadores dos cards da tela de Atualização Fiscal diretamente no backend.
+ * Considera apenas colaboradores com função de fiscal (funcao ~ "fiscal") e aplica
+ * eventuais filtros de busca, filial/garagem e status de CNH.
+ */
+export async function getFiscaisSummary(
+  baseFilters: {
+    search?: string
+    filial?: string
+    cnhCategoryFilter?: 'todos' | 'Vencida' | 'A vencer' | 'Válida'
+  } = {},
+): Promise<{ summary: FiscaisSummary; hasError: boolean }> {
+  let hasError = false
+
+  const countSafe = async (situacao?: 'Ativo' | 'Afastado'): Promise<number> => {
+    try {
+      const parts: string[] = ['funcao ~ "fiscal"']
+      const search = (baseFilters.search ?? '').trim()
+      if (search) {
+        const escaped = search.replace(/"/g, '\\"')
+        parts.push(
+          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+        )
+      }
+      if (baseFilters.filial) {
+        parts.push(`filial = "${baseFilters.filial}"`)
+      }
+      if (situacao) {
+        parts.push(`situacao = "${situacao}"`)
+      }
+      if (baseFilters.cnhCategoryFilter === 'Vencida') {
+        parts.push(
+          '(situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (cnh_numero != "" && situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now))',
+        )
+      } else if (baseFilters.cnhCategoryFilter === 'A vencer') {
+        parts.push(
+          '(situacao_cnh = "A vencer" || (cnh_numero != "" && situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh >= @now && validade_cnh <= @now + 2592000))',
+        )
+      } else if (baseFilters.cnhCategoryFilter === 'Válida') {
+        parts.push(
+          '(cnh_numero != "" && situacao_cnh != "Sem CNH" && situacao_cnh != "Vencida" && situacao_cnh != "Vencida CNH" && situacao_cnh != "A vencer" && (validade_cnh = "" || validade_cnh > @now + 2592000))',
+        )
+      }
+
+      return await countEmployees(parts.join(' && '))
+    } catch (err) {
+      console.error('Erro ao contar fiscais no backend:', err)
+      hasError = true
+      return 0
+    }
+  }
+
+  // Executa com pequena pausa sequencial para evitar rajada de requisições simultâneas
+  let total = 0
+  let ativos = 0
+  let afastados = 0
+
+  try {
+    total = await countSafe()
+  } catch {
+    hasError = true
+  }
+
+  await wait(150)
+  try {
+    ativos = await countSafe('Ativo')
+  } catch {
+    hasError = true
+  }
+
+  await wait(150)
+  try {
+    afastados = await countSafe('Afastado')
+  } catch {
+    hasError = true
+  }
+
+  return {
+    summary: { total, ativos, afastados },
+    hasError,
+  }
+}
+
 export interface CnhsSummary {
   todas: number
   valida: number

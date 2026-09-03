@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Building2,
   FileCheck2,
@@ -15,7 +15,6 @@ import * as XLSX from 'xlsx'
 
 import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -28,12 +27,18 @@ import {
 } from '@/components/ui/dialog'
 import { useRealtime } from '@/hooks/use-realtime'
 import { daysUntil, formatDate, formatCnh } from '@/lib/format'
-import { listAllEmployees } from '@/services/employees'
+import {
+  getFiscaisSummary,
+  listAllEmployees,
+  listEmployees,
+  type EmployeeFilters,
+  type FiscaisSummary,
+} from '@/services/employees'
 import { createMovement } from '@/services/movements'
 import { createNotification } from '@/services/notifications'
-import type { Employee } from '@/lib/types'
+import { FILIAIS, type Employee } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { comparable, normalizeEmployees } from '@/lib/normalize'
+import { normalizeEmployees } from '@/lib/normalize'
 
 type CnhStatusCategory = 'Vencida' | 'A vencer' | 'Válida' | 'Sem CNH'
 
@@ -179,10 +184,19 @@ function Counter({
   )
 }
 
+const PAGE_SIZE = 15
+const RELOAD_THROTTLE_MS = 5_000
+
 export default function AtualizacaoFiscal() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [page, setPage] = useState(1)
+
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [garagem, setGaragem] = useState('')
   const [cnhStatusFilter, setCnhStatusFilter] = useState<
     'todos' | 'Vencida' | 'A vencer' | 'Válida'
@@ -192,92 +206,140 @@ export default function AtualizacaoFiscal() {
   const [observacoes, setObservacoes] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(async () => {
-    try {
-      const data = await listAllEmployees()
-      setEmployees(normalizeEmployees(data))
-    } catch {
-      toast.error('Não foi possível carregar os fiscais')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  useRealtime('employees', () => {
-    load()
+  const [summary, setSummary] = useState<FiscaisSummary>({
+    total: 0,
+    ativos: 0,
+    afastados: 0,
   })
 
-  const fiscais = useMemo(
-    () =>
-      employees.filter((employee) => {
-        const funcao = employee.funcao?.trim().toLowerCase()
-        return Boolean(funcao && funcao.includes('fiscal'))
-      }),
-    [employees],
-  )
+  // Guardas de concorrência e throttle para evitar rajada e erro 429
+  const listRunId = useRef(0)
+  const summaryRunId = useRef(0)
+  const loadInProgress = useRef(false)
+  const lastLoadedAt = useRef(0)
 
-  const garagens = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          fiscais.map((e) => (e.filial ?? '').trim()).filter((val): val is string => Boolean(val)),
-        ),
-      ).sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [fiscais],
-  )
+  // Debounce da busca textual
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
 
-  // Base filtrada pelos controles (busca + garagem + cnhStatusFilter)
-  const baseFiltered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    return fiscais.filter((employee) => {
-      if (
-        term &&
-        !employee.name.toLowerCase().includes(term) &&
-        !employee.chapa.toLowerCase().includes(term)
-      ) {
-        return false
-      }
+  // Volta à primeira página ao alterar qualquer filtro
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, garagem, cnhStatusFilter, cardFilter])
 
-      if (garagem && (employee.filial ?? '').trim() !== garagem) {
-        return false
-      }
+  // Lista de garagens disponíveis para filtro
+  const garagens = useMemo(() => FILIAIS.filter((f) => f !== 'ITAQUERA'), [])
 
-      if (cnhStatusFilter !== 'todos') {
-        const category = getCnhCategory(employee)
-        if (category !== cnhStatusFilter) {
-          return false
-        }
-      }
+  // Monta a expressão de filtro para a categoria de CNH no servidor
+  const cnhCustomFilter = useMemo(() => {
+    if (cnhStatusFilter === 'Vencida') {
+      return '(situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (cnh_numero != "" && situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now))'
+    }
+    if (cnhStatusFilter === 'A vencer') {
+      return '(situacao_cnh = "A vencer" || (cnh_numero != "" && situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh >= @now && validade_cnh <= @now + 2592000))'
+    }
+    if (cnhStatusFilter === 'Válida') {
+      return '(cnh_numero != "" && situacao_cnh != "Sem CNH" && situacao_cnh != "Vencida" && situacao_cnh != "Vencida CNH" && situacao_cnh != "A vencer" && (validade_cnh = "" || validade_cnh > @now + 2592000))'
+    }
+    return undefined
+  }, [cnhStatusFilter])
 
-      return true
-    })
-  }, [fiscais, search, garagem, cnhStatusFilter])
+  // Filtros ativos para a consulta paginada da tabela
+  const activeFilters = useMemo<EmployeeFilters>(() => {
+    const customParts: string[] = ['funcao ~ "fiscal"']
+    if (cnhCustomFilter) {
+      customParts.push(cnhCustomFilter)
+    }
 
-  // Contadores recalculados com base no universo filtrado pelos controles
-  const resumo = useMemo(
-    () => ({
-      total: baseFiltered.length,
-      ativos: baseFiltered.filter((employee) => comparable(employee.situacao) === 'ativo').length,
-      afastados: baseFiltered.filter((employee) => comparable(employee.situacao) === 'afastado')
-        .length,
-    }),
-    [baseFiltered],
-  )
+    const filters: EmployeeFilters = {
+      search: debouncedSearch.trim() || undefined,
+      filial: garagem || undefined,
+      customFilter: customParts.join(' && '),
+      page,
+      perPage: PAGE_SIZE,
+      sort: 'chapa',
+    }
 
-  // Lista final combinada com o clique no card de resumo
-  const filtered = useMemo(() => {
     if (cardFilter === 'ativos') {
-      return baseFiltered.filter((e) => comparable(e.situacao) === 'ativo')
+      filters.situacao = 'Ativo'
+    } else if (cardFilter === 'afastados') {
+      filters.situacao = 'Afastado'
     }
-    if (cardFilter === 'afastados') {
-      return baseFiltered.filter((e) => comparable(e.situacao) === 'afastado')
+
+    return filters
+  }, [debouncedSearch, garagem, cnhCustomFilter, cardFilter, page])
+
+  // Carrega os contadores dos cards no backend
+  const loadSummary = useCallback(async () => {
+    const runId = ++summaryRunId.current
+    try {
+      const res = await getFiscaisSummary({
+        search: debouncedSearch.trim(),
+        filial: garagem || undefined,
+        cnhCategoryFilter: cnhStatusFilter,
+      })
+      if (runId !== summaryRunId.current) return
+      setSummary(res.summary)
+    } catch (err) {
+      if (runId === summaryRunId.current) {
+        console.error('Erro ao carregar contadores de fiscais:', err)
+      }
     }
-    return baseFiltered
-  }, [baseFiltered, cardFilter])
+  }, [debouncedSearch, garagem, cnhStatusFilter])
+
+  // Busca a página atual de fiscais do servidor
+  const loadPage = useCallback(async () => {
+    const runId = ++listRunId.current
+    loadInProgress.current = true
+    setLoading(true)
+    try {
+      const result = await listEmployees(activeFilters)
+      if (runId !== listRunId.current) return
+
+      setEmployees(normalizeEmployees(result.items))
+      setTotalItems(result.totalItems)
+      setTotalPages(Math.max(1, result.totalPages))
+    } catch (err) {
+      if (runId !== listRunId.current) return
+      console.error('Erro ao listar página de fiscais:', err)
+      toast.error('Não foi possível carregar os fiscais')
+    } finally {
+      if (runId === listRunId.current) {
+        loadInProgress.current = false
+        lastLoadedAt.current = Date.now()
+        setLoading(false)
+      }
+    }
+  }, [activeFilters])
+
+  // Executa a listagem da página
+  useEffect(() => {
+    void loadPage()
+  }, [loadPage])
+
+  // Executa os contadores com debounce e espaçamento de 300ms para evitar rajadas simultâneas
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadSummary()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [loadSummary])
+
+  // Throttled reload para eventos em tempo real
+  const requestReload = useCallback(() => {
+    if (loadInProgress.current) return
+    if (Date.now() - lastLoadedAt.current < RELOAD_THROTTLE_MS) return
+    void loadPage()
+    void loadSummary()
+  }, [loadPage, loadSummary])
+
+  useRealtime('employees', () => {
+    requestReload()
+  })
 
   const handleCardClick = (filter: FiscalCardFilter) => {
     if (filter === 'todos' || cardFilter === filter) {
@@ -298,14 +360,26 @@ export default function AtualizacaoFiscal() {
     search || garagem || cnhStatusFilter !== 'todos' || cardFilter !== 'todos',
   )
 
-  const exportXlsx = useCallback(() => {
-    if (filtered.length === 0) {
+  const exportXlsx = useCallback(async () => {
+    if (totalItems === 0 || exporting) {
       toast.error('Nenhum fiscal para exportar.')
       return
     }
 
+    setExporting(true)
+    const toastId = toast.loading('Gerando arquivo da consulta…')
     try {
-      const rows = filtered.map((employee) => {
+      const exportFilters: EmployeeFilters = {
+        search: activeFilters.search,
+        filial: activeFilters.filial,
+        situacao: activeFilters.situacao,
+        customFilter: activeFilters.customFilter,
+        sort: 'chapa',
+      }
+      const allData = await listAllEmployees(exportFilters)
+      const normalized = normalizeEmployees(allData)
+
+      const rows = normalized.map((employee) => {
         const cnhInfo = cnhStatus(employee)
         return {
           REGISTRO: employee.chapa,
@@ -340,12 +414,16 @@ export default function AtualizacaoFiscal() {
 
       const dateStr = new Date().toISOString().slice(0, 10)
       XLSX.writeFile(workbook, `fiscais-${dateStr}.xlsx`)
-      toast.success(`Exportação concluída (${filtered.length} registro(s))`)
+      toast.dismiss(toastId)
+      toast.success(`Exportação concluída (${rows.length} registro(s))`)
     } catch (error) {
       console.error('Erro ao exportar fiscais para XLSX:', error)
+      toast.dismiss(toastId)
       toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
+    } finally {
+      setExporting(false)
     }
-  }, [filtered])
+  }, [totalItems, exporting, activeFilters])
 
   const handleAbrirProcesso = async () => {
     if (!processoTarget) return
@@ -394,12 +472,21 @@ export default function AtualizacaoFiscal() {
             type="button"
             variant="outline"
             size="default"
-            onClick={exportXlsx}
-            disabled={filtered.length === 0}
+            onClick={() => void exportXlsx()}
+            disabled={totalItems === 0 || exporting}
             className="inline-flex h-10 items-center gap-2"
           >
-            <FileDown className="h-4 w-4" />
-            Exportar .xlsx
+            {exporting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Exportando…
+              </>
+            ) : (
+              <>
+                <FileDown className="h-4 w-4" />
+                Exportar .xlsx
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -420,7 +507,7 @@ export default function AtualizacaoFiscal() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Counter
             label="Total na matriz"
-            value={resumo.total}
+            value={summary.total}
             icon={Users}
             tone="slate"
             active={cardFilter === 'todos'}
@@ -428,7 +515,7 @@ export default function AtualizacaoFiscal() {
           />
           <Counter
             label="Ativos"
-            value={resumo.ativos}
+            value={summary.ativos}
             icon={UserCheck}
             tone="green"
             active={cardFilter === 'ativos'}
@@ -436,7 +523,7 @@ export default function AtualizacaoFiscal() {
           />
           <Counter
             label="Afastados"
-            value={resumo.afastados}
+            value={summary.afastados}
             icon={UserMinus}
             tone="orange"
             active={cardFilter === 'afastados'}
@@ -499,7 +586,7 @@ export default function AtualizacaoFiscal() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm text-muted-foreground">
-              Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+              Exibindo <span className="font-semibold text-foreground">{totalItems}</span>{' '}
               fiscal(is) localizado(s) na matriz
             </p>
             {cardFilter !== 'todos' && (
@@ -541,7 +628,7 @@ export default function AtualizacaoFiscal() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((employee) => (
+                {employees.map((employee) => (
                   <tr
                     key={employee.id}
                     className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
@@ -587,7 +674,7 @@ export default function AtualizacaoFiscal() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
+                {employees.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum fiscal encontrado.
@@ -598,6 +685,32 @@ export default function AtualizacaoFiscal() {
             </table>
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t p-4 text-sm">
+            <span className="text-muted-foreground">
+              Página {page} de {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                className="rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-muted disabled:opacity-40"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                className="rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-muted disabled:opacity-40"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal de abertura de processo */}
