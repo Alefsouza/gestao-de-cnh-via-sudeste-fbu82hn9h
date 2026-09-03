@@ -18,7 +18,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import { listMovementsByEmployee } from '@/services/movements'
-import { FILIAIS, FUNCOES, SITUACOES } from '@/lib/types'
+import { FILIAIS, SITUACOES } from '@/lib/types'
 import type { Employee, Movement } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -135,6 +135,14 @@ export default function Funcionarios() {
 
   const empresas = useMemo(
     () => Array.from(new Set(employees.map((e) => e.company).filter(Boolean))).sort(),
+    [employees],
+  )
+
+  const funcoes = useMemo(
+    () =>
+      Array.from(new Set(employees.map((e) => (e.funcao ?? '').trim()).filter(Boolean))).sort(
+        (a, b) => a.localeCompare(b, 'pt-BR'),
+      ),
     [employees],
   )
 
@@ -290,7 +298,7 @@ export default function Funcionarios() {
           </select>
           <select value={funcao} onChange={(e) => setFuncao(e.target.value)} className={inputClass}>
             <option value="">Todas as funções</option>
-            {FUNCOES.map((item) => (
+            {funcoes.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
