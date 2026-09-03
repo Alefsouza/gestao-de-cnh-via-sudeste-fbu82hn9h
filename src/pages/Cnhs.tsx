@@ -23,7 +23,7 @@ type SortDirection = 'asc' | 'desc'
 const TABS: { key: StatusFilter; label: string }[] = [
   { key: 'todas', label: 'Todas' },
   { key: 'Válida', label: 'Válidas' },
-  { key: 'A vencer', label: 'A vencer' },
+  { key: 'A vencer', label: 'Vence Hoje' },
   { key: 'Vencida', label: 'Vencidas' },
 ]
 
