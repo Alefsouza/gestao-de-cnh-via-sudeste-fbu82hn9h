@@ -102,6 +102,9 @@ export async function listEmployeesPage(page: number, perPage: number) {
  * 1) situacao_cnh = 'Vencida' OU 'Vencida CNH'
  * 2) OU situacao_cnh != 'Sem CNH' E validade_cnh preenchida e anterior à data/hora atual.
  */
+export const CNH_VALIDA_FIELD_FILTER =
+  'cnh_numero != "" && situacao_cnh != "Sem CNH" && situacao_cnh != ""'
+
 export const CNH_VENCIDA_FILTER =
   'situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now)'
 
@@ -220,6 +223,91 @@ export interface FuncionariosSummary {
   ativos: number
   afastados: number
   cnhVencida: number
+}
+
+export interface CnhsSummary {
+  todas: number
+  valida: number
+  aVencer: number
+  vencida: number
+}
+
+/**
+ * Calcula os contadores dos cards e abas da tela de CNHs diretamente no backend PocketBase.
+ * Respeita os filtros ativos de busca, filial/garagem e situação do funcionário (Ativo/Afastado).
+ */
+export async function getCnhsSummary(
+  baseFilters: {
+    search?: string
+    filial?: string
+    situacao?: string
+  } = {},
+): Promise<{ summary: CnhsSummary; hasError: boolean }> {
+  let hasError = false
+
+  const countSafe = async (extraFilter?: string): Promise<number> => {
+    try {
+      const parts: string[] = [CNH_VALIDA_FIELD_FILTER]
+      const search = (baseFilters.search ?? '').trim()
+      if (search) {
+        const escaped = search.replace(/"/g, '\\"')
+        parts.push(
+          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+        )
+      }
+      if (baseFilters.filial) {
+        parts.push(`filial = "${baseFilters.filial}"`)
+      }
+      if (baseFilters.situacao) {
+        parts.push(`situacao = "${baseFilters.situacao}"`)
+      }
+      if (extraFilter) {
+        parts.push(`(${extraFilter})`)
+      }
+
+      const combined = parts.join(' && ')
+      return await countEmployees(combined)
+    } catch (err) {
+      console.error('Erro ao contar CNHs no backend:', err)
+      hasError = true
+      return 0
+    }
+  }
+
+  const results = await Promise.allSettled([
+    (async () => countSafe())(),
+    (async () => {
+      await wait(100)
+      return countSafe('situacao_cnh = "Válida"')
+    })(),
+    (async () => {
+      await wait(200)
+      return countSafe('situacao_cnh = "A vencer"')
+    })(),
+    (async () => {
+      await wait(300)
+      return countSafe('situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH"')
+    })(),
+  ])
+
+  const todas = results[0].status === 'fulfilled' ? results[0].value : 0
+  const valida = results[1].status === 'fulfilled' ? results[1].value : 0
+  const aVencer = results[2].status === 'fulfilled' ? results[2].value : 0
+  const vencida = results[3].status === 'fulfilled' ? results[3].value : 0
+
+  if (results.some((r) => r.status === 'rejected')) {
+    hasError = true
+  }
+
+  return {
+    summary: {
+      todas,
+      valida,
+      aVencer,
+      vencida,
+    },
+    hasError,
+  }
 }
 
 /**

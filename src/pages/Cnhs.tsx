@@ -16,11 +16,22 @@ import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
 import { daysUntil, formatDate, formatCnh } from '@/lib/format'
-import { listAllEmployees } from '@/services/employees'
+import {
+  CNH_VALIDA_FIELD_FILTER,
+  getCnhsSummary,
+  listAllEmployees,
+  listEmployees,
+  type CnhsSummary,
+  type EmployeeFilters,
+} from '@/services/employees'
 import { FILIAIS } from '@/lib/types'
 import type { Employee } from '@/lib/types'
 
+const PAGE_SIZE = 15
+const RELOAD_THROTTLE_MS = 5_000
+
 type StatusFilter = 'todas' | 'Válida' | 'A vencer' | 'Vencida'
+type SituacaoFilter = 'todos' | 'Ativo' | 'Afastado'
 type SortField = 'validade' | 'dias'
 type SortDirection = 'asc' | 'desc'
 
@@ -41,11 +52,23 @@ function daysLabel(days: number | null): string {
 export default function Cnhs() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [tab, setTab] = useState<StatusFilter>('todas')
   const [search, setSearch] = useState('')
   const [garagem, setGaragem] = useState('')
+  const [situacao, setSituacao] = useState<SituacaoFilter>('todos')
+  const [page, setPage] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [sortField, setSortField] = useState<SortField>('validade')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  const [counts, setCounts] = useState<Record<StatusFilter, number>>({
+    todas: 0,
+    Válida: 0,
+    'A vencer': 0,
+    Vencida: 0,
+  })
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -54,123 +77,145 @@ export default function Cnhs() {
       setSortField(field)
       setSortDirection('asc')
     }
+    setPage(1)
   }
 
-  const loadRunId = useRef(0)
+  const listRunId = useRef(0)
+  const summaryRunId = useRef(0)
+  const loadInProgress = useRef(false)
   const lastLoadedAt = useRef(0)
 
-  const load = useCallback(async () => {
-    const runId = ++loadRunId.current
+  // Reseta a página para 1 quando os filtros mudam
+  useEffect(() => {
+    setPage(1)
+  }, [search, tab, garagem, situacao])
+
+  // Carrega os contadores dos cards e abas no backend de forma leve e pontual
+  const loadSummary = useCallback(async () => {
+    const runId = ++summaryRunId.current
+    try {
+      const res = await getCnhsSummary({
+        search: search.trim(),
+        filial: garagem || undefined,
+        situacao: situacao === 'todos' ? undefined : situacao,
+      })
+      if (runId !== summaryRunId.current) return
+      setCounts({
+        todas: res.summary.todas,
+        Válida: res.summary.valida,
+        'A vencer': res.summary.aVencer,
+        Vencida: res.summary.vencida,
+      })
+    } catch (err) {
+      if (runId === summaryRunId.current) {
+        console.error('Erro ao carregar contadores de CNH:', err)
+      }
+    }
+  }, [search, garagem, situacao])
+
+  // Filtros ativos para a consulta paginada
+  const activeFilters = useMemo<EmployeeFilters>(() => {
+    const customParts: string[] = [CNH_VALIDA_FIELD_FILTER]
+
+    if (tab === 'Válida') {
+      customParts.push('situacao_cnh = "Válida"')
+    } else if (tab === 'A vencer') {
+      customParts.push('situacao_cnh = "A vencer"')
+    } else if (tab === 'Vencida') {
+      customParts.push('situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH"')
+    }
+
+    // Ordenação no backend por validade_cnh quando sortField for validade ou dias
+    const pbSort = sortDirection === 'asc' ? '+validade_cnh,chapa' : '-validade_cnh,chapa'
+
+    return {
+      search: search.trim() || undefined,
+      filial: garagem || undefined,
+      situacao: situacao === 'todos' ? undefined : situacao,
+      customFilter: customParts.join(' && '),
+      page,
+      perPage: PAGE_SIZE,
+      sort: pbSort,
+    }
+  }, [search, garagem, situacao, tab, page, sortDirection])
+
+  // Busca apenas a página corrente do servidor
+  const loadPage = useCallback(async () => {
+    const runId = ++listRunId.current
+    loadInProgress.current = true
     setLoading(true)
     try {
-      const data = await listAllEmployees()
-      if (runId !== loadRunId.current) return
-      setEmployees(data)
-    } catch {
-      if (runId !== loadRunId.current) return
+      const result = await listEmployees(activeFilters)
+      if (runId !== listRunId.current) return
+
+      setEmployees(result.items)
+      setTotalItems(result.totalItems)
+      setTotalPages(Math.max(1, result.totalPages))
+    } catch (err) {
+      if (runId !== listRunId.current) return
+      console.error('Erro ao listar página de CNHs:', err)
       toast.error('Não foi possível carregar as CNHs')
     } finally {
-      if (runId === loadRunId.current) {
+      if (runId === listRunId.current) {
+        loadInProgress.current = false
         lastLoadedAt.current = Date.now()
         setLoading(false)
       }
     }
-  }, [])
+  }, [activeFilters])
 
   useEffect(() => {
-    load()
-  }, [load])
+    void loadPage()
+  }, [loadPage])
+
+  // Carrega os contadores com debounce para evitar requisições repetidas ao digitar
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadSummary()
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [loadSummary])
+
+  // Recarregamento via realtime com throttle para evitar rajadas e erro 429
+  const requestReload = useCallback(() => {
+    if (loadInProgress.current) return
+    if (Date.now() - lastLoadedAt.current < RELOAD_THROTTLE_MS) return
+    void loadPage()
+    void loadSummary()
+  }, [loadPage, loadSummary])
 
   useRealtime('employees', () => {
-    // Evita refetch em rajada quando o cron atualiza muitos registros de uma vez
-    if (Date.now() - lastLoadedAt.current < 10_000) return
-    load()
+    requestReload()
   })
 
-  const employeesWithCnh = useMemo(
-    () =>
-      employees.filter(
-        (employee) =>
-          Boolean(employee.cnh_numero && employee.cnh_numero.trim()) &&
-          employee.situacao_cnh !== 'Sem CNH' &&
-          employee.situacao_cnh !== '',
-      ),
-    [employees],
-  )
-
-  const counts = useMemo(() => {
-    const byStatus = (status: StatusFilter) =>
-      employeesWithCnh.filter((item) => item.situacao_cnh === status).length
-    return {
-      todas: employeesWithCnh.length,
-      Válida: byStatus('Válida'),
-      'A vencer': byStatus('A vencer'),
-      Vencida: byStatus('Vencida'),
-    } as Record<StatusFilter, number>
-  }, [employeesWithCnh])
-
-  const filtered = useMemo(
-    () =>
-      employeesWithCnh
-        .filter((employee) => {
-          const term = search.trim().toLowerCase()
-          if (!term) return true
-          const nameMatch = (employee.name ?? '').toLowerCase().includes(term)
-          const chapaMatch = (employee.chapa ?? '').toLowerCase().includes(term)
-          const cnhMatch = (employee.cnh_numero ?? '').toLowerCase().includes(term)
-          return nameMatch || chapaMatch || cnhMatch
-        })
-        .filter((employee) => (tab === 'todas' ? true : employee.situacao_cnh === tab))
-        .filter((employee) => (garagem ? employee.filial === garagem : true))
-        .sort((a, b) => {
-          if (sortField === 'validade') {
-            const valA = a.validade_cnh
-              ? new Date(a.validade_cnh).getTime()
-              : sortDirection === 'asc'
-                ? Infinity
-                : -Infinity
-            const valB = b.validade_cnh
-              ? new Date(b.validade_cnh).getTime()
-              : sortDirection === 'asc'
-                ? Infinity
-                : -Infinity
-            const diff = valA - valB
-            return sortDirection === 'asc' ? diff : -diff
-          }
-
-          if (sortField === 'dias') {
-            const daysA = daysUntil(a.validade_cnh)
-            const daysB = daysUntil(b.validade_cnh)
-            const numA = daysA === null ? (sortDirection === 'asc' ? Infinity : -Infinity) : daysA
-            const numB = daysB === null ? (sortDirection === 'asc' ? Infinity : -Infinity) : daysB
-            const diff = numA - numB
-            return sortDirection === 'asc' ? diff : -diff
-          }
-
-          return 0
-        }),
-    [employeesWithCnh, search, tab, garagem, sortField, sortDirection],
-  )
-
-  const exportXlsx = useCallback(() => {
-    if (filtered.length === 0) {
-      toast.error('Nenhuma CNH para exportar.')
-      return
-    }
-
+  // Exportação para XLSX respeitando todos os filtros ativos no momento do clique
+  const exportXlsx = useCallback(async () => {
+    if (totalItems === 0 || exporting) return
+    setExporting(true)
+    const toastId = toast.loading('Gerando arquivo da consulta…')
     try {
-      const rows = filtered.map((employee) => {
+      const exportFilters: EmployeeFilters = {
+        search: activeFilters.search,
+        filial: activeFilters.filial,
+        situacao: activeFilters.situacao,
+        customFilter: activeFilters.customFilter,
+        sort: activeFilters.sort,
+      }
+      const allData = await listAllEmployees(exportFilters)
+
+      const rows = allData.map((employee) => {
         const days = daysUntil(employee.validade_cnh)
         return {
           REGISTRO: employee.chapa,
           Nome: employee.name,
           Função: employee.funcao || '',
           'Filial/Garagem': employee.filial || '',
+          'Situação Funcionário': employee.situacao || '',
           CNH: formatCnh(employee.cnh_categoria, employee.cnh_numero),
           Categoria: employee.cnh_categoria || '',
           Validade: formatDate(employee.validade_cnh),
           'Dias para vencer': daysLabel(days),
-          Situação: employee.situacao_cnh || '',
+          'Situação CNH': employee.situacao_cnh || '',
         }
       })
 
@@ -180,11 +225,12 @@ export default function Cnhs() {
         { wch: 32 }, // Nome
         { wch: 24 }, // Função
         { wch: 20 }, // Filial/Garagem
+        { wch: 22 }, // Situação Funcionário
         { wch: 20 }, // CNH
         { wch: 12 }, // Categoria
         { wch: 16 }, // Validade
         { wch: 20 }, // Dias para vencer
-        { wch: 16 }, // Situação
+        { wch: 16 }, // Situação CNH
       ]
 
       const workbook = XLSX.utils.book_new()
@@ -192,12 +238,16 @@ export default function Cnhs() {
 
       const dateStr = new Date().toISOString().slice(0, 10)
       XLSX.writeFile(workbook, `cnhs-${dateStr}.xlsx`)
-      toast.success(`Exportação concluída (${filtered.length} registro(s))`)
+      toast.dismiss(toastId)
+      toast.success(`Exportação concluída (${allData.length} registro(s))`)
     } catch (error) {
       console.error('Erro ao exportar CNHs para XLSX:', error)
+      toast.dismiss(toastId)
       toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
+    } finally {
+      setExporting(false)
     }
-  }, [filtered])
+  }, [totalItems, exporting, activeFilters])
 
   const vencidasCount = counts['Vencida']
 
@@ -220,12 +270,21 @@ export default function Cnhs() {
             type="button"
             variant="outline"
             size="default"
-            onClick={exportXlsx}
-            disabled={filtered.length === 0}
+            onClick={() => void exportXlsx()}
+            disabled={totalItems === 0 || exporting}
             className="inline-flex h-10 items-center gap-2"
           >
-            <FileDown className="h-4 w-4" />
-            Exportar .xlsx
+            {exporting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Exportando…
+              </>
+            ) : (
+              <>
+                <FileDown className="h-4 w-4" />
+                Exportar .xlsx
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -302,9 +361,20 @@ export default function Cnhs() {
               />
             </div>
             <select
+              value={situacao}
+              onChange={(event) => setSituacao(event.target.value as SituacaoFilter)}
+              className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Situação do funcionário"
+            >
+              <option value="todos">Todas as situações</option>
+              <option value="Ativo">Ativos</option>
+              <option value="Afastado">Afastados</option>
+            </select>
+            <select
               value={garagem}
               onChange={(event) => setGaragem(event.target.value)}
               className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Filial ou garagem"
             >
               <option value="">Todas as garagens</option>
               {FILIAIS.map((item) => (
@@ -314,6 +384,26 @@ export default function Cnhs() {
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            Total de <strong className="text-foreground">{totalItems}</strong> CNH(s) encontrada(s)
+          </span>
+          {(search || garagem || situacao !== 'todos' || tab !== 'todas') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('')
+                setGaragem('')
+                setSituacao('todos')
+                setTab('todas')
+              }}
+              className="font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -333,6 +423,7 @@ export default function Cnhs() {
                   <th className="px-4 py-3 font-semibold">Nome</th>
                   <th className="px-4 py-3 font-semibold">Função</th>
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
+                  <th className="px-4 py-3 font-semibold">Situação</th>
                   <th className="px-4 py-3 font-semibold">CNH</th>
                   <th className="px-4 py-3 font-semibold">Categoria</th>
                   <th className="px-4 py-3 font-semibold">
@@ -373,11 +464,11 @@ export default function Cnhs() {
                       )}
                     </button>
                   </th>
-                  <th className="px-4 py-3 font-semibold">Situação</th>
+                  <th className="px-4 py-3 font-semibold">Status CNH</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((employee) => {
+                {employees.map((employee) => {
                   const days = daysUntil(employee.validade_cnh)
                   return (
                     <tr
@@ -388,6 +479,9 @@ export default function Cnhs() {
                       <td className="px-4 py-3 font-medium">{employee.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge value={employee.situacao} />
+                      </td>
                       <td className="tabular-nums px-4 py-3 font-medium">
                         {formatCnh(employee.cnh_categoria, employee.cnh_numero)}
                       </td>
@@ -404,9 +498,9 @@ export default function Cnhs() {
                     </tr>
                   )
                 })}
-                {filtered.length === 0 && (
+                {employees.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={10} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum registro encontrado.
                     </td>
                   </tr>
@@ -415,6 +509,32 @@ export default function Cnhs() {
             </table>
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t p-4 text-sm">
+            <span className="text-muted-foreground">
+              Página {page} de {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                className="rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-muted disabled:opacity-40"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                className="rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-muted disabled:opacity-40"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
