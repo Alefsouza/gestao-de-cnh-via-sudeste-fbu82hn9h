@@ -144,43 +144,48 @@ routerAdd(
         return ''
       }
 
-      const mapRow = (norm) => ({
-        chapa: pick(norm, ['chapa', 'matricula']),
-        registro: pick(norm, ['registro', 'registro_rh', 'numero_registro']),
-        name: pick(norm, ['nome', 'name', 'nome_colaborador', 'colaborador']),
-        company: pick(norm, ['empresa', 'company', 'razao_social']),
-        filial: normFilial(norm),
-        funcao: pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador']),
-        situacao: normSituacao(norm),
-        cnh_numero: pick(norm, ['cnh_numero', 'numero_cnh', 'registro_cnh', 'cnh']),
-        cnh_categoria: pick(norm, ['cnh_categoria', 'categoria_cnh', 'categoria']),
-        validade_cnh: parseDate(
-          pick(norm, [
-            'validade_cnh',
-            'validade_da_cnh',
-            'vencimento_cnh',
-            'vencimentocnh',
-            'validade',
-          ]),
-        ),
-        situacao_cnh: normSituacaoCnh(norm),
-        motivo_afastamento: pick(norm, ['motivo_afastamento', 'motivo_do_afastamento', 'motivo']),
-        inicio_afastamento: parseDate(
-          pick(norm, ['inicio_afastamento', 'inicio_do_afastamento', 'data_inicio_afastamento']),
-        ),
-        previsao_retorno: parseDate(
-          pick(norm, ['previsao_retorno', 'previsao_de_retorno', 'data_retorno']),
-        ),
-        documento_fiscal: pick(norm, ['documento_fiscal', 'doc_fiscal', 'certificado_mope']),
-        validade_documento_fiscal: parseDate(
-          pick(norm, [
-            'validade_documento_fiscal',
-            'validade_doc_fiscal',
-            'validade_do_documento_fiscal',
-          ]),
-        ),
-        cpf: pick(norm, ['cpf', 'cpf_do_colaborador']),
-      })
+      const mapRow = (norm) => {
+        const registro = pick(norm, ['registro', 'registro_rh', 'numero_registro'])
+        return {
+          registro: registro,
+          // A view externa (VW_CONTROLE_CNH) NÃO envia `chapa` — apenas `registro`.
+          // `chapa` é obrigatório em `employees`, então herda de `registro`.
+          chapa: pick(norm, ['chapa', 'matricula']) || registro,
+          name: pick(norm, ['nome', 'name', 'nome_colaborador', 'colaborador']),
+          company: pick(norm, ['empresa', 'company', 'razao_social']),
+          filial: normFilial(norm),
+          funcao: pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador']),
+          situacao: normSituacao(norm),
+          cnh_numero: pick(norm, ['cnh_numero', 'numero_cnh', 'registro_cnh', 'cnh']),
+          cnh_categoria: pick(norm, ['cnh_categoria', 'categoria_cnh', 'categoria']),
+          validade_cnh: parseDate(
+            pick(norm, [
+              'validade_cnh',
+              'validade_da_cnh',
+              'vencimento_cnh',
+              'vencimentocnh',
+              'validade',
+            ]),
+          ),
+          situacao_cnh: normSituacaoCnh(norm),
+          motivo_afastamento: pick(norm, ['motivo_afastamento', 'motivo_do_afastamento', 'motivo']),
+          inicio_afastamento: parseDate(
+            pick(norm, ['inicio_afastamento', 'inicio_do_afastamento', 'data_inicio_afastamento']),
+          ),
+          previsao_retorno: parseDate(
+            pick(norm, ['previsao_retorno', 'previsao_de_retorno', 'data_retorno']),
+          ),
+          documento_fiscal: pick(norm, ['documento_fiscal', 'doc_fiscal', 'certificado_mope']),
+          validade_documento_fiscal: parseDate(
+            pick(norm, [
+              'validade_documento_fiscal',
+              'validade_doc_fiscal',
+              'validade_do_documento_fiscal',
+            ]),
+          ),
+          cpf: pick(norm, ['cpf', 'cpf_do_colaborador']),
+        }
+      }
 
       // ---- índices existentes (dedup por registro, depois chapa e cpf) ---------
       const existingAll = $app.findRecordsByFilter('employees', '', '', 0, 0)
