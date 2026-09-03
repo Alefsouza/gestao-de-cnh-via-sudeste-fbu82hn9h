@@ -433,7 +433,7 @@ export default function Afastados() {
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <CalendarX className="h-3.5 w-3.5" />
-        Datas de validade da CNH exibidas conforme o cadastro atualizado na matriz de funcionários.
+        Datas de validade da CNH exibidas conforme o cadastro atualizado no Globus.
       </p>
     </div>
   )
