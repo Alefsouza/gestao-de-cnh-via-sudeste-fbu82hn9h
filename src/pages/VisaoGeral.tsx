@@ -142,9 +142,7 @@ export default function VisaoGeral() {
     const afastados = normalized.filter(
       (employee) => comparable(employee.situacao) === 'afastado',
     ).length
-    const vencidas = normalized.filter(
-      (employee) => comparable(employee.funcao) === 'motorista' && isCnhVencida(employee),
-    ).length
+    const vencidas = normalized.filter((employee) => isCnhVencida(employee)).length
     const fiscais = normalized.filter((employee) =>
       comparable(employee.funcao).includes('fiscal'),
     ).length
@@ -161,7 +159,7 @@ export default function VisaoGeral() {
   const vencidasList = useMemo(
     () =>
       normalized
-        .filter((employee) => comparable(employee.funcao) === 'motorista' && isCnhVencida(employee))
+        .filter((employee) => isCnhVencida(employee))
         .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
         .slice(0, 5),
     [normalized],
@@ -217,7 +215,7 @@ export default function VisaoGeral() {
               to="/afastados"
             />
             <StatCard
-              label="CNHs vencidas de motoristas"
+              label="CNHs vencidas"
               value={stats.vencidas}
               icon={CreditCard}
               tone="red"
@@ -244,8 +242,10 @@ export default function VisaoGeral() {
           >
             <header className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4">
               <div>
-                <h2 className="text-base font-bold text-foreground">CNHs vencidas de motoristas</h2>
-                <p className="text-xs text-muted-foreground">Motoristas com CNH fora da validade</p>
+                <h2 className="text-base font-bold text-foreground">CNHs vencidas</h2>
+                <p className="text-xs text-muted-foreground">
+                  Colaboradores com CNH fora da validade
+                </p>
               </div>
               <Link
                 to="/cnhs"
