@@ -266,7 +266,7 @@ export default function VisaoGeral() {
                 <table className="w-full min-w-[760px] text-left text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="px-5 py-3 font-semibold">Chapa</th>
+                      <th className="px-5 py-3 font-semibold">registro</th>
                       <th className="px-5 py-3 font-semibold">Nome</th>
                       <th className="px-5 py-3 font-semibold">Empresa</th>
                       <th className="px-5 py-3 font-semibold">Filial/Garagem</th>
