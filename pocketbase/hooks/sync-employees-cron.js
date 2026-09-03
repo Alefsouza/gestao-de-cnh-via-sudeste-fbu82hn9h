@@ -168,7 +168,10 @@ cronAdd('sync_employees', '*/5 * * * *', () => {
       chapa: pick(norm, ['chapa', 'matricula']),
       registro: pick(norm, ['registro', 'registro_rh', 'numero_registro']),
       name: pick(norm, ['nome', 'name', 'nome_colaborador', 'colaborador']),
-      company: pick(norm, ['empresa', 'company', 'razao_social']),
+      // A view externa (VW_CONTROLE_CNH) NÃO envia a empresa — decisão de
+      // negócio: a empresa é SEMPRE "VIA SUDESTE", fixa para todos os
+      // registros (upsert), sem depender de campo vindo da view.
+      company: 'VIA SUDESTE',
       filial: normFilial(norm),
       funcao: normalizeFuncao(pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador'])),
       situacao: normSituacao(norm),
