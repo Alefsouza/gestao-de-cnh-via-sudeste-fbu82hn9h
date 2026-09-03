@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 
 import StatusBadge from '@/components/StatusBadge'
 import { useRealtime } from '@/hooks/use-realtime'
-import { daysUntil, formatDate } from '@/lib/format'
+import { daysUntil, formatDate, formatCnh } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import { FILIAIS } from '@/lib/types'
 import type { Employee } from '@/lib/types'
@@ -287,7 +287,9 @@ export default function Cnhs() {
                       <td className="px-4 py-3 font-medium">{employee.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
-                      <td className="tabular-nums px-4 py-3">{employee.cnh_numero || '—'}</td>
+                      <td className="tabular-nums px-4 py-3 font-medium">
+                        {formatCnh(employee.cnh_categoria, employee.cnh_numero)}
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {employee.cnh_categoria || '—'}
                       </td>

@@ -14,7 +14,7 @@ import { toast } from 'sonner'
 import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatCnh } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import { FILIAIS, SITUACOES } from '@/lib/types'
 import type { Employee } from '@/lib/types'
@@ -428,7 +428,7 @@ export default function Afastados() {
                     <td className="px-4 py-3">
                       <span className="block font-medium">{employee.name}</span>
                       <span className="block text-xs text-muted-foreground">
-                        Registro: {employee.cnh_numero || '—'}
+                        Registro: {formatCnh(employee.cnh_categoria, employee.cnh_numero)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>

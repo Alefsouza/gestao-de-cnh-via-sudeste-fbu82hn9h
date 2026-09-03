@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useRealtime } from '@/hooks/use-realtime'
-import { daysUntil, formatDate } from '@/lib/format'
+import { daysUntil, formatDate, formatCnh } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import { createMovement } from '@/services/movements'
 import { createNotification } from '@/services/notifications'
@@ -485,7 +485,7 @@ export default function AtualizacaoFiscal() {
                       <span className="block font-medium">{employee.name}</span>
                       <span className="block text-xs text-muted-foreground">
                         {employee.cnh_numero?.trim()
-                          ? `CNH: ${employee.cnh_numero.trim()}`
+                          ? `CNH: ${formatCnh(employee.cnh_categoria, employee.cnh_numero)}`
                           : 'Sem CNH'}
                       </span>
                     </td>

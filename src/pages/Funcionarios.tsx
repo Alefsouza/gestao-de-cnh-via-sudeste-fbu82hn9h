@@ -15,7 +15,7 @@ import StatusBadge from '@/components/StatusBadge'
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatCnh } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import { listMovementsByEmployee } from '@/services/movements'
 import { FILIAIS, SITUACOES } from '@/lib/types'
@@ -488,7 +488,9 @@ export default function Funcionarios() {
                     <td className="px-4 py-3">
                       <span className="block font-medium">{employee.name}</span>
                       <span className="block text-xs text-muted-foreground">
-                        {employee.cnh_numero ? `CNH: ${employee.cnh_numero}` : 'Sem CNH'}
+                        {employee.cnh_numero
+                          ? `CNH: ${formatCnh(employee.cnh_categoria, employee.cnh_numero)}`
+                          : 'Sem CNH'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>
@@ -599,7 +601,7 @@ export default function Funcionarios() {
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Número</dt>
                     <dd className="tabular-nums text-right font-medium">
-                      {selected.cnh_numero || '—'}
+                      {formatCnh(selected.cnh_categoria, selected.cnh_numero)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-4">

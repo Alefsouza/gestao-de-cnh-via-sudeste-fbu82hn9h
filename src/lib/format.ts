@@ -81,3 +81,26 @@ export function initials(name?: string | null): string {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
+
+/**
+ * Formata a exibição da CNH no padrão "CATCNH - NUMERO DA CNH".
+ * - Se tiver categoria e número: "D - 01234567890"
+ * - Se tiver apenas número: "01234567890"
+ * - Se não tiver número (ou vazio): fallback ("—" ou "Sem CNH", padrão "—")
+ */
+export function formatCnh(
+  categoria?: string | null,
+  numero?: string | null,
+  fallback = '—',
+): string {
+  const cat = (categoria ?? '').trim().toUpperCase()
+  const num = (numero ?? '').trim()
+
+  if (num && cat) {
+    return `${cat} - ${num}`
+  }
+  if (num) {
+    return num
+  }
+  return fallback
+}

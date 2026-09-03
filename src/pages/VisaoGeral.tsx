@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import StatCard from '@/components/StatCard'
 import StatusBadge from '@/components/StatusBadge'
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatDate, relativeDayLabel } from '@/lib/format'
+import { formatDate, formatCnh, relativeDayLabel } from '@/lib/format'
 import { listEmployeesPage } from '@/services/employees'
 import { triggerSync } from '@/lib/sync'
 import type { Employee } from '@/lib/types'
@@ -301,7 +301,7 @@ export default function VisaoGeral() {
                         </td>
                         <td className="px-5 py-3.5">
                           <span className="tabular-nums block font-medium text-foreground">
-                            {employee.cnh_numero || '—'}
+                            {formatCnh(employee.cnh_categoria, employee.cnh_numero)}
                           </span>
                           <span className="block text-xs text-muted-foreground">
                             Val. {formatDate(employee.validade_cnh)}

@@ -210,7 +210,9 @@ function runEmployeesSync(triggerLabel) {
           'catcnh',
           'cat_cnh',
           'cnh_categoria',
+          'cnhcategoria',
           'categoria_cnh',
+          'categoriacnh',
           'categoria',
         ]),
         validade_cnh: parseDate(
