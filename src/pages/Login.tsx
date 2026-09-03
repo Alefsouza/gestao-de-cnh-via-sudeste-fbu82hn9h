@@ -72,7 +72,7 @@ export default function Login() {
           {/* Cabeçalho do Card */}
           <div className="text-center">
             <h1 className="text-xl sm:text-2xl font-extrabold tracking-wider text-white uppercase drop-shadow-sm font-sans">
-              PORTAL RH / TREINAMENTO
+              GESTÃO DE CNH
             </h1>
             <p className="mt-1.5 text-xs sm:text-sm text-slate-200/80 font-normal">
               Insira suas credenciais para acessar sua conta
