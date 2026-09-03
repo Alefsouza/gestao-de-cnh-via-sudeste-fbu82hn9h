@@ -80,7 +80,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
         src={LOGO_SRC}
         alt="Via Sudeste"
         onError={() => setImgFailed(true)}
-        className={cn('h-10 w-auto max-w-[180px] object-contain', compact && 'h-8 max-w-[40px]')}
+        className="text-center"
       />
     </div>
   )
