@@ -132,7 +132,7 @@ function SidebarFooter({
               <span className="animate-ping-dot absolute inline-flex h-2 w-2 rounded-full bg-emerald-400" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
             </span>
-            <span className="text-xs font-semibold text-emerald-200">Matriz conectada</span>
+            <span className="text-xs font-semibold text-emerald-200">Globus conectado</span>
           </div>
           <p className="mt-1 truncate text-[11px] text-emerald-100/60">
             Base sincronizada do Globus{lastSync ? ` · ${relativeDayLabel(lastSync)}` : ''}
