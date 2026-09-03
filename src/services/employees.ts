@@ -108,53 +108,81 @@ export async function countEmployees(filter?: string): Promise<number> {
   })
 }
 
+export interface GaragemStat {
+  garagem: string
+  total: number
+}
+
 export interface VisaoGeralStats {
+  totalColaboradores: number
   ativos: number
   afastados: number
   vencidas: number
   fiscais: number
-  porGaragem: {
-    CURSINO: number
-    SAPOPEMBA: number
-  }
+  porGaragem: Record<string, number>
+  garagens: GaragemStat[]
 }
+
+/** Lista de filiais conhecidas para consulta pontual de contagem. */
+export const KNOWN_FILIAIS = ['CURSINO', 'SAPOPEMBA', 'GUAIANASES', 'ITAQUERA'] as const
 
 /**
  * Carrega todas as métricas da Visão Geral em paralelo usando contagens pontuais no backend,
  * tratando eventuais falhas individualmente para não derrubar o dashboard.
+ * Total de colaboradores conta todas as filiais e garagens da base.
  */
 export async function getVisaoGeralStats(): Promise<{ stats: VisaoGeralStats; hasError: boolean }> {
   let hasError = false
 
-  const countSafe = async (filter: string): Promise<number> => {
+  const countSafe = async (filter?: string): Promise<number> => {
     try {
       return await countEmployees(filter)
     } catch (err) {
-      console.error(`Erro ao contar colaboradores (${filter}):`, err)
+      console.error(`Erro ao contar colaboradores (${filter ?? 'total'}):`, err)
       hasError = true
       return 0
     }
   }
 
-  const [ativos, afastados, vencidas, fiscais, cursino, sapopemba] = await Promise.all([
-    countSafe('situacao = "Ativo"'),
-    countSafe('situacao = "Afastado"'),
-    countSafe(CNH_VENCIDA_FILTER),
-    countSafe('funcao ~ "fiscal"'),
-    countSafe('filial = "CURSINO"'),
-    countSafe('filial = "SAPOPEMBA"'),
-  ])
+  // Consulta em paralelo todas as métricas e as contagens por filial/garagem
+  const [totalColaboradores, ativos, afastados, vencidas, fiscais, ...filialCounts] =
+    await Promise.all([
+      countSafe(), // total geral de colaboradores na base employees
+      countSafe('situacao = "Ativo"'),
+      countSafe('situacao = "Afastado"'),
+      countSafe(CNH_VENCIDA_FILTER),
+      countSafe('funcao ~ "fiscal"'),
+      ...KNOWN_FILIAIS.map((garagem) => countSafe(`filial = "${garagem}"`)),
+    ])
+
+  const porGaragem: Record<string, number> = {}
+  const garagens: GaragemStat[] = []
+
+  KNOWN_FILIAIS.forEach((garagem, index) => {
+    const total = filialCounts[index] ?? 0
+    porGaragem[garagem] = total
+    if (total > 0) {
+      garagens.push({ garagem, total })
+    }
+  })
+
+  // Se houver registros sem filial ou em filial não listada, verifica a diferença
+  const somaConhecidas = Object.values(porGaragem).reduce((acc, curr) => acc + curr, 0)
+  if (totalColaboradores > somaConhecidas) {
+    const outros = totalColaboradores - somaConhecidas
+    porGaragem['OUTRAS'] = outros
+    garagens.push({ garagem: 'OUTRAS', total: outros })
+  }
 
   return {
     stats: {
+      totalColaboradores,
       ativos,
       afastados,
       vencidas,
       fiscais,
-      porGaragem: {
-        CURSINO: cursino,
-        SAPOPEMBA: sapopemba,
-      },
+      porGaragem,
+      garagens,
     },
     hasError,
   }

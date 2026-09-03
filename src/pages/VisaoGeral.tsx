@@ -24,16 +24,18 @@ import { getVisaoGeralStats, listCnhsVencidasTop, type VisaoGeralStats } from '@
 import { triggerSync } from '@/lib/sync'
 import type { Employee } from '@/lib/types'
 import { normalizeEmployees } from '@/lib/normalize'
-const GARAGENS = ['CURSINO', 'SAPOPEMBA'] as const
-
 /** Janela em que eventos de realtime são ignorados após um carregamento (evita refetch em rajada). */
 const RELOAD_THROTTLE_MS = 5_000
 
-/** Cores das barras por garagem (gradiente escuro -> claro). */
-const BAR_STYLES: Record<(typeof GARAGENS)[number], string> = {
+/** Cores conhecidas das barras por garagem com fallback para outras. */
+const BAR_STYLES: Record<string, string> = {
   CURSINO: 'bg-gradient-to-r from-[#14532D] to-[#16A34A]',
   SAPOPEMBA: 'bg-gradient-to-r from-[#8FA398] to-[#B9C7BE]',
+  GUAIANASES: 'bg-gradient-to-r from-[#0369A1] to-[#38BDF8]',
+  ITAQUERA: 'bg-gradient-to-r from-[#D97706] to-[#FBBF24]',
 }
+
+const DEFAULT_BAR_STYLE = 'bg-gradient-to-r from-[#4B5563] to-[#9CA3AF]'
 
 function DistribuitionBar({
   garagem,
@@ -41,7 +43,7 @@ function DistribuitionBar({
   percent,
   delay,
 }: {
-  garagem: (typeof GARAGENS)[number]
+  garagem: string
   total: number
   percent: number
   delay: number
@@ -62,7 +64,7 @@ function DistribuitionBar({
       </div>
       <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#E5E7EB]">
         <div
-          className={`h-full rounded-full transition-all duration-[600ms] ease-out ${BAR_STYLES[garagem]}`}
+          className={`h-full rounded-full transition-all duration-[600ms] ease-out ${BAR_STYLES[garagem] ?? DEFAULT_BAR_STYLE}`}
           style={{ width: mounted ? `${percent}%` : '0%' }}
         />
       </div>
@@ -76,10 +78,9 @@ export default function VisaoGeral() {
     afastados: 0,
     vencidas: 0,
     fiscais: 0,
-    porGaragem: {
-      CURSINO: 0,
-      SAPOPEMBA: 0,
-    },
+    totalColaboradores: 0,
+    porGaragem: {},
+    garagens: [],
   })
   const [vencidasRaw, setVencidasRaw] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -164,10 +165,10 @@ export default function VisaoGeral() {
   const vencidasList = useMemo(() => normalizeEmployees(vencidasRaw), [vencidasRaw])
 
   const hasBaseData =
+    stats.totalColaboradores > 0 ||
     stats.ativos > 0 ||
     stats.afastados > 0 ||
-    stats.porGaragem.CURSINO > 0 ||
-    stats.porGaragem.SAPOPEMBA > 0 ||
+    Object.values(stats.porGaragem).some((val) => val > 0) ||
     vencidasList.length > 0
 
   const handleSync = async () => {
@@ -189,7 +190,10 @@ export default function VisaoGeral() {
     }
   }
 
-  const totalGaragem = stats.porGaragem.CURSINO + stats.porGaragem.SAPOPEMBA
+  const totalColaboradores =
+    stats.totalColaboradores > 0
+      ? stats.totalColaboradores
+      : stats.garagens.reduce((acc, g) => acc + g.total, 0)
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -411,27 +415,25 @@ export default function VisaoGeral() {
           >
             <header>
               <h2 className="text-sm font-bold text-foreground">Distribuição por Garagem</h2>
-              <p className="text-xs text-muted-foreground">{totalGaragem} colaboradores</p>
+              <p className="text-xs text-muted-foreground">{totalColaboradores} colaboradores</p>
             </header>
             <div className="mt-4 space-y-4">
-              <DistribuitionBar
-                garagem="CURSINO"
-                total={stats.porGaragem.CURSINO}
-                percent={
-                  totalGaragem > 0 ? Math.round((stats.porGaragem.CURSINO / totalGaragem) * 100) : 0
-                }
-                delay={150}
-              />
-              <DistribuitionBar
-                garagem="SAPOPEMBA"
-                total={stats.porGaragem.SAPOPEMBA}
-                percent={
-                  totalGaragem > 0
-                    ? Math.round((stats.porGaragem.SAPOPEMBA / totalGaragem) * 100)
-                    : 0
-                }
-                delay={300}
-              />
+              {stats.garagens.map((item, index) => {
+                const percent =
+                  totalColaboradores > 0 ? Math.round((item.total / totalColaboradores) * 100) : 0
+                return (
+                  <DistribuitionBar
+                    key={item.garagem}
+                    garagem={item.garagem}
+                    total={item.total}
+                    percent={percent}
+                    delay={100 * (index + 1)}
+                  />
+                )
+              })}
+              {stats.garagens.length === 0 && !loading && (
+                <p className="text-xs text-muted-foreground">Nenhuma garagem cadastrada.</p>
+              )}
             </div>
           </section>
 

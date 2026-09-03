@@ -3,7 +3,7 @@ export interface Employee {
   chapa: string
   name: string
   company: string
-  filial: 'CURSINO' | 'SAPOPEMBA' | ''
+  filial: 'CURSINO' | 'SAPOPEMBA' | 'ITAQUERA' | 'GUAIANASES' | string
   funcao: string
   situacao: 'Ativo' | 'Afastado' | 'Desligado' | ''
   cnh_numero: string
@@ -53,7 +53,7 @@ export interface Notification {
   updated: string
 }
 
-export const FILIAIS = ['CURSINO', 'SAPOPEMBA'] as const
+export const FILIAIS = ['CURSINO', 'SAPOPEMBA', 'GUAIANASES', 'ITAQUERA'] as const
 export const SITUACOES = ['Ativo', 'Afastado', 'Desligado'] as const
 export const FUNCOES = ['Motorista', 'Fiscal de Viajem', 'Auxiliar Administrativo'] as const
 export const MOVEMENT_STAGES: MovementStage[] = [
