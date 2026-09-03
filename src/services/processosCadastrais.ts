@@ -39,6 +39,21 @@ export async function updateProcessoSituacao(
 }
 
 export async function deleteProcessoCadastral(id: string): Promise<boolean> {
-  await pb.collection('processos_cadastrais').delete(id)
-  return true
+  // IDs com prefixo 'seed-' ou sintéticos não existem no PocketBase
+  if (id.startsWith('seed-')) {
+    return true
+  }
+
+  try {
+    await pb.collection('processos_cadastrais').delete(id)
+    return true
+  } catch (error: any) {
+    // Se o registro já não existe (404), trata como sucesso pois o objetivo (não existir mais) foi atingido
+    const status = error?.status ?? error?.response?.status ?? error?.statusCode
+    const message = error?.message || ''
+    if (status === 404 || message.includes("The requested resource wasn't found")) {
+      return true
+    }
+    throw error
+  }
 }

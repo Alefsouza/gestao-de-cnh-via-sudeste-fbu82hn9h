@@ -144,113 +144,6 @@ interface ProcessoCadastral {
   garagem: 'CURSINO' | 'SAPOPEMBA' | string
 }
 
-// Dados de exemplo (genéricos, realistas) — cobrem os 5 tipos e várias etapas/situações
-const SEED: Omit<ProcessoCadastral, 'id'>[] = [
-  {
-    matricula: '10012',
-    colaborador: 'Carlos Eduardo Ramos',
-    funcao: 'Motorista',
-    processo: 'Inclusão',
-    etapa: 'Documentos solicitados',
-    prazo: '2026-09-10',
-    situacao: 'Pendente',
-    garagem: 'CURSINO',
-  },
-  {
-    matricula: '10015',
-    colaborador: 'Ana Paula Ferreira',
-    funcao: 'Fiscal de Viajem',
-    processo: 'Alteração',
-    etapa: 'Aguardando documentos',
-    prazo: '2026-09-05',
-    situacao: 'Pendente',
-    garagem: 'SAPOPEMBA',
-  },
-  {
-    matricula: '10018',
-    colaborador: 'Marcos Vinícius Alves',
-    funcao: 'Motorista',
-    processo: 'Exclusão',
-    etapa: 'Em conferência',
-    prazo: '2026-08-28',
-    situacao: 'Bloqueado',
-    garagem: 'CURSINO',
-  },
-  {
-    matricula: '10021',
-    colaborador: 'Juliana Castro Lima',
-    funcao: 'Auxiliar Administrativo',
-    processo: 'Atualização',
-    etapa: 'Documentos solicitados',
-    prazo: '2026-09-12',
-    situacao: 'Pendente',
-    garagem: 'SAPOPEMBA',
-  },
-  {
-    matricula: '10025',
-    colaborador: 'Rafael Souza Gomes',
-    funcao: 'Motorista',
-    processo: 'Atualização Fiscal',
-    etapa: 'Em conferência',
-    prazo: '2026-09-01',
-    situacao: 'Regular',
-    garagem: 'CURSINO',
-  },
-  {
-    matricula: '10028',
-    colaborador: 'Patrícia Menezes Silva',
-    funcao: 'Fiscal de Viajem',
-    processo: 'Inclusão',
-    etapa: 'Aguardando documentos',
-    prazo: '2026-09-08',
-    situacao: 'Bloqueado',
-    garagem: 'SAPOPEMBA',
-  },
-  {
-    matricula: '10032',
-    colaborador: 'Diego Almeida Costa',
-    funcao: 'Motorista',
-    processo: 'Alteração',
-    etapa: 'Concluído',
-    prazo: '2026-08-20',
-    situacao: 'Regular',
-    garagem: 'CURSINO',
-  },
-  {
-    matricula: '10035',
-    colaborador: 'Fernanda Ribeiro Dias',
-    funcao: 'Auxiliar Administrativo',
-    processo: 'Exclusão',
-    etapa: 'Concluído',
-    prazo: '2026-08-15',
-    situacao: 'Regular',
-    garagem: 'SAPOPEMBA',
-  },
-  {
-    matricula: '10038',
-    colaborador: 'Rodrigo Martins Pires',
-    funcao: 'Motorista',
-    processo: 'Atualização',
-    etapa: 'Em conferência',
-    prazo: '2026-09-03',
-    situacao: 'Regular',
-    garagem: 'CURSINO',
-  },
-  {
-    matricula: '10041',
-    colaborador: 'Camila Nogueira Farias',
-    funcao: 'Fiscal de Viajem',
-    processo: 'Atualização Fiscal',
-    etapa: 'Documentos solicitados',
-    prazo: '2026-09-14',
-    situacao: 'Pendente',
-    garagem: 'SAPOPEMBA',
-  },
-]
-
-const DRAFTS_KEY = 'processos-cadastrais:drafts'
-const SEED_KEY = 'processos-cadastrais:seed-v1'
-
 const ETAPA_INICIAL: Etapa = 'Documentos solicitados'
 
 export default function ProcessosCadastrais() {
@@ -276,27 +169,22 @@ export default function ProcessosCadastrais() {
   const carregarProcessos = useCallback(async () => {
     try {
       const records = await listProcessosCadastrais()
-      if (records.length > 0) {
-        setProcessos(
-          records.map((r) => ({
-            id: r.id,
-            matricula: r.matricula,
-            colaborador: r.colaborador,
-            funcao: r.funcao,
-            processo: r.processo,
-            etapa: r.etapa,
-            prazo: r.prazo,
-            situacao: r.situacao,
-            garagem: r.garagem || 'CURSINO',
-          })),
-        )
-      } else {
-        // Fallback local caso a tabela esteja limpa
-        setProcessos(SEED.map((item, index) => ({ ...item, id: `seed-${index + 1}` })))
-      }
+      setProcessos(
+        records.map((r) => ({
+          id: r.id,
+          matricula: r.matricula,
+          colaborador: r.colaborador,
+          funcao: r.funcao,
+          processo: r.processo,
+          etapa: r.etapa,
+          prazo: r.prazo,
+          situacao: r.situacao,
+          garagem: r.garagem || 'CURSINO',
+        })),
+      )
     } catch (err) {
       console.error('Erro ao carregar processos:', err)
-      setProcessos(SEED.map((item, index) => ({ ...item, id: `seed-${index + 1}` })))
+      setProcessos([])
     } finally {
       setLoading(false)
     }
@@ -527,14 +415,30 @@ export default function ProcessosCadastrais() {
   }, [processoAlterarSituacao, novaSituacaoTrafego, isTrafego, userGaragem])
 
   const handleDelete = useCallback(async (processo: ProcessoCadastral) => {
+    // Remove imediatamente da listagem local (optimistic update)
+    setProcessos((prev) => prev.filter((p) => p.id !== processo.id))
+    setDeletingProcesso(null)
+
     try {
       await deleteProcessoCadastral(processo.id)
-      setProcessos((prev) => prev.filter((p) => p.id !== processo.id))
-      setDeletingProcesso(null)
       toast.success('Processo excluído com sucesso')
-    } catch (err) {
-      console.error(err)
-      toast.error('Erro ao excluir processo no servidor')
+    } catch (err: any) {
+      const status = err?.status ?? err?.response?.status ?? err?.statusCode
+      const message = err?.message || ''
+      const isNotFound = status === 404 || message.includes("The requested resource wasn't found")
+
+      if (isNotFound) {
+        // Já não existe no servidor, considera sucesso silencioso
+        toast.success('Processo excluído com sucesso')
+      } else {
+        console.error('Erro ao excluir processo no servidor:', err)
+        toast.error('Erro ao excluir processo no servidor')
+        // Restaura na lista caso tenha ocorrido outro erro não-404
+        setProcessos((prev) => {
+          if (prev.some((p) => p.id === processo.id)) return prev
+          return [processo, ...prev]
+        })
+      }
     }
   }, [])
 
