@@ -25,26 +25,63 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatDate } from '@/lib/format'
+import { daysUntil, formatDate } from '@/lib/format'
 import { listAllEmployees } from '@/services/employees'
 import { createMovement } from '@/services/movements'
 import { createNotification } from '@/services/notifications'
 import type { Employee } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
+type CnhStatusCategory = 'Vencida' | 'A vencer' | 'Válida' | 'Sem CNH'
+
 type CnhStatus = {
-  label: 'Vencida' | 'Sem CNH' | 'Válida'
-  tone: 'gray' | 'green' | 'red'
+  label: CnhStatusCategory
+  tone: 'gray' | 'green' | 'red' | 'amber'
   date?: string
 }
 
+/**
+ * Classifica a CNH de um colaborador nas categorias reais da base:
+ * - Sem CNH: sem número ou situacao_cnh explicitamente 'Sem CNH'
+ * - Vencida: situacao_cnh 'Vencida' / 'Vencida CNH' ou dias até validade < 0
+ * - A vencer: situacao_cnh 'A vencer' ou validade entre 0 e 30 dias
+ * - Válida: demais casos com CNH cadastrada e válida
+ */
+function getCnhCategory(employee: Employee): CnhStatusCategory {
+  const hasNumero = Boolean(employee.cnh_numero && employee.cnh_numero.trim())
+  const situacaoRaw = (employee.situacao_cnh ?? '').trim()
+
+  if (!hasNumero || situacaoRaw === 'Sem CNH' || !situacaoRaw) {
+    return 'Sem CNH'
+  }
+
+  const situacaoNorm = situacaoRaw.toLowerCase()
+  if (situacaoNorm === 'vencida' || situacaoNorm === 'vencida cnh') {
+    return 'Vencida'
+  }
+  if (situacaoNorm === 'a vencer') {
+    return 'A vencer'
+  }
+
+  const days = daysUntil(employee.validade_cnh)
+  if (days !== null) {
+    if (days < 0) return 'Vencida'
+    if (days <= 30) return 'A vencer'
+  }
+
+  return 'Válida'
+}
+
 function cnhStatus(employee: Employee): CnhStatus {
-  const situacaoCnh = employee.situacao_cnh as string | ''
-  if (!employee.cnh_numero || !situacaoCnh || situacaoCnh === 'Sem CNH') {
+  const category = getCnhCategory(employee)
+  if (category === 'Sem CNH') {
     return { label: 'Sem CNH', tone: 'gray' }
   }
-  if (situacaoCnh === 'Vencida') {
+  if (category === 'Vencida') {
     return { label: 'Vencida', tone: 'red', date: formatDate(employee.validade_cnh) }
+  }
+  if (category === 'A vencer') {
+    return { label: 'A vencer', tone: 'amber', date: formatDate(employee.validade_cnh) }
   }
   return { label: 'Válida', tone: 'green', date: formatDate(employee.validade_cnh) }
 }
@@ -54,6 +91,7 @@ function CnhBadge({ status }: { status: CnhStatus }) {
     gray: 'bg-gray-100 text-gray-700',
     green: 'bg-green-100 text-green-800',
     red: 'bg-red-100 text-red-800',
+    amber: 'bg-amber-100 text-amber-800',
   }[status.tone]
   return (
     <div className="flex flex-col items-start gap-0.5">
@@ -143,8 +181,9 @@ export default function AtualizacaoFiscal() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [garagem, setGaragem] = useState('')
-  const [situacao, setSituacao] = useState('')
-  const [cnhFilter, setCnhFilter] = useState<'todos' | 'com_cnh' | 'sem_cnh'>('todos')
+  const [cnhStatusFilter, setCnhStatusFilter] = useState<
+    'todos' | 'Vencida' | 'A vencer' | 'Válida'
+  >('todos')
   const [cardFilter, setCardFilter] = useState<FiscalCardFilter>('todos')
   const [processoTarget, setProcessoTarget] = useState<Employee | null>(null)
   const [observacoes, setObservacoes] = useState('')
@@ -188,7 +227,7 @@ export default function AtualizacaoFiscal() {
     [fiscais],
   )
 
-  // Base filtrada pelos controles (busca + garagem + situacao + cnhFilter)
+  // Base filtrada pelos controles (busca + garagem + cnhStatusFilter)
   const baseFiltered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return fiscais.filter((employee) => {
@@ -204,21 +243,16 @@ export default function AtualizacaoFiscal() {
         return false
       }
 
-      if (situacao && employee.situacao !== situacao) {
-        return false
-      }
-
-      const hasCnh = Boolean(employee.cnh_numero && employee.cnh_numero.trim())
-      if (cnhFilter === 'com_cnh' && !hasCnh) {
-        return false
-      }
-      if (cnhFilter === 'sem_cnh' && hasCnh) {
-        return false
+      if (cnhStatusFilter !== 'todos') {
+        const category = getCnhCategory(employee)
+        if (category !== cnhStatusFilter) {
+          return false
+        }
       }
 
       return true
     })
-  }, [fiscais, search, garagem, situacao, cnhFilter])
+  }, [fiscais, search, garagem, cnhStatusFilter])
 
   // Contadores recalculados com base no universo filtrado pelos controles
   const resumo = useMemo(
@@ -252,13 +286,12 @@ export default function AtualizacaoFiscal() {
   const clearFilters = () => {
     setSearch('')
     setGaragem('')
-    setSituacao('')
-    setCnhFilter('todos')
+    setCnhStatusFilter('todos')
     setCardFilter('todos')
   }
 
   const hasActiveFilters = Boolean(
-    search || garagem || situacao || cnhFilter !== 'todos' || cardFilter !== 'todos',
+    search || garagem || cnhStatusFilter !== 'todos' || cardFilter !== 'todos',
   )
 
   const handleAbrirProcesso = async () => {
@@ -356,7 +389,7 @@ export default function AtualizacaoFiscal() {
       {/* Filtros e Tabela */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         {/* Barra de Filtros */}
-        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -381,23 +414,16 @@ export default function AtualizacaoFiscal() {
           </select>
 
           <select
-            value={situacao}
-            onChange={(e) => setSituacao(e.target.value)}
+            value={cnhStatusFilter}
+            onChange={(e) =>
+              setCnhStatusFilter(e.target.value as 'todos' | 'Vencida' | 'A vencer' | 'Válida')
+            }
             className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <option value="">Todas as situações</option>
-            <option value="Ativo">Ativo</option>
-            <option value="Afastado">Afastado</option>
-          </select>
-
-          <select
-            value={cnhFilter}
-            onChange={(e) => setCnhFilter(e.target.value as 'todos' | 'com_cnh' | 'sem_cnh')}
-            className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="todos">Todos (CNH)</option>
-            <option value="com_cnh">Com CNH</option>
-            <option value="sem_cnh">Sem CNH</option>
+            <option value="todos">Todos os status da CNH</option>
+            <option value="Vencida">Vencida</option>
+            <option value="A vencer">A vencer</option>
+            <option value="Válida">Válida</option>
           </select>
         </div>
 
