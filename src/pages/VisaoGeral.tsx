@@ -146,7 +146,7 @@ export default function VisaoGeral() {
       (employee) => comparable(employee.funcao) === 'motorista' && isCnhVencida(employee),
     ).length
     const fiscais = normalized.filter((employee) =>
-      comparable(employee.funcao).startsWith('fiscal'),
+      comparable(employee.funcao).includes('fiscal'),
     ).length
     const porGaragem = Object.fromEntries(
       GARAGENS.map((garagem) => [
