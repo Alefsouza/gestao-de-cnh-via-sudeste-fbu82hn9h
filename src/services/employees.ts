@@ -497,8 +497,9 @@ export async function getCnhsSummary(
 }
 
 /**
- * Lista as funções distintas que existem na base de colaboradores com CNH válida ou geral,
- * ordenadas alfabeticamente. Tenta via endpoint leve dedicado ou varredura paginada com cache em memória.
+ * Lista as funções distintas que existem na base de colaboradores COM CNH registrada
+ * (cnh_numero != "" && situacao_cnh != "Sem CNH"), ordenadas alfabeticamente.
+ * Tenta via endpoint leve dedicado (/api/distinct-funcoes) ou varredura paginada com cache em memória.
  */
 let distinctFuncoesCache: string[] | null = null
 let distinctFuncoesPromise: Promise<string[]> | null = null
@@ -529,7 +530,7 @@ export async function listDistinctFuncoes(): Promise<string[]> {
     }
 
     try {
-      // Fallback: busca registros consultando apenas o campo `funcao`
+      // Fallback: busca registros consultando apenas o campo `funcao` dos que têm CNH registrada
       const set = new Set<string>()
       let page = 1
       let totalPages = 1
@@ -539,7 +540,7 @@ export async function listDistinctFuncoes(): Promise<string[]> {
         const res = await withRetry(() =>
           pb.collection<Employee>(COLLECTION).getList(page, perPage, {
             fields: 'funcao',
-            filter: 'funcao != ""',
+            filter: `funcao != "" && ${CNH_VALIDA_FIELD_FILTER}`,
             requestKey: null,
           }),
         )
@@ -555,16 +556,14 @@ export async function listDistinctFuncoes(): Promise<string[]> {
       }
 
       if (set.size === 0) {
-        // Fallback defensivo com a lista canônica conhecida da Via Sudeste
+        // Fallback defensivo com as funções com CNH conhecidas da Via Sudeste
         const fallback = [
           'Ag.terminal Ii',
-          'Auxiliar Administrativo',
           'Cobrador',
           'Eletricista',
+          'Enc De Trafego',
           'Encar.operaciona',
           'Fiscal de Viajem',
-          'Funileiro',
-          'Gerente',
           'Inspetor',
           'Instrutor',
           'Lavad/abast/manobr',
@@ -576,7 +575,6 @@ export async function listDistinctFuncoes(): Promise<string[]> {
           'Motorista Manutenc',
           'Motorista-socorris',
           'Motorista-van',
-          'Pintor',
           'Supervisor',
         ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
         distinctFuncoesCache = fallback
@@ -587,16 +585,14 @@ export async function listDistinctFuncoes(): Promise<string[]> {
       distinctFuncoesCache = list
       return list
     } catch (err) {
-      console.warn('Erro ao carregar lista de funções distintas:', err)
+      console.warn('Erro ao carregar lista de funções distintas com CNH:', err)
       const fallback = [
         'Ag.terminal Ii',
-        'Auxiliar Administrativo',
         'Cobrador',
         'Eletricista',
+        'Enc De Trafego',
         'Encar.operaciona',
         'Fiscal de Viajem',
-        'Funileiro',
-        'Gerente',
         'Inspetor',
         'Instrutor',
         'Lavad/abast/manobr',
@@ -608,7 +604,6 @@ export async function listDistinctFuncoes(): Promise<string[]> {
         'Motorista Manutenc',
         'Motorista-socorris',
         'Motorista-van',
-        'Pintor',
         'Supervisor',
       ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
       distinctFuncoesCache = fallback

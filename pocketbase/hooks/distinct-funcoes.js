@@ -1,5 +1,6 @@
 /**
- * Endpoint leve para listar funções distintas cadastradas na base de colaboradores.
+ * Endpoint leve para listar funções distintas cadastradas na base de colaboradores
+ * que possuem CNH registrada (cnh_numero != "" && situacao_cnh != "Sem CNH").
  * GET /api/distinct-funcoes
  * Retorna { funcoes: string[] } ordenado alfabeticamente.
  *
@@ -10,7 +11,10 @@
 
 routerAdd('GET', '/api/distinct-funcoes', (e) => {
   try {
-    const records = $app.findRecordsByFilter('employees', 'funcao != ""', 'funcao', 0, 0)
+    // Filtra apenas colaboradores com CNH registrada (cnh_numero preenchido e situacao_cnh diferente de 'Sem CNH')
+    const filter =
+      'funcao != "" && cnh_numero != "" && situacao_cnh != "Sem CNH" && situacao_cnh != ""'
+    const records = $app.findRecordsByFilter('employees', filter, 'funcao', 0, 0)
     const set = {}
     for (let i = 0; i < records.length; i++) {
       const fn = String(records[i].getString('funcao') || '').trim()
@@ -23,7 +27,7 @@ routerAdd('GET', '/api/distinct-funcoes', (e) => {
     })
     return e.json(200, { funcoes: funcoes })
   } catch (err) {
-    console.log('Erro ao obter funcoes distintas:', String((err && err.message) || err))
-    return e.json(500, { error: 'Erro ao listar funções' })
+    console.log('Erro ao obter funcoes distintas com CNH:', String((err && err.message) || err))
+    return e.json(500, { error: 'Erro ao listar funções com CNH' })
   }
 })
