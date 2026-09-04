@@ -22,6 +22,7 @@ import { daysUntil, formatDate, formatCnh } from '@/lib/format'
 import {
   CNH_VALIDA_FIELD_FILTER,
   getCnhsSummary,
+  listDistinctFuncoes,
   listEmployees,
   listEmployeesControlled,
   type CnhsSummary,
@@ -61,6 +62,8 @@ export default function Cnhs() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [garagem, setGaragem] = useState('')
   const [situacao, setSituacao] = useState<SituacaoFilter>('todos')
+  const [funcao, setFuncao] = useState('')
+  const [funcoesList, setFuncoesList] = useState<string[]>([])
   const [page, setPage] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
@@ -103,10 +106,23 @@ export default function Cnhs() {
   const loadInProgress = useRef(false)
   const lastLoadedAt = useRef(0)
 
+  // Carrega as opções distintas de funções para o dropdown de filtro
+  useEffect(() => {
+    let active = true
+    void listDistinctFuncoes().then((list) => {
+      if (active && Array.isArray(list)) {
+        setFuncoesList(list)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
   // Reseta a página para 1 quando os filtros mudam
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, tab, garagem, situacao])
+  }, [debouncedSearch, tab, garagem, situacao, funcao])
 
   // Carrega os contadores dos cards e abas no backend de forma leve e pontual
   const loadSummary = useCallback(async () => {
@@ -115,6 +131,7 @@ export default function Cnhs() {
       const res = await getCnhsSummary({
         search: debouncedSearch.trim(),
         filial: garagem || undefined,
+        funcao: funcao || undefined,
         situacao: situacao === 'todos' ? undefined : situacao,
       })
       if (runId !== summaryRunId.current) return
@@ -129,7 +146,7 @@ export default function Cnhs() {
         console.error('Erro ao carregar contadores de CNH:', err)
       }
     }
-  }, [debouncedSearch, garagem, situacao])
+  }, [debouncedSearch, garagem, funcao, situacao])
 
   // Filtros ativos para a consulta paginada
   const activeFilters = useMemo<EmployeeFilters>(() => {
@@ -149,13 +166,14 @@ export default function Cnhs() {
     return {
       search: debouncedSearch.trim() || undefined,
       filial: garagem || undefined,
+      funcao: funcao || undefined,
       situacao: situacao === 'todos' ? undefined : situacao,
       customFilter: customParts.join(' && '),
       page,
       perPage: PAGE_SIZE,
       sort: pbSort,
     }
-  }, [debouncedSearch, garagem, situacao, tab, page, sortDirection])
+  }, [debouncedSearch, garagem, funcao, situacao, tab, page, sortDirection])
 
   // Busca apenas a página corrente do servidor
   const loadPage = useCallback(async () => {
@@ -273,6 +291,7 @@ export default function Cnhs() {
       const exportFilters: EmployeeFilters = {
         search: activeFilters.search,
         filial: activeFilters.filial,
+        funcao: activeFilters.funcao,
         situacao: activeFilters.situacao,
         customFilter: activeFilters.customFilter,
         sort: activeFilters.sort,
@@ -444,6 +463,19 @@ export default function Cnhs() {
               />
             </div>
             <select
+              value={funcao}
+              onChange={(event) => setFuncao(event.target.value)}
+              className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Função do colaborador"
+            >
+              <option value="">Todas as funções</option>
+              {funcoesList.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+            <select
               value={situacao}
               onChange={(event) => setSituacao(event.target.value as SituacaoFilter)}
               className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -473,12 +505,13 @@ export default function Cnhs() {
           <span>
             Total de <strong className="text-foreground">{totalItems}</strong> CNH(s) encontrada(s)
           </span>
-          {(search || garagem || situacao !== 'todos' || tab !== 'todas') && (
+          {(search || garagem || funcao || situacao !== 'todos' || tab !== 'todas') && (
             <button
               type="button"
               onClick={() => {
                 setSearch('')
                 setGaragem('')
+                setFuncao('')
                 setSituacao('todos')
                 setTab('todas')
               }}

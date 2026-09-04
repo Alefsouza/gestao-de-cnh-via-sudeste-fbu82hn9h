@@ -69,7 +69,7 @@ export function buildFilter(filters: EmployeeFilters): string {
   }
   if (filters.empresa) parts.push(`company = "${filters.empresa}"`)
   if (filters.filial) parts.push(`filial = "${filters.filial}"`)
-  if (filters.funcao) parts.push(`funcao = "${filters.funcao}"`)
+  if (filters.funcao) parts.push(`funcao = "${filters.funcao.replace(/"/g, '\\"')}"`)
   if (filters.situacao) parts.push(`situacao = "${filters.situacao}"`)
   if (filters.situacaoCnh) parts.push(`situacao_cnh = "${filters.situacaoCnh}"`)
   if (filters.customFilter) parts.push(`(${filters.customFilter})`)
@@ -408,12 +408,13 @@ export interface CnhsSummary {
 
 /**
  * Calcula os contadores dos cards e abas da tela de CNHs diretamente no backend PocketBase.
- * Respeita os filtros ativos de busca, filial/garagem e situação do funcionário (Ativo/Afastado).
+ * Respeita os filtros ativos de busca, filial/garagem, função e situação do funcionário (Ativo/Afastado).
  */
 export async function getCnhsSummary(
   baseFilters: {
     search?: string
     filial?: string
+    funcao?: string
     situacao?: string
   } = {},
 ): Promise<{ summary: CnhsSummary; hasError: boolean }> {
@@ -431,6 +432,9 @@ export async function getCnhsSummary(
       }
       if (baseFilters.filial) {
         parts.push(`filial = "${baseFilters.filial}"`)
+      }
+      if (baseFilters.funcao) {
+        parts.push(`funcao = "${baseFilters.funcao.replace(/"/g, '\\"')}"`)
       }
       if (baseFilters.situacao) {
         parts.push(`situacao = "${baseFilters.situacao}"`)
@@ -490,6 +494,131 @@ export async function getCnhsSummary(
     },
     hasError,
   }
+}
+
+/**
+ * Lista as funções distintas que existem na base de colaboradores com CNH válida ou geral,
+ * ordenadas alfabeticamente. Tenta via endpoint leve dedicado ou varredura paginada com cache em memória.
+ */
+let distinctFuncoesCache: string[] | null = null
+let distinctFuncoesPromise: Promise<string[]> | null = null
+
+export async function listDistinctFuncoes(): Promise<string[]> {
+  if (distinctFuncoesCache && distinctFuncoesCache.length > 0) {
+    return distinctFuncoesCache
+  }
+  if (distinctFuncoesPromise) {
+    return distinctFuncoesPromise
+  }
+
+  distinctFuncoesPromise = (async () => {
+    try {
+      // Tenta chamar endpoint dedicado caso disponível
+      const endpointRes = await fetch(`${pb.baseUrl}/api/distinct-funcoes`, {
+        headers: pb.authStore.token ? { Authorization: pb.authStore.token } : {},
+      })
+      if (endpointRes.ok) {
+        const json = await endpointRes.json()
+        if (Array.isArray(json?.funcoes) && json.funcoes.length > 0) {
+          distinctFuncoesCache = json.funcoes
+          return json.funcoes
+        }
+      }
+    } catch {
+      // endpoint customizado ainda não disponível, segue fallback
+    }
+
+    try {
+      // Fallback: busca registros consultando apenas o campo `funcao`
+      const set = new Set<string>()
+      let page = 1
+      let totalPages = 1
+      const perPage = 500
+
+      while (page <= totalPages && page <= 10) {
+        const res = await withRetry(() =>
+          pb.collection<Employee>(COLLECTION).getList(page, perPage, {
+            fields: 'funcao',
+            filter: 'funcao != ""',
+            requestKey: null,
+          }),
+        )
+        for (const item of res.items) {
+          const fn = String(item.funcao || '').trim()
+          if (fn) set.add(fn)
+        }
+        totalPages = res.totalPages
+        page++
+        if (page <= totalPages) {
+          await wait(150)
+        }
+      }
+
+      if (set.size === 0) {
+        // Fallback defensivo com a lista canônica conhecida da Via Sudeste
+        const fallback = [
+          'Ag.terminal Ii',
+          'Auxiliar Administrativo',
+          'Cobrador',
+          'Eletricista',
+          'Encar.operaciona',
+          'Fiscal de Viajem',
+          'Funileiro',
+          'Gerente',
+          'Inspetor',
+          'Instrutor',
+          'Lavad/abast/manobr',
+          'Lider Manutencao',
+          'Mecanico',
+          'Mecanico Socorr',
+          'Mecanico Validador',
+          'Motorista',
+          'Motorista Manutenc',
+          'Motorista-socorris',
+          'Motorista-van',
+          'Pintor',
+          'Supervisor',
+        ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        distinctFuncoesCache = fallback
+        return fallback
+      }
+
+      const list = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      distinctFuncoesCache = list
+      return list
+    } catch (err) {
+      console.warn('Erro ao carregar lista de funções distintas:', err)
+      const fallback = [
+        'Ag.terminal Ii',
+        'Auxiliar Administrativo',
+        'Cobrador',
+        'Eletricista',
+        'Encar.operaciona',
+        'Fiscal de Viajem',
+        'Funileiro',
+        'Gerente',
+        'Inspetor',
+        'Instrutor',
+        'Lavad/abast/manobr',
+        'Lider Manutencao',
+        'Mecanico',
+        'Mecanico Socorr',
+        'Mecanico Validador',
+        'Motorista',
+        'Motorista Manutenc',
+        'Motorista-socorris',
+        'Motorista-van',
+        'Pintor',
+        'Supervisor',
+      ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      distinctFuncoesCache = fallback
+      return fallback
+    } finally {
+      distinctFuncoesPromise = null
+    }
+  })()
+
+  return distinctFuncoesPromise
 }
 
 /**
