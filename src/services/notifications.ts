@@ -6,8 +6,11 @@ import type { Notification } from '@/lib/types'
 const COLLECTION = 'notifications'
 
 export async function listNotifications(): Promise<Notification[]> {
+  const currentUserId = pb.authStore.record?.id
+  const filter = currentUserId ? `user = "" || user = "${currentUserId}"` : ''
   return pb.collection<Notification>(COLLECTION).getFullList({
     sort: '-created',
+    ...(filter ? { filter } : {}),
   })
 }
 
