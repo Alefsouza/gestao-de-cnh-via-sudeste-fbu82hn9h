@@ -14,6 +14,7 @@
  */
 
 cronAdd('sync_employees', '0 * * * *', () => {
+  console.log('sync_employees hook v2 hourly running')
   const trigger = 'cron'
   const nowStr = () => new Date().toISOString().replace('T', ' ')
 
