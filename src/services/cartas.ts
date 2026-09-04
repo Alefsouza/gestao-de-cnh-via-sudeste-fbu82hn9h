@@ -102,6 +102,103 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
 }
 
 /**
+ * Restaura a situação do processo cadastral correspondente para a situação
+ * anterior à emissão da carta, com base na marcação de alerta_trafego:
+ * - Se tinha a marcação de ciência "Bloquear foto" (alerta_trafego === 'bloquear_foto') -> "Foto Bloqueada"
+ * - Se tinha "Impossibilitar de Trabalhar" (alerta_trafego === 'impossibilitado_trabalhar') -> "Impossibilitado de Trabalhar"
+ * - Caso contrário -> "Pendente"
+ *
+ * Se não encontrar o processo, ignora silenciosamente sem quebrar.
+ */
+export async function restaurarProcessoAnterior(
+  matricula?: string,
+  colaborador?: string,
+): Promise<void> {
+  const mat = (matricula || '').trim()
+  const colab = (colaborador || '').trim()
+  if (!mat && !colab) return
+
+  try {
+    const matUnpadded = mat.replace(/^0+/, '')
+    const safeMat = mat.replace(/"/g, '\\"')
+    const safeColab = colab.replace(/"/g, '\\"')
+
+    let matchingProcessos = await pb.collection('processos_cadastrais').getFullList({
+      filter:
+        safeMat && safeColab
+          ? `matricula = "${safeMat}" || colaborador = "${safeColab}"`
+          : safeMat
+            ? `matricula = "${safeMat}"`
+            : `colaborador = "${safeColab}"`,
+    })
+
+    if (matchingProcessos.length === 0 && matUnpadded) {
+      const safeUnpadded = matUnpadded.replace(/"/g, '\\"')
+      matchingProcessos = await pb.collection('processos_cadastrais').getFullList({
+        filter: `matricula = "${safeUnpadded}"`,
+      })
+    }
+
+    if (matchingProcessos.length > 0) {
+      for (const proc of matchingProcessos) {
+        let novaSituacao: 'Foto Bloqueada' | 'Impossibilitado de Trabalhar' | 'Pendente' =
+          'Pendente'
+        const alerta = (proc.alerta_trafego || '').trim().toLowerCase()
+        if (alerta === 'bloquear_foto') {
+          novaSituacao = 'Foto Bloqueada'
+        } else if (alerta === 'impossibilitado_trabalhar') {
+          novaSituacao = 'Impossibilitado de Trabalhar'
+        }
+
+        await pb.collection('processos_cadastrais').update(proc.id, {
+          situacao: novaSituacao,
+        })
+      }
+    }
+  } catch (err) {
+    // Ignora silenciosamente sem quebrar a exclusão da carta
+    console.warn('Erro ao restaurar situação anterior em processos_cadastrais:', err)
+  }
+}
+
+/**
+ * Exclui um colaborador específico de uma carta (pelo ID do registro na coleção cartas)
+ * e restaura a situação do processo dele em processos_cadastrais.
+ */
+export async function deleteColaboradorCarta(cartaRecord: CartaRecord): Promise<void> {
+  // 1. Exclui o registro da coleção cartas
+  await pb.collection('cartas').delete(cartaRecord.id)
+
+  // 2. Restaura o processo correspondente dele
+  await restaurarProcessoAnterior(cartaRecord.matricula, cartaRecord.colaborador)
+}
+
+/**
+ * Exclui a carta inteira: todos os registros com aquele numero_carta
+ * e restaura a situação de cada processo vinculado.
+ */
+export async function deleteCartaCompleta(numeroCarta: string): Promise<void> {
+  const num = numeroCarta.trim()
+  if (!num) return
+
+  const safeNum = num.replace(/"/g, '\\"')
+  const registros = await pb.collection('cartas').getFullList<CartaRecord>({
+    filter: `numero_carta = "${safeNum}"`,
+  })
+
+  // Exclui cada registro e restaura o processo
+  for (const reg of registros) {
+    try {
+      await pb.collection('cartas').delete(reg.id)
+    } catch (err) {
+      console.warn(`Erro ao excluir registro ${reg.id} da carta ${num}:`, err)
+    }
+
+    await restaurarProcessoAnterior(reg.matricula, reg.colaborador)
+  }
+}
+
+/**
  * Retorna a lista de todas as cartas cadastradas, ordenadas pelas mais recentes.
  */
 export async function listCartas(): Promise<CartaRecord[]> {

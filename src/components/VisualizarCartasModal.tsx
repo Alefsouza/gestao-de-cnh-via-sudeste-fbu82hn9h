@@ -9,12 +9,23 @@ import {
   Loader2,
   Mail,
   Search,
+  Trash2,
   UserCheck,
   Users,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,9 +45,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useAuth } from '@/contexts/AuthContext'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { getCartaFileUrl, listCartas, type CartaRecord } from '@/services/cartas'
+import {
+  deleteCartaCompleta,
+  deleteColaboradorCarta,
+  getCartaFileUrl,
+  listCartas,
+  type CartaRecord,
+} from '@/services/cartas'
 
 interface VisualizarCartasModalProps {
   open: boolean
@@ -52,11 +70,21 @@ const DOCUMENT_FIELDS: { key: keyof CartaRecord; label: string }[] = [
 ]
 
 export default function VisualizarCartasModal({ open, onOpenChange }: VisualizarCartasModalProps) {
+  const { user } = useAuth()
+  const userRole = ((user?.role as string) || 'Admin').toLowerCase()
+  const isTrafego = userRole === 'tráfego' || userRole === 'trafego'
+  const canDelete = !isTrafego
+
   const [cartas, setCartas] = useState<CartaRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedNumeroCarta, setSelectedNumeroCarta] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
+
+  // Estados de confirmação e exclusão
+  const [deletingCarta, setDeletingCarta] = useState<string | null>(null)
+  const [deletingColaborador, setDeletingColaborador] = useState<CartaRecord | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Carrega as cartas sempre que o modal abrir e reseta estados ao abrir/fechar
   useEffect(() => {
@@ -207,6 +235,76 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
     setSearchQuery('')
   }
 
+  // Recarrega as cartas do banco
+  const refreshCartas = async () => {
+    try {
+      const records = await listCartas()
+      setCartas(records)
+      return records
+    } catch (err) {
+      console.error('Erro ao atualizar lista de cartas:', err)
+      return []
+    }
+  }
+
+  // Confirmar exclusão da carta inteira
+  const handleConfirmDeleteCarta = async () => {
+    if (!deletingCarta) return
+    setIsDeleting(true)
+    const numero = deletingCarta
+    try {
+      await deleteCartaCompleta(numero)
+      toast.success(`Carta N.º ${numero} e seus vínculos foram excluídos com sucesso.`)
+      setDeletingCarta(null)
+      // Atualiza a lista
+      const updated = await refreshCartas()
+      // Se não houver mais essa carta, limpa ou seleciona a próxima
+      const remainingNumeros = Array.from(
+        new Set(updated.map((c) => (c.numero_carta || '').trim()).filter(Boolean)),
+      )
+      if (selectedNumeroCarta === numero) {
+        setSelectedNumeroCarta(remainingNumeros[0] || '')
+      }
+    } catch (err) {
+      console.error('Erro ao excluir carta inteira:', err)
+      toast.error('Erro ao excluir a carta. Tente novamente.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Confirmar exclusão de um colaborador da carta
+  const handleConfirmDeleteColaborador = async () => {
+    if (!deletingColaborador) return
+    setIsDeleting(true)
+    const colab = deletingColaborador
+    try {
+      await deleteColaboradorCarta(colab)
+      toast.success(
+        `Colaborador ${colab.colaborador} (${colab.matricula || 'Sem registro'}) removido da carta com sucesso.`,
+      )
+      setDeletingColaborador(null)
+      // Atualiza a lista
+      const updated = await refreshCartas()
+      // Verifica se a carta ainda tem outros colaboradores
+      const aindaTemNaCarta = updated.some(
+        (c) => (c.numero_carta || '').trim() === (colab.numero_carta || '').trim(),
+      )
+      if (!aindaTemNaCarta) {
+        // Se foi o último colaborador da carta, a carta deixou de existir
+        const remainingNumeros = Array.from(
+          new Set(updated.map((c) => (c.numero_carta || '').trim()).filter(Boolean)),
+        )
+        setSelectedNumeroCarta(remainingNumeros[0] || '')
+      }
+    } catch (err) {
+      console.error('Erro ao remover colaborador da carta:', err)
+      toast.error('Erro ao remover colaborador da carta. Tente novamente.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -267,7 +365,7 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
               )}
             </div>
 
-            {/* Dropdown de Número da Carta: mostra SOMENTE o número da carta */}
+            {/* Dropdown de Número da Carta: mostra SOMENTE o número da carta + Botão de Excluir Carta Inteira */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="select-carta" className="text-xs font-semibold">
@@ -285,23 +383,43 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                   Nenhuma carta encontrada para a busca &quot;{searchQuery}&quot;.
                 </div>
               ) : (
-                <Select
-                  value={selectedNumeroCarta}
-                  onValueChange={(val) => {
-                    setSelectedNumeroCarta(val)
-                  }}
-                >
-                  <SelectTrigger id="select-carta" className="font-medium">
-                    <SelectValue placeholder="Selecione o número da carta" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {filteredNumerosCarta.map((numero) => (
-                      <SelectItem key={numero} value={numero} className="font-mono">
-                        {numero}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <Select
+                      value={selectedNumeroCarta}
+                      onValueChange={(val) => {
+                        setSelectedNumeroCarta(val)
+                      }}
+                    >
+                      <SelectTrigger id="select-carta" className="font-medium">
+                        <SelectValue placeholder="Selecione o número da carta" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64">
+                        {filteredNumerosCarta.map((numero) => (
+                          <SelectItem key={numero} value={numero} className="font-mono">
+                            {numero}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedNumeroCarta && canDelete && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeletingCarta(selectedNumeroCarta)}
+                      disabled={isDeleting}
+                      className="h-10 gap-1.5 px-3 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive flex-none"
+                      title={`Excluir a carta nº ${selectedNumeroCarta} inteira e todos os vínculos`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="hidden sm:inline">Excluir Carta Inteira</span>
+                      <span className="sm:hidden">Excluir Carta</span>
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -363,6 +481,21 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                             <span className="text-[11px] text-muted-foreground hidden sm:inline">
                               {isExpanded ? 'Ocultar detalhes' : 'Ver detalhes'}
                             </span>
+                            {/* Botão para remover este colaborador da carta */}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setDeletingColaborador(item)
+                                }}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-destructive/20 text-destructive/80 transition-colors hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+                                title={`Remover ${item.colaborador} da carta`}
+                                aria-label={`Remover ${item.colaborador} da carta`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                             {isExpanded ? (
                               <ChevronDown className="h-4 w-4 text-muted-foreground" />
                             ) : (
@@ -415,7 +548,6 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                                 </div>
                               </div>
                             </div>
-
                             {/* Lista dos 5 documentos anexados */}
                             <div className="space-y-2 rounded-lg border bg-background/80 p-3">
                               <div className="flex items-center gap-2 border-b pb-2 text-xs font-bold text-foreground">
@@ -486,6 +618,22 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                                 })}
                               </div>
                             </div>
+                            {/* Botão de rodapé do card expandido para remover este colaborador */}
+                            {canDelete && (
+                              <div className="flex justify-end pt-1">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setDeletingColaborador(item)}
+                                  disabled={isDeleting}
+                                  className="h-8 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Remover colaborador da carta
+                                </Button>
+                              </div>
+                            )}{' '}
                           </div>
                         )}
                       </div>
@@ -494,7 +642,6 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                 </div>
               </div>
             )}
-
             {selectedNumeroCarta && colaboradoresDaCarta.length === 0 && (
               <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
                 Nenhum colaborador encontrado para a carta nº {selectedNumeroCarta} com os filtros
@@ -510,6 +657,97 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Confirmação de exclusão da CARTA INTEIRA */}
+      <AlertDialog
+        open={deletingCarta !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !isDeleting) setDeletingCarta(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir a carta inteira?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Deseja realmente excluir a carta <strong>N.º {deletingCarta}</strong> e todos os{' '}
+                <strong>{colaboradoresDaCarta.length}</strong> colaborador(es) vinculado(s),
+                juntamente com seus anexos?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Os processos cadastrais correspondentes voltarão à situação anterior à emissão da
+                carta para regularização na listagem principal. Esta ação não pode ser desfeita.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault()
+                void handleConfirmDeleteCarta()
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Excluindo…
+                </>
+              ) : (
+                'Excluir Carta Inteira'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão de UM COLABORADOR da carta */}
+      <AlertDialog
+        open={deletingColaborador !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !isDeleting) setDeletingColaborador(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover colaborador da carta?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Remover o colaborador{' '}
+                <strong className="text-foreground">{deletingColaborador?.colaborador}</strong>{' '}
+                (Registro {deletingColaborador?.matricula || 'Sem registro'}) da carta{' '}
+                <strong>N.º {deletingColaborador?.numero_carta}</strong>?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                A carta e os demais colaboradores vinculados permanecem. O processo cadastral deste
+                colaborador voltará à situação anterior à emissão da carta para regularização.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault()
+                void handleConfirmDeleteColaborador()
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Removendo…
+                </>
+              ) : (
+                'Remover Colaborador'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }
