@@ -1,14 +1,23 @@
 /**
- * Empresa padrão "VIA SUDESTE": qualquer colaborador criado em `employees`
- * por fora do sync (API, seed manual, etc.) recebe `company = "VIA SUDESTE"`
- * quando o campo vier vazio — a view externa VW_CONTROLE_CNH não envia
- * empresa, e a decisão de negócio é que a empresa é sempre a Via Sudeste.
+ * Hook disparado após criação ou atualização em `employees`.
  *
- * Convenções Skip Cloud: o callback roda em outra VM e não enxerga
- * identificadores de topo de arquivo — toda a lógica vive no callback.
+ * Garante que a empresa seja sempre "VIA SUDESTE":
+ * - Em onRecordCreate: se company estiver vazio, preenche com "VIA SUDESTE".
+ * - Em onRecordUpdate: se company estiver vazio, preenche com "VIA SUDESTE".
+ *
+ * Como a view externa (VW_CONTROLE_CNH) não envia empresa, a regra de negócio do projeto
+ * define que a empresa é SEMPRE "VIA SUDESTE".
  */
 
 onRecordCreate((e) => {
+  const company = String(e.record.getString('company') ?? '').trim()
+  if (!company) {
+    e.record.set('company', 'VIA SUDESTE')
+  }
+  e.next()
+}, 'employees')
+
+onRecordUpdate((e) => {
   const company = String(e.record.getString('company') ?? '').trim()
   if (!company) {
     e.record.set('company', 'VIA SUDESTE')

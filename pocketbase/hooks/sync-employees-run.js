@@ -1,7 +1,13 @@
 /**
- * Rota autenticada que dispara a MESMA rotina de sincronização do cron
- * (POST /backend/v1/sync-employees) sob demanda — é o endpoint que o botão
- * "Atualizar matriz" / "Sincronizar agora" chama.
+ * Rota autenticada que dispara a rotina de sincronização sob demanda
+ * (POST /backend/v1/sync-employees) — chamado pelo botão "Atualizar dados" / "Sincronizar agora".
+ *
+ * Aplica EXATAMENTE os mesmos tratamentos do cron:
+ * - Empresa SEMPRE "VIA SUDESTE".
+ * - Situação corretamente normalizada (Ativo / Afastado / Desligado), inclusive detecção
+ *   de afastamento por status ou por motivo_afastamento.
+ * - Comparação campo a campo antes de salvar: NÃO marca registros como atualizados
+ *   se nenhum campo mudou, evitando disparos repetidos de hooks de atualização.
  *
  * Convenções Skip Cloud: o callback roda em outra VM e não enxerga
  * identificadores de topo de arquivo — toda a lógica vive dentro do callback.
@@ -64,6 +70,7 @@ routerAdd(
         'validade_documento_fiscal',
         'cpf',
       ]
+
       const stripAccents = (s) =>
         String(s)
           .normalize('NFD')
@@ -119,8 +126,7 @@ routerAdd(
       }
 
       const normSituacao = (norm) => {
-        // 1. Coluna SITUACAO da VW_CONTROLE_CNH: situação do colaborador (ATIVO / AFASTADO).
-        // Normalizada para "Ativo" e "Afastado" (ou "Desligado").
+        // Coluna SITUACAO da view: situação do colaborador (ATIVO / AFASTADO / DESLIGADO).
         const raw = pick(norm, [
           'situacao',
           'situacaocolaborador',
@@ -143,7 +149,7 @@ routerAdd(
           if (value.indexOf('ativ') !== -1) return 'Ativo'
         }
 
-        // Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo' como padrão oficial
+        // Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo'
         const motivo = stripAccents(
           pick(norm, [
             'motivo_afastamento',
@@ -160,8 +166,6 @@ routerAdd(
       }
 
       const normSituacaoCnh = (norm) => {
-        // 2. Coluna STATUSCNH da VW_CONTROLE_CNH: status da CNH ("NO PRAZO" / "VENCIDA").
-        // Normalizada para "Válida" (quando "NO PRAZO") e "Vencida" (quando "VENCIDA").
         const raw = pick(norm, [
           'statuscnh',
           'status_cnh',
@@ -187,20 +191,36 @@ routerAdd(
         return ''
       }
 
+      const normalizeFuncao = (value) => {
+        const raw = String(value ?? '')
+          .trim()
+          .replace(/\s+/g, ' ')
+        if (!raw) return ''
+        const key = stripAccents(raw).toLowerCase()
+        if (key === 'motorista') return 'Motorista'
+        if (key === 'fiscal' || key === 'fiscal de viajem' || key === 'fiscal de viagem') {
+          return 'Fiscal de Viajem'
+        }
+        if (key === 'cobrador') return 'Cobrador'
+        return raw
+          .toLowerCase()
+          .split(' ')
+          .map(function (word) {
+            return word ? word.charAt(0).toUpperCase() + word.slice(1) : ''
+          })
+          .join(' ')
+      }
+
       const mapRow = (norm) => {
         const registro = pick(norm, ['registro', 'registro_rh', 'numero_registro'])
         return {
           registro: registro,
-          // A view externa (VW_CONTROLE_CNH) NÃO envia `chapa` — apenas `registro`.
-          // `chapa` é obrigatório em `employees`, então herda de `registro`.
           chapa: pick(norm, ['chapa', 'matricula']) || registro,
           name: pick(norm, ['nome', 'name', 'nome_colaborador', 'colaborador']),
-          // A view externa (VW_CONTROLE_CNH) NÃO envia a empresa — decisão de
-          // negócio: a empresa é SEMPRE "VIA SUDESTE", fixa para todos os
-          // registros (upsert), sem depender de campo vindo da view.
+          // Decisão de negócio: a empresa é SEMPRE "VIA SUDESTE"
           company: 'VIA SUDESTE',
           filial: normFilial(norm),
-          funcao: pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador']),
+          funcao: normalizeFuncao(pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador'])),
           situacao: normSituacao(norm),
           cnh_numero: pick(norm, ['cnh_numero', 'numero_cnh', 'registro_cnh', 'cnh']),
           cnh_categoria: pick(norm, [
@@ -241,7 +261,17 @@ routerAdd(
         }
       }
 
-      // ---- índices existentes (dedup por registro, depois chapa e cpf) ---------
+      // Comparador para checar se houve mudança real
+      const isValueChanged = (oldVal, newVal) => {
+        const s1 = oldVal === null || oldVal === undefined ? '' : String(oldVal).trim()
+        const s2 = newVal === null || newVal === undefined ? '' : String(newVal).trim()
+        if (s1.length >= 10 && s2.length >= 10 && s1.slice(0, 10) === s2.slice(0, 10)) {
+          return false
+        }
+        return s1 !== s2
+      }
+
+      // ---- índices existentes --------------------------------------------------
       const existingAll = $app.findRecordsByFilter('employees', '', '', 0, 0)
       const byRegistro = {}
       const byChapa = {}
@@ -261,16 +291,9 @@ routerAdd(
       const seenCpfs = {}
       let created = 0
       let updated = 0
+      let unchanged = 0
       let removed = 0
       const rowErrors = []
-
-      if (payload.length > 0) {
-        console.log('sync:sample_keys:', Object.keys(payload[0]).join(', '))
-        console.log('sync:sample_row_0:', JSON.stringify(payload[0]))
-        if (payload.length > 8) {
-          console.log('sync:sample_row_8:', JSON.stringify(payload[8]))
-        }
-      }
 
       // ---- upsert dos registros da view ----------------------------------------
       for (const raw of payload) {
@@ -289,16 +312,30 @@ routerAdd(
           (data.chapa && byChapa[data.chapa]) ||
           (data.cpf && byCpf[data.cpf]) ||
           null
+
         if (record) {
-          for (const f of FIELDS) record.set(f, data[f])
-          $app.save(record)
-          updated++
+          let hasChanges = false
+          for (const f of FIELDS) {
+            const currentVal = record.getString(f)
+            const targetVal = data[f]
+            if (isValueChanged(currentVal, targetVal)) {
+              hasChanges = true
+              record.set(f, targetVal)
+            }
+          }
+          if (hasChanges) {
+            $app.save(record)
+            updated++
+          } else {
+            unchanged++
+          }
         } else {
           record = new Record(employeesCol)
           for (const f of FIELDS) record.set(f, data[f])
           $app.save(record)
           created++
         }
+
         if (data.registro) {
           seenRegistros[data.registro] = true
           byRegistro[data.registro] = record
@@ -330,17 +367,21 @@ routerAdd(
       run.set('finished_at', nowStr())
       run.set('error', rowErrors.length > 0 ? rowErrors.slice(0, 5).join(' | ') : '')
       $app.save(run)
+
       console.log(
         'sync:employees (' + trigger + ') — Sucesso:',
         created + updated + removed,
-        'registros (',
+        'registros modificados (',
         created,
         'novos,',
         updated,
         'atualizados,',
+        unchanged,
+        'inalterados,',
         removed,
         'removidos )',
       )
+
       return e.json(200, {
         id: run.id,
         status: run.getString('status'),

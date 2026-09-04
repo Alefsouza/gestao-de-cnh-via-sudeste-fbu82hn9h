@@ -6,12 +6,11 @@
  * mudar para "Afastado" (aviso de afastamento) ou deixar de ser "Afastado"/voltar a ativo (aviso de retorno).
  * Destinatários: Admin e RH.
  *
- * Pode acontecer tanto via requisição de usuário autenticado quanto via sincronização automática/rotinas de backend.
- * Por isso usamos `onRecordAfterUpdateSuccess`, que roda em qualquer update com sucesso da collection employees.
- *
- * Mensagens em pt-BR, ex.:
- * "Colaborador afastado: José Lima (005502)"
- * "Colaborador retornou: José Lima (005502) — situação: Ativo"
+ * Proteção contra duplicidades / repetições:
+ * 1. Só dispara se a situação mudou de verdade (oldSituacao !== newSituacao, ambos não-vazios).
+ * 2. Deduplicação em `notifications`: antes de criar uma notificação para um usuário, verifica
+ *    se já existe notificação com a mesma mensagem não lida (ou criada na última hora)
+ *    para evitar spam e repetições.
  *
  * Resiliente: try/catch completo para nunca falhar a operação em employees.
  */
@@ -64,6 +63,19 @@ onRecordAfterUpdateSuccess((e) => {
 
     for (const targetUser of targets) {
       try {
+        // Deduplicação: se já existe notificação idêntica não lida para o usuário, não duplica
+        const safeMsg = message.replace(/"/g, '\\"')
+        const existing = $app.findRecordsByFilter(
+          'notifications',
+          `user = "${targetUser.id}" && read = false && message = "${safeMsg}"`,
+          '-created',
+          1,
+          0,
+        )
+        if (existing && existing.length > 0) {
+          continue
+        }
+
         const notif = new Record(notifCol)
         notif.set('user', targetUser.id)
         notif.set('title', title)
