@@ -161,6 +161,7 @@ export default function Afastados() {
   const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [empresa, setEmpresa] = useState('VIA SUDESTE')
   const [cnhFilter, setCnhFilter] = useState<CnhFilter>('todos')
   const [cardFilter, setCardFilter] = useState<AfastadosCardFilter>('todos')
   const [page, setPage] = useState(1)
@@ -190,7 +191,7 @@ export default function Afastados() {
   // Reseta para a página 1 ao alterar filtros
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, cnhFilter, cardFilter])
+  }, [debouncedSearch, empresa, cnhFilter, cardFilter])
 
   // Carrega contadores agregados diretamente do backend com debounce e espaçamento
   const loadSummary = useCallback(async () => {
@@ -198,6 +199,7 @@ export default function Afastados() {
     try {
       const res = await getAfastadosSummary({
         search: debouncedSearch.trim() || undefined,
+        empresa: empresa.trim() || undefined,
       })
       if (runId !== summaryRunId.current) return
       setSummary(res.summary)
@@ -206,18 +208,21 @@ export default function Afastados() {
         console.error('Erro ao carregar contadores de afastados:', err)
       }
     }
-  }, [debouncedSearch])
+  }, [debouncedSearch, empresa])
 
   // Filtros ativos para a consulta paginada no servidor
   const activeFilters = useMemo<EmployeeFilters>(() => {
     const customParts: string[] = ["situacao = 'Afastado'"]
 
-    if (cardFilter === 'cursino') {
-      customParts.push("filial = 'CURSINO'")
-    } else if (cardFilter === 'sapopemba') {
-      customParts.push("filial = 'SAPOPEMBA'")
+    if (empresa.trim()) {
+      customParts.push(`company = "${empresa.trim().replace(/"/g, '\\"')}"`)
     }
 
+    if (cardFilter === 'cursino') {
+      customParts.push("(filial = 'CURSINO' || filial = 'cursino')")
+    } else if (cardFilter === 'sapopemba') {
+      customParts.push("(filial = 'SAPOPEMBA' || filial = 'sapopemba')")
+    }
     if (cnhFilter === 'Vencida') {
       customParts.push(
         '(situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (cnh_numero != "" && situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now))',
@@ -237,7 +242,7 @@ export default function Afastados() {
       perPage: PAGE_SIZE,
       sort: 'chapa',
     }
-  }, [debouncedSearch, cnhFilter, cardFilter, page])
+  }, [debouncedSearch, empresa, cnhFilter, cardFilter, page])
 
   // Busca apenas a página corrente do servidor
   const loadPage = useCallback(async () => {
@@ -299,6 +304,7 @@ export default function Afastados() {
 
   const clearFilters = () => {
     setSearch('')
+    setEmpresa('VIA SUDESTE')
     setCnhFilter('todos')
     setCardFilter('todos')
   }
@@ -416,8 +422,8 @@ export default function Afastados() {
 
       {/* Filtros */}
       <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-[10%]">
-          <div className="relative w-full md:w-[70%]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="relative md:col-span-2">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
@@ -427,9 +433,17 @@ export default function Afastados() {
             />
           </div>
           <select
+            value={empresa}
+            onChange={(e) => setEmpresa(e.target.value)}
+            className={inputClass}
+          >
+            <option value="VIA SUDESTE">VIA SUDESTE</option>
+            <option value="">Todas as empresas</option>
+          </select>
+          <select
             value={cnhFilter}
             onChange={(e) => setCnhFilter(e.target.value as CnhFilter)}
-            className={cn(inputClass, 'w-full md:w-[20%]')}
+            className={inputClass}
           >
             <option value="todos">Todos os status da CNH</option>
             <option value="Vencida">Vencida</option>
@@ -437,7 +451,10 @@ export default function Afastados() {
             <option value="Sem CNH">Sem CNH</option>
           </select>
         </div>
-        {(search || cnhFilter !== 'todos' || cardFilter !== 'todos') && (
+        {(search ||
+          (empresa && empresa !== 'VIA SUDESTE') ||
+          cnhFilter !== 'todos' ||
+          cardFilter !== 'todos') && (
           <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {cardFilter !== 'todos' && (

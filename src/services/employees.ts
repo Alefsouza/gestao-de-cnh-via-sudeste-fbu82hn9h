@@ -129,12 +129,15 @@ export interface GaragemStat {
 }
 
 export interface VisaoGeralStats {
-  total: number
+  total?: number
+  totalColaboradores: number
   ativos: number
   afastados: number
   vencidas: number
-  aVencer30d: number
-  emDia: number
+  aVencer30d?: number
+  emDia?: number
+  fiscais: number
+  porGaragem: Record<string, number>
   garagens: GaragemStat[]
 }
 
@@ -153,6 +156,7 @@ export interface AfastadosSummary {
 export async function getAfastadosSummary(
   baseFilters: {
     search?: string
+    empresa?: string
     filial?: string
   } = {},
 ): Promise<{ summary: AfastadosSummary; hasError: boolean }> {
@@ -168,8 +172,13 @@ export async function getAfastadosSummary(
           `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
         )
       }
+      if (baseFilters.empresa) {
+        parts.push(`company = "${baseFilters.empresa.replace(/"/g, '\\"')}"`)
+      }
       if (baseFilters.filial) {
-        parts.push(`filial = "${baseFilters.filial}"`)
+        parts.push(
+          `(filial = "${baseFilters.filial}" || filial = "${baseFilters.filial.toLowerCase()}" || filial = "${baseFilters.filial.toUpperCase()}")`,
+        )
       }
       if (extraFilter) {
         parts.push(`(${extraFilter})`)
@@ -195,14 +204,14 @@ export async function getAfastadosSummary(
 
   await wait(120)
   try {
-    cursino = await countSafe('filial = "CURSINO"')
+    cursino = await countSafe('filial = "CURSINO" || filial = "cursino"')
   } catch {
     hasError = true
   }
 
   await wait(120)
   try {
-    sapopemba = await countSafe('filial = "SAPOPEMBA"')
+    sapopemba = await countSafe('filial = "SAPOPEMBA" || filial = "sapopemba"')
   } catch {
     hasError = true
   }

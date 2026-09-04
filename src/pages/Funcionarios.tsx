@@ -342,7 +342,7 @@ export default function Funcionarios() {
     setEmpresa('VIA SUDESTE')
     setFilial('')
     setFuncao('')
-    setSituacao('todos')
+    setSituacao('')
     setCardFilter('todos')
   }
   const exportData = async () => {
@@ -368,7 +368,7 @@ export default function Funcionarios() {
           Chapa: employee.chapa,
           Nome: employee.name,
           'Registro CNH': employee.cnh_numero || '',
-          Empresa: employee.company || '',
+          Empresa: employee.company || 'VIA SUDESTE',
           'Filial/Garagem': employee.filial || '',
           Função: employee.funcao || '',
           Situação: employee.situacao || '',
@@ -598,7 +598,9 @@ export default function Funcionarios() {
                           : 'Sem CNH'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {employee.company || 'VIA SUDESTE'}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                     <td className="px-4 py-3">
@@ -685,7 +687,7 @@ export default function Funcionarios() {
                 <dl className="space-y-1.5 rounded-lg border bg-muted/20 p-4 text-sm">
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Empresa</dt>
-                    <dd className="text-right font-medium">{selected.company || '—'}</dd>
+                    <dd className="text-right font-medium">{selected.company || 'VIA SUDESTE'}</dd>
                   </div>
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Filial/Garagem</dt>
