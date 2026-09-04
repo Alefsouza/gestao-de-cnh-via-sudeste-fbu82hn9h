@@ -74,13 +74,11 @@ export type ProcessoCategoria =
   | 'Atualização Fiscal'
 
 export type ProcessoEtapa =
-  | 'Documentação'
   | 'Análise'
   | 'Aprovação'
   | 'Concluído'
   | 'Documentos solicitados'
   | 'Aguardando documentos'
-  | 'Em conferência'
 
 export type ProcessoSituacao =
   | 'Pendente'

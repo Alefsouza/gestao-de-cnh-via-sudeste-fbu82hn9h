@@ -112,13 +112,11 @@ const CARD_STYLES: Record<
 }
 
 const ETAPAS = [
-  'Documentação',
   'Análise',
   'Aprovação',
   'Concluído',
   'Documentos solicitados',
   'Aguardando documentos',
-  'Em conferência',
 ] as const
 type Etapa = (typeof ETAPAS)[number]
 
@@ -1175,7 +1173,7 @@ function ProcessoCadastralFormModal({
   const [matricula, setMatricula] = useState('')
   const [nome, setNome] = useState('')
   const [funcao, setFuncao] = useState('')
-  const [etapa, setEtapa] = useState<Etapa>('Documentação' as Etapa)
+  const [etapa, setEtapa] = useState<Etapa>(ETAPA_INICIAL)
   const [prazo, setPrazo] = useState('')
   const [situacao, setSituacao] = useState<Situacao>('Pendente')
   const [garagem, setGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
@@ -1191,7 +1189,7 @@ function ProcessoCadastralFormModal({
         setMatricula(initialData.matricula || '')
         setNome(initialData.colaborador || '')
         setFuncao(initialData.funcao || '')
-        setEtapa(initialData.etapa || 'Documentação')
+        setEtapa(initialData.etapa || ETAPA_INICIAL)
         setPrazo(initialData.prazo || '')
         setSituacao(initialData.situacao || 'Pendente')
         setGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
@@ -1202,7 +1200,7 @@ function ProcessoCadastralFormModal({
         setMatricula('')
         setNome('')
         setFuncao('')
-        setEtapa('Documentação')
+        setEtapa(ETAPA_INICIAL)
         setPrazo('')
         setSituacao('Pendente')
         setGaragem('CURSINO')

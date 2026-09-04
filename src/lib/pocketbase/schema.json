@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-04T15:42:36.956Z",
+  "generatedAt": "2026-09-04T15:51:49.881Z",
   "collections": [
     {
       "name": "users",
@@ -528,13 +528,11 @@
           "required": false,
           "system": false,
           "selectValues": [
-            "Documentação",
             "Análise",
             "Aprovação",
             "Concluído",
             "Documentos solicitados",
-            "Aguardando documentos",
-            "Em conferência"
+            "Aguardando documentos"
           ]
         },
         {
