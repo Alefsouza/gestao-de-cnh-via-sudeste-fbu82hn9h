@@ -1,6 +1,6 @@
 // Atualiza o agendamento do cron `sync_employees` de */5 * * * * para 0 * * * * (de hora em hora).
 // O cronAdd vive em pocketbase/hooks/sync-employees-cron.js com '0 * * * *'.
-// No Skip Cloud / PocketBase, se a tabela interna `_cron_settings` existir, atualizamos o schedule persistido.
+// No Skip Cloud / PocketBase, atualizamos o schedule persistido em `_cron_settings`.
 
 migrate(
   (app) => {
