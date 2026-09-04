@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   RefreshCcw,
+  Search,
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
@@ -177,6 +178,9 @@ export default function ProcessosCadastrais() {
   const [processos, setProcessos] = useState<ProcessoCadastral[]>([])
   const [selectedCategoria, setSelectedCategoria] = useState<Categoria | null>(null)
   const [viewRegulares, setViewRegulares] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedEtapa, setSelectedEtapa] = useState<string>('todas')
+  const [selectedGaragem, setSelectedGaragem] = useState<string>('todas')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -517,14 +521,61 @@ export default function ProcessosCadastrais() {
   }
 
   const filteredProcessos = useMemo(() => {
-    if (!selectedCategoria) return visibleProcessos
-    return visibleProcessos.filter((p) => p.processo === selectedCategoria)
-  }, [visibleProcessos, selectedCategoria])
+    const term = searchTerm.trim().toLowerCase()
+    return visibleProcessos.filter((p) => {
+      // Filtro por Categoria (clique nos cards)
+      if (selectedCategoria && p.processo !== selectedCategoria) {
+        return false
+      }
+
+      // Filtro de Busca (por matrícula/registro ou nome do colaborador)
+      if (term) {
+        const mat = (p.matricula || '').toLowerCase()
+        const colab = (p.colaborador || '').toLowerCase()
+        const unpadded = mat.replace(/^0+/, '')
+        const termUnpadded = term.replace(/^0+/, '')
+        const matchesMat = mat.includes(term) || (termUnpadded && unpadded.includes(termUnpadded))
+        const matchesColab = colab.includes(term)
+        if (!matchesMat && !matchesColab) {
+          return false
+        }
+      }
+
+      // Filtro de Etapa
+      if (selectedEtapa !== 'todas' && p.etapa !== selectedEtapa) {
+        return false
+      }
+
+      // Filtro de Garagem (apenas para Admin/RH - perfil Tráfego já tem a garagem filtrada em visibleProcessos)
+      if (!isTrafego && selectedGaragem !== 'todas') {
+        const pGaragem = (p.garagem || '').toUpperCase()
+        if (pGaragem !== selectedGaragem.toUpperCase()) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [visibleProcessos, selectedCategoria, searchTerm, selectedEtapa, selectedGaragem, isTrafego])
+
+  const hasActiveFilters = Boolean(
+    searchTerm.trim() ||
+    selectedEtapa !== 'todas' ||
+    (!isTrafego && selectedGaragem !== 'todas') ||
+    selectedCategoria,
+  )
+
+  const handleClearFilters = useCallback(() => {
+    setSearchTerm('')
+    setSelectedEtapa('todas')
+    setSelectedGaragem('todas')
+    setSelectedCategoria(null)
+  }, [])
 
   // Resetar página atual quando filtros mudarem
   useEffect(() => {
     setCurrentPage(1)
-  }, [selectedCategoria, viewRegulares])
+  }, [selectedCategoria, viewRegulares, searchTerm, selectedEtapa, selectedGaragem])
 
   // Paginação da listagem
   const totalPages = Math.max(1, Math.ceil(filteredProcessos.length / pageSize))
@@ -692,62 +743,123 @@ export default function ProcessosCadastrais() {
 
       {/* Tabela de processos */}
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="text-sm font-semibold text-foreground">
-              {viewRegulares ? 'Processos cadastrados (Regulares)' : 'Processos cadastrados'}
-            </h2>
+        {/* Barra superior de ações e filtros */}
+        <div className="flex flex-col gap-3 border-b p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-sm font-semibold text-foreground">
+                {viewRegulares ? 'Processos cadastrados (Regulares)' : 'Processos cadastrados'}
+              </h2>
 
-            {/* Botão Regular: posicionado ao lado do título Processos cadastrados */}
-            {!isTrafego && (
-              <Button
-                type="button"
-                size="sm"
-                variant={viewRegulares ? 'default' : 'outline'}
-                onClick={() => setViewRegulares((prev) => !prev)}
-                className={cn(
-                  'h-7 px-2.5 text-xs font-medium transition-all gap-1.5',
-                  viewRegulares
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm border-emerald-600'
-                    : 'border-emerald-300 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900',
-                )}
-                aria-pressed={viewRegulares}
-                title={
-                  viewRegulares
-                    ? 'Voltar para a listagem principal de processos (sem Regulares)'
-                    : 'Filtrar somente processos com situação Regular'
-                }
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Regular
-                {viewRegulares && (
-                  <span className="ml-0.5 rounded-full bg-white/25 px-1.5 py-0.2 text-[10px] font-bold">
-                    Ativo
-                  </span>
-                )}
-              </Button>
-            )}
-
-            {selectedCategoria && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                Filtro: {selectedCategoria}
-                <button
+              {/* Botão Regular: posicionado ao lado do título Processos cadastrados */}
+              {!isTrafego && (
+                <Button
                   type="button"
-                  onClick={() => setSelectedCategoria(null)}
-                  className="hover:text-primary/70 font-bold ml-0.5"
-                  title="Limpar filtro"
+                  size="sm"
+                  variant={viewRegulares ? 'default' : 'outline'}
+                  onClick={() => setViewRegulares((prev) => !prev)}
+                  className={cn(
+                    'h-7 px-2.5 text-xs font-medium transition-all gap-1.5',
+                    viewRegulares
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm border-emerald-600'
+                      : 'border-emerald-300 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900',
+                  )}
+                  aria-pressed={viewRegulares}
+                  title={
+                    viewRegulares
+                      ? 'Voltar para a listagem principal de processos (sem Regulares)'
+                      : 'Filtrar somente processos com situação Regular'
+                  }
                 >
-                  ×
-                </button>
-              </span>
-            )}
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Regular
+                  {viewRegulares && (
+                    <span className="ml-0.5 rounded-full bg-white/25 px-1.5 py-0.2 text-[10px] font-bold">
+                      Ativo
+                    </span>
+                  )}
+                </Button>
+              )}
+
+              {selectedCategoria && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                  Filtro: {selectedCategoria}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoria(null)}
+                    className="hover:text-primary/70 font-bold ml-0.5"
+                    title="Limpar filtro de categoria"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+            </div>
+
+            {/* Controles de busca e filtros */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {/* Campo de pesquisa: busca por registro (matrícula) ou nome do colaborador */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Buscar por matrícula ou nome…"
+                  aria-label="Buscar processos por matrícula ou nome"
+                  className="h-10 w-full min-w-[220px] rounded-md border border-input bg-white pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-64"
+                />
+              </div>
+
+              {/* Filtro de Etapa */}
+              <select
+                value={selectedEtapa}
+                onChange={(event) => setSelectedEtapa(event.target.value)}
+                className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Filtro de Etapa"
+              >
+                <option value="todas">Todas as etapas</option>
+                {ETAPAS.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+
+              {/* Filtro de Garagem (oculto para o perfil Tráfego) */}
+              {!isTrafego && (
+                <select
+                  value={selectedGaragem}
+                  onChange={(event) => setSelectedGaragem(event.target.value)}
+                  className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Filtro de Garagem"
+                >
+                  <option value="todas">Todas as garagens</option>
+                  <option value="CURSINO">CURSINO</option>
+                  <option value="SAPOPEMBA">SAPOPEMBA</option>
+                  <option value="GUAIANASES">GUAIANASES</option>
+                </select>
+              )}
+            </div>
           </div>
-          <span className="text-xs text-muted-foreground">
-            Exibindo {filteredProcessos.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} a{' '}
-            {Math.min(currentPage * pageSize, filteredProcessos.length)} de{' '}
-            {filteredProcessos.length} registro(s)
+        </div>
+
+        {/* Barra de resumo de registros e botão Limpar Filtros */}
+        <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            Total de <strong className="text-foreground">{filteredProcessos.length}</strong>{' '}
+            processo(s) encontrado(s)
             {isTrafego && ` (Garagem ${userGaragem})`}
           </span>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -888,9 +1000,23 @@ export default function ProcessosCadastrais() {
         {!loading && filteredProcessos.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">
             {viewRegulares
-              ? 'Nenhum processo com situação "Regular" encontrado.'
-              : 'Nenhum processo cadastral encontrado.'}
-            {viewRegulares ? (
+              ? hasActiveFilters
+                ? 'Nenhum processo regular encontrado com os filtros selecionados.'
+                : 'Nenhum processo com situação "Regular" encontrado.'
+              : hasActiveFilters
+                ? 'Nenhum processo cadastral encontrado com os filtros selecionados.'
+                : 'Nenhum processo cadastral encontrado.'}
+            {hasActiveFilters ? (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="text-xs font-medium text-primary underline"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            ) : viewRegulares ? (
               <div className="mt-2">
                 <button
                   type="button"
