@@ -478,10 +478,7 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                           </div>
 
                           <div className="flex items-center gap-2 flex-none">
-                            <span className="text-[11px] text-muted-foreground hidden sm:inline">
-                              {isExpanded ? 'Ocultar detalhes' : 'Ver detalhes'}
-                            </span>
-                            {/* Botão para remover este colaborador da carta */}
+                            {/* Botão para remover este colaborador da carta (à esquerda de Ver detalhes) */}
                             {canDelete && (
                               <button
                                 type="button"
@@ -496,6 +493,9 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             )}
+                            <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                              {isExpanded ? 'Ocultar detalhes' : 'Ver detalhes'}
+                            </span>
                             {isExpanded ? (
                               <ChevronDown className="h-4 w-4 text-muted-foreground" />
                             ) : (
