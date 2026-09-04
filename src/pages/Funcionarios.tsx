@@ -160,7 +160,7 @@ export default function Funcionarios() {
   const [exporting, setExporting] = useState(false)
 
   const [search, setSearch] = useState('')
-  const [empresa, setEmpresa] = useState('')
+  const [empresa, setEmpresa] = useState('VIA SUDESTE')
   const [filial, setFilial] = useState('')
   const [funcao, setFuncao] = useState('')
   const [situacao, setSituacao] = useState('')
@@ -339,13 +339,12 @@ export default function Funcionarios() {
 
   const clearFilters = () => {
     setSearch('')
-    setEmpresa('')
+    setEmpresa('VIA SUDESTE')
     setFilial('')
     setFuncao('')
-    setSituacao('')
+    setSituacao('todos')
     setCardFilter('todos')
   }
-
   const exportData = async () => {
     if (totalItems === 0 || exporting) return
     setExporting(true)

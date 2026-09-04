@@ -129,15 +129,91 @@ export interface GaragemStat {
 }
 
 export interface VisaoGeralStats {
-  totalColaboradores: number
+  total: number
   ativos: number
   afastados: number
   vencidas: number
-  fiscais: number
-  porGaragem: Record<string, number>
+  aVencer30d: number
+  emDia: number
   garagens: GaragemStat[]
 }
 
+export interface AfastadosSummary {
+  total: number
+  cursino: number
+  sapopemba: number
+  outros: number
+}
+
+/**
+ * Calcula os contadores dos cards da tela de Afastados diretamente no backend.
+ * Considera colaboradores com situação de afastamento (situacao = "Afastado").
+ * Retorna o total geral de afastados e o detalhamento por garagem/filial (CURSINO, SAPOPEMBA, outros).
+ */
+export async function getAfastadosSummary(
+  baseFilters: {
+    search?: string
+    filial?: string
+  } = {},
+): Promise<{ summary: AfastadosSummary; hasError: boolean }> {
+  let hasError = false
+
+  const countSafe = async (extraFilter?: string): Promise<number> => {
+    try {
+      const parts: string[] = ['situacao = "Afastado"']
+      const search = (baseFilters.search ?? '').trim()
+      if (search) {
+        const escaped = search.replace(/"/g, '\\"')
+        parts.push(
+          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+        )
+      }
+      if (baseFilters.filial) {
+        parts.push(`filial = "${baseFilters.filial}"`)
+      }
+      if (extraFilter) {
+        parts.push(`(${extraFilter})`)
+      }
+
+      return await countEmployees(parts.join(' && '))
+    } catch (err) {
+      console.error('Erro ao contar afastados no backend:', err)
+      hasError = true
+      return 0
+    }
+  }
+
+  let total = 0
+  let cursino = 0
+  let sapopemba = 0
+
+  try {
+    total = await countSafe()
+  } catch {
+    hasError = true
+  }
+
+  await wait(120)
+  try {
+    cursino = await countSafe('filial = "CURSINO"')
+  } catch {
+    hasError = true
+  }
+
+  await wait(120)
+  try {
+    sapopemba = await countSafe('filial = "SAPOPEMBA"')
+  } catch {
+    hasError = true
+  }
+
+  const outros = Math.max(0, total - (cursino + sapopemba))
+
+  return {
+    summary: { total, cursino, sapopemba, outros },
+    hasError,
+  }
+}
 /** Lista de filiais conhecidas para consulta pontual de contagem. */
 export const KNOWN_FILIAIS = ['CURSINO', 'SAPOPEMBA', 'GUAIANASES', 'ITAQUERA'] as const
 

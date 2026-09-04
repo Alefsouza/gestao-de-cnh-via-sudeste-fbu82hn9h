@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Building2,
   CalendarX,
   CircleAlert,
+  ChevronLeft,
+  ChevronRight,
   FileDown,
   Loader2,
   Search,
@@ -16,13 +18,22 @@ import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate, formatCnh } from '@/lib/format'
-import { listAllEmployees } from '@/services/employees'
+import {
+  getAfastadosSummary,
+  listEmployees,
+  listEmployeesControlled,
+  type AfastadosSummary,
+  type EmployeeFilters,
+} from '@/services/employees'
 import type { Employee } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { comparable, isCnhVencida, normalizeEmployees } from '@/lib/normalize'
 
 const inputClass =
   'h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
+const PAGE_SIZE = 15
+const RELOAD_THROTTLE_MS = 2500
 
 type AfastadosCardFilter = 'todos' | 'cursino' | 'sapopemba'
 type CnhFilter = 'todos' | 'Vencida' | 'Regular' | 'Sem CNH'
@@ -147,71 +158,136 @@ function CnhBadge({ status }: { status: CnhStatus }) {
 export default function Afastados() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [cnhFilter, setCnhFilter] = useState<CnhFilter>('todos')
   const [cardFilter, setCardFilter] = useState<AfastadosCardFilter>('todos')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
 
-  const load = useCallback(async () => {
-    try {
-      const data = await listAllEmployees()
-      setEmployees(normalizeEmployees(data))
-    } catch {
-      toast.error('Não foi possível carregar os afastados')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  useRealtime('employees', () => {
-    load()
+  const [summary, setSummary] = useState<AfastadosSummary>({
+    total: 0,
+    cursino: 0,
+    sapopemba: 0,
+    outros: 0,
   })
 
-  const afastados = useMemo(
-    () => employees.filter((employee) => comparable(employee.situacao) === 'afastado'),
-    [employees],
-  )
+  const listRunId = useRef(0)
+  const summaryRunId = useRef(0)
+  const loadInProgress = useRef(false)
+  const lastLoadedAt = useRef(0)
 
-  // Base filtrada pelos controles do formulário (busca + filtro de CNH)
-  const baseFiltered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    return afastados.filter((employee) => {
-      if (
-        term &&
-        !employee.name.toLowerCase().includes(term) &&
-        !employee.chapa.toLowerCase().includes(term)
-      ) {
-        return false
+  // Debounce de 300ms na busca para não gerar rajadas de consultas ao backend
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  // Reseta para a página 1 ao alterar filtros
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, cnhFilter, cardFilter])
+
+  // Carrega contadores agregados diretamente do backend com debounce e espaçamento
+  const loadSummary = useCallback(async () => {
+    const runId = ++summaryRunId.current
+    try {
+      const res = await getAfastadosSummary({
+        search: debouncedSearch.trim() || undefined,
+      })
+      if (runId !== summaryRunId.current) return
+      setSummary(res.summary)
+    } catch (err) {
+      if (runId === summaryRunId.current) {
+        console.error('Erro ao carregar contadores de afastados:', err)
       }
-      if (cnhFilter !== 'todos') {
-        const status = cnhStatus(employee)
-        if (status.label !== cnhFilter) {
-          return false
-        }
-      }
-      return true
-    })
-  }, [afastados, search, cnhFilter])
+    }
+  }, [debouncedSearch])
 
-  const summary = useMemo(() => {
-    const cursino = baseFiltered.filter((e) => comparable(e.filial) === 'cursino').length
-    const sapopemba = baseFiltered.filter((e) => comparable(e.filial) === 'sapopemba').length
-    return { cursino, sapopemba, total: baseFiltered.length }
-  }, [baseFiltered])
+  // Filtros ativos para a consulta paginada no servidor
+  const activeFilters = useMemo<EmployeeFilters>(() => {
+    const customParts: string[] = ["situacao = 'Afastado'"]
 
-  // Lista final exibida na tabela (combinando filtros do formulário + clique no card)
-  const filtered = useMemo(() => {
     if (cardFilter === 'cursino') {
-      return baseFiltered.filter((e) => comparable(e.filial) === 'cursino')
+      customParts.push("filial = 'CURSINO'")
+    } else if (cardFilter === 'sapopemba') {
+      customParts.push("filial = 'SAPOPEMBA'")
     }
-    if (cardFilter === 'sapopemba') {
-      return baseFiltered.filter((e) => comparable(e.filial) === 'sapopemba')
+
+    if (cnhFilter === 'Vencida') {
+      customParts.push(
+        '(situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (cnh_numero != "" && situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now))',
+      )
+    } else if (cnhFilter === 'Regular') {
+      customParts.push(
+        'cnh_numero != "" && (situacao_cnh = "Válida" || situacao_cnh = "A vencer" || (situacao_cnh != "Sem CNH" && situacao_cnh != "Vencida" && situacao_cnh != "Vencida CNH" && (validade_cnh = "" || validade_cnh >= @now)))',
+      )
+    } else if (cnhFilter === 'Sem CNH') {
+      customParts.push('(cnh_numero = "" || situacao_cnh = "Sem CNH" || situacao_cnh = "")')
     }
-    return baseFiltered
-  }, [baseFiltered, cardFilter])
+
+    return {
+      search: debouncedSearch.trim() || undefined,
+      customFilter: customParts.join(' && '),
+      page,
+      perPage: PAGE_SIZE,
+      sort: 'chapa',
+    }
+  }, [debouncedSearch, cnhFilter, cardFilter, page])
+
+  // Busca apenas a página corrente do servidor
+  const loadPage = useCallback(async () => {
+    const runId = ++listRunId.current
+    loadInProgress.current = true
+    setLoading(true)
+    try {
+      const result = await listEmployees(activeFilters)
+      if (runId !== listRunId.current) return
+
+      setEmployees(normalizeEmployees(result.items))
+      setTotalItems(result.totalItems)
+      setTotalPages(Math.max(1, result.totalPages))
+    } catch (err) {
+      if (runId !== listRunId.current) return
+      console.error('Erro ao listar página de afastados:', err)
+      toast.error('Não foi possível carregar a lista de afastados')
+    } finally {
+      if (runId === listRunId.current) {
+        loadInProgress.current = false
+        lastLoadedAt.current = Date.now()
+        setLoading(false)
+      }
+    }
+  }, [activeFilters])
+
+  // Disparo da listagem paginada
+  useEffect(() => {
+    void loadPage()
+  }, [loadPage])
+
+  // Disparo dos contadores com debounce para evitar concorrência com loadPage
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadSummary()
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [loadSummary])
+
+  // Throttled reload para eventos em tempo real
+  const requestReload = useCallback(() => {
+    if (loadInProgress.current) return
+    if (Date.now() - lastLoadedAt.current < RELOAD_THROTTLE_MS) return
+    void loadPage()
+    void loadSummary()
+  }, [loadPage, loadSummary])
+
+  useRealtime('employees', () => {
+    requestReload()
+  })
 
   const handleCardClick = (filter: AfastadosCardFilter) => {
     if (filter === 'todos' || cardFilter === filter) {
@@ -227,19 +303,39 @@ export default function Afastados() {
     setCardFilter('todos')
   }
 
-  const exportXlsx = () => {
-    if (filtered.length === 0) {
+  // Exportação com carregamento em lotes sequenciais, pausa entre páginas e retry para evitar 429
+  const exportXlsx = async () => {
+    if (totalItems === 0 || exporting) {
       toast.error('Nenhum colaborador afastado para exportar.')
       return
     }
 
+    setExporting(true)
+    const toastId = toast.loading('Preparando planilha de afastados…')
     try {
-      const rows = filtered.map((employee) => {
+      const exportFilters: EmployeeFilters = {
+        search: activeFilters.search,
+        customFilter: activeFilters.customFilter,
+        sort: 'chapa',
+      }
+
+      const allData = await listEmployeesControlled(exportFilters, {
+        batchSize: 200,
+        pageDelayMs: 250,
+        onProgress: (loaded, total) => {
+          toast.loading(`Baixando afastados para planilha (${loaded} de ${total})…`, {
+            id: toastId,
+          })
+        },
+      })
+      const normalized = normalizeEmployees(allData)
+
+      const rows = normalized.map((employee) => {
         const status = cnhStatus(employee)
         return {
           Chapa: employee.chapa,
           Nome: employee.name,
-          Empresa: employee.company || '',
+          Empresa: employee.company || 'VIA SUDESTE',
           'Filial/Garagem': employee.filial || '',
           Função: employee.funcao || '',
           Situação: employee.situacao || '',
@@ -265,10 +361,14 @@ export default function Afastados() {
 
       const dateStr = new Date().toISOString().slice(0, 10)
       XLSX.writeFile(workbook, `afastados-${dateStr}.xlsx`)
-      toast.success(`Exportação concluída (${filtered.length} registro(s))`)
+      toast.dismiss(toastId)
+      toast.success(`Exportação concluída (${rows.length} registro(s))`)
     } catch (error) {
       console.error('Erro ao exportar afastados para XLSX:', error)
+      toast.dismiss(toastId)
       toast.error('Ocorreu um erro ao gerar o arquivo Excel.')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -362,12 +462,25 @@ export default function Afastados() {
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            Exibindo <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
-            afastado(s)
+            Exibindo <span className="font-semibold text-foreground">{totalItems}</span> afastado(s)
           </p>
-          <Button variant="outline" size="sm" onClick={exportXlsx} disabled={filtered.length === 0}>
-            <FileDown className="mr-2 h-4 w-4" />
-            Exportar .xlsx
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportXlsx}
+            disabled={totalItems === 0 || exporting}
+          >
+            {exporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Exportando…
+              </>
+            ) : (
+              <>
+                <FileDown className="mr-2 h-4 w-4" />
+                Exportar .xlsx
+              </>
+            )}
           </Button>
         </div>
 
@@ -391,7 +504,7 @@ export default function Afastados() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((employee) => (
+                {employees.map((employee) => (
                   <tr
                     key={employee.id}
                     className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
@@ -405,7 +518,9 @@ export default function Afastados() {
                           : 'CNH: Sem CNH'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{employee.company || '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {employee.company || 'VIA SUDESTE'}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
                     <td className="px-4 py-3">
@@ -418,7 +533,7 @@ export default function Afastados() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
+                {employees.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum colaborador afastado encontrado.
@@ -429,6 +544,34 @@ export default function Afastados() {
             </table>
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+            <span>
+              Página {page} de {totalPages} ({totalItems} registros)
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Próxima
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">

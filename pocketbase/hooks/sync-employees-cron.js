@@ -1,5 +1,5 @@
 /**
- * Cron de sincronização: roda a cada 5 minutos e espelha a view externa
+ * Cron de sincronização: roda de hora em hora (0 * * * *) e espelha a view externa
  * (secret VW_CONTROLE_CNH) na collection `employees`.
  *
  * A rotina real vive AQUI DENTRO (o corpo inteiro está no callback do cron),
@@ -10,7 +10,7 @@
  * identificadores de topo de arquivo — toda a lógica vive dentro do callback.
  */
 
-cronAdd('sync_employees', '*/5 * * * *', () => {
+cronAdd('sync_employees', '0 * * * *', () => {
   const trigger = 'cron'
   const nowStr = () => new Date().toISOString().replace('T', ' ')
 
