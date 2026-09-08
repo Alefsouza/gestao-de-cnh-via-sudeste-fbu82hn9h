@@ -24,7 +24,7 @@ import {
 import { toast } from 'sonner'
 
 import { useRealtime } from '@/hooks/use-realtime'
-import { listAllEmployees } from '@/services/employees'
+import { getCachedEmployees, updateCachedEmployee } from '@/services/employees'
 import {
   createConversation,
   createMessage,
@@ -133,28 +133,79 @@ export default function AssistenteIA() {
   // Base de colaboradores
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [loadingError, setLoadingError] = useState<string | null>(null)
+  const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const pendingQuestion = useRef<string | null>(
     (location.state as { question?: string } | null)?.question ?? null,
   )
+  const employeesRef = useRef<Employee[]>([])
+  employeesRef.current = employees
 
-  // Carrega base de funcionários
-  const loadEmployees = useCallback(() => {
-    listAllEmployees()
+  // Promessa ativa de carregamento para que perguntas pendentes possam aguardá-la
+  const loadingPromiseRef = useRef<Promise<Employee[]> | null>(null)
+
+  // Carrega base de funcionários com retry automático e atualização de progresso
+  const loadEmployees = useCallback((forceReload = false) => {
+    setLoadingError(null)
+    const promise = getCachedEmployees({
+      forceReload,
+      onProgress: (loadedCount, totalCount) => {
+        setLoadProgress({ loaded: loadedCount, total: totalCount })
+      },
+    })
       .then((items) => {
-        setEmployees(normalizeEmployees(items))
+        const normalized = normalizeEmployees(items)
+        setEmployees(normalized)
         setLoaded(true)
+        setLoadingError(null)
+        return normalized
       })
-      .catch(() => setLoaded(true))
+      .catch((err) => {
+        console.error('Falha ao carregar colaboradores no assistente:', err)
+        setLoadingError(
+          'Não foi possível carregar a base de colaboradores. Clique para tentar novamente.',
+        )
+        // Mantém loaded = false se falhou, nunca finge que a base está vazia!
+        throw err
+      })
+      .finally(() => {
+        loadingPromiseRef.current = null
+      })
+
+    loadingPromiseRef.current = promise
+    return promise
   }, [])
 
   useEffect(() => {
-    loadEmployees()
+    loadEmployees().catch(() => {})
   }, [loadEmployees])
 
-  useRealtime('employees', loadEmployees)
+  // Em vez de recarregar TODOS os ~3.180 colaboradores a cada evento SSE,
+  // fazemos atualização incremental pontual (upsert/delete) no estado e cache.
+  useRealtime('employees', (event) => {
+    if (!event.record) return
+    const action = event.action
+    const record = event.record as unknown as Employee
+
+    if (action === 'delete') {
+      updateCachedEmployee('delete', record)
+      setEmployees((prev) => prev.filter((e) => e.id !== record.id))
+    } else {
+      updateCachedEmployee(action as 'create' | 'update', record)
+      setEmployees((prev) => {
+        const index = prev.findIndex((e) => e.id === record.id)
+        if (index >= 0) {
+          const updated = [...prev]
+          updated[index] = { ...updated[index], ...record }
+          return normalizeEmployees(updated)
+        }
+        return normalizeEmployees([...prev, record])
+      })
+    }
+  })
 
   // Carrega lista de conversas do usuário logado
   const fetchConversations = useCallback(
@@ -358,9 +409,34 @@ export default function AssistenteIA() {
       }).catch((err) => console.warn('Erro ao persistir pergunta do usuário:', err))
     }
 
-    // Processa a resposta usando o motor de IA local
+    // Processa a resposta usando o motor de IA local, garantindo que a base esteja carregada
     setTimeout(async () => {
-      const answer: AssistantAnswer = processAssistantQuery(trimmed, employees)
+      let currentEmployees = employeesRef.current
+
+      // Se a base ainda não carregou ou está em andamento, aguarda o carregamento terminar
+      if (!loaded || currentEmployees.length === 0) {
+        try {
+          if (loadingPromiseRef.current) {
+            currentEmployees = await loadingPromiseRef.current
+          } else {
+            currentEmployees = await loadEmployees(true)
+          }
+        } catch (err) {
+          console.error('Erro ao aguardar carregamento dos colaboradores:', err)
+          const assistantMsgId = `assistant-${Date.now()}`
+          const errorMsg: ChatMessage = {
+            id: assistantMsgId,
+            role: 'assistant',
+            content:
+              'Houve uma instabilidade temporária ao consultar a base de colaboradores no servidor. Por favor, tente enviar sua pergunta novamente em instantes.',
+          }
+          setMessages((previous) => [...previous, errorMsg])
+          setThinking(false)
+          return
+        }
+      }
+
+      const answer: AssistantAnswer = processAssistantQuery(trimmed, currentEmployees)
       const assistantMsgId = `assistant-${Date.now()}`
 
       // Dispara download automático caso tenha sido solicitado
@@ -680,10 +756,26 @@ export default function AssistenteIA() {
             </div>
 
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 font-semibold text-primary">
-                <Database className="h-3 w-3" />
-                {loaded ? `${stats.total} registros` : 'Carregando…'}
-              </span>
+              {loadingError ? (
+                <button
+                  type="button"
+                  onClick={() => loadEmployees(true)}
+                  className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 font-semibold text-red-700 hover:bg-red-100 transition-colors"
+                  title="Clique para tentar recarregar os dados"
+                >
+                  <Database className="h-3 w-3 text-red-500" />
+                  <span>Erro ao carregar (tentar novamente)</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 font-semibold text-primary">
+                  <Database className="h-3 w-3" />
+                  {loaded
+                    ? `${stats.total} registros`
+                    : loadProgress && loadProgress.total > 0
+                      ? `Carregando base (${loadProgress.loaded}/${loadProgress.total})…`
+                      : 'Carregando base de colaboradores…'}
+                </span>
+              )}
               {loaded && stats.total > 0 && (
                 <span className="hidden md:inline">
                   · {stats.motoristas} motoristas · {stats.fiscais} fiscais

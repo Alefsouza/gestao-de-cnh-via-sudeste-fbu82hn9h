@@ -9,20 +9,29 @@ const PAGE_SIZE = 500
 /** Status HTTP que vale a pena repetir (rate limit e instabilidade do backend). */
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
 /** Número máximo de tentativas extras antes de desistir. */
-const MAX_RETRIES = 5
+const MAX_RETRIES = 6
 /** Atraso base do backoff exponencial (ms). */
 const RETRY_BASE_DELAY_MS = 800
 /** Jitter máximo somado ao backoff (ms), para não sincronizar retries concorrentes. */
 const RETRY_JITTER_MS = 400
 
 function isRetryableError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'status' in error &&
-    typeof (error as { status?: unknown }).status === 'number' &&
-    RETRYABLE_STATUS.has((error as { status: number }).status)
-  )
+  if (typeof error !== 'object' || error === null) return false
+
+  // PocketBase ClientResponseError ou status HTTP
+  if ('status' in error && typeof (error as { status?: unknown }).status === 'number') {
+    const status = (error as { status: number }).status
+    if (RETRYABLE_STATUS.has(status)) return true
+    // Status 0 indica interrupção transitória de conexão / offline temporário
+    if (status === 0) return true
+  }
+
+  // Falha transitória de rede (TypeError: Failed to fetch)
+  if (error instanceof TypeError && error.message.toLowerCase().includes('fetch')) {
+    return true
+  }
+
+  return false
 }
 
 function wait(ms: number) {
@@ -30,16 +39,26 @@ function wait(ms: number) {
 }
 
 /**
- * Repete a chamada em caso de 429/5xx com backoff exponencial + jitter,
+ * Repete a chamada em caso de 429/5xx/rede com backoff exponencial + jitter,
  * até MAX_RETRIES tentativas extras. Outros erros são propagados direto.
  */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number
+    onRetry?: (attempt: number, delayMs: number, err: unknown) => void
+  } = {},
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? MAX_RETRIES
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn()
     } catch (error) {
-      if (attempt >= MAX_RETRIES || !isRetryableError(error)) throw error
+      if (attempt >= maxRetries || !isRetryableError(error)) throw error
       const delay = RETRY_BASE_DELAY_MS * 2 ** attempt + Math.random() * RETRY_JITTER_MS
+      if (options.onRetry) {
+        options.onRetry(attempt + 1, delay, error)
+      }
       await wait(delay)
     }
   }
@@ -698,12 +717,14 @@ export async function listEmployeesControlled(
   const pageDelayMs = options.pageDelayMs ?? 250
   const filter = buildFilter(filters)
 
-  const first = await withRetry(() =>
-    pb.collection<Employee>(COLLECTION).getList(1, batchSize, {
-      filter: filter || undefined,
-      sort: filters.sort || 'chapa',
-      requestKey: null,
-    }),
+  const first = await withRetry(
+    () =>
+      pb.collection<Employee>(COLLECTION).getList(1, batchSize, {
+        filter: filter || undefined,
+        sort: filters.sort || 'chapa',
+        requestKey: null,
+      }),
+    { maxRetries: 6 },
   )
 
   const items = [...first.items]
@@ -717,12 +738,14 @@ export async function listEmployeesControlled(
   for (let page = 2; page <= totalPages; page++) {
     // Pausa controlada entre páginas para proteger contra rate limit (429)
     await wait(pageDelayMs)
-    const next = await withRetry(() =>
-      pb.collection<Employee>(COLLECTION).getList(page, batchSize, {
-        filter: filter || undefined,
-        sort: filters.sort || 'chapa',
-        requestKey: null,
-      }),
+    const next = await withRetry(
+      () =>
+        pb.collection<Employee>(COLLECTION).getList(page, batchSize, {
+          filter: filter || undefined,
+          sort: filters.sort || 'chapa',
+          requestKey: null,
+        }),
+      { maxRetries: 6 },
     )
     items.push(...next.items)
     if (options.onProgress) {
@@ -733,8 +756,95 @@ export async function listEmployeesControlled(
   return items
 }
 
+/** Cache em memória da base completa de funcionários para evitar recargas excessivas */
+let employeesCache: Employee[] | null = null
+let employeesPromise: Promise<Employee[]> | null = null
+
+/**
+ * Retorna a lista completa de funcionários em memória.
+ * Se já estiver em andamento, compartilha a mesma Promise.
+ * Se já carregada, retorna o cache a menos que forceReload seja verdadeiro.
+ */
+export async function getCachedEmployees(
+  options: {
+    forceReload?: boolean
+    onProgress?: (loaded: number, total: number) => void
+  } = {},
+): Promise<Employee[]> {
+  if (!options.forceReload && employeesCache && employeesCache.length > 0) {
+    if (options.onProgress) {
+      options.onProgress(employeesCache.length, employeesCache.length)
+    }
+    return employeesCache
+  }
+
+  if (employeesPromise && !options.forceReload) {
+    return employeesPromise
+  }
+
+  employeesPromise = (async () => {
+    try {
+      const items = await listEmployeesControlled(
+        {},
+        {
+          batchSize: 200,
+          pageDelayMs: 200,
+          onProgress: options.onProgress,
+        },
+      )
+      employeesCache = items
+      return items
+    } catch (err) {
+      // Em caso de falha, não trava futuras tentativas
+      employeesPromise = null
+      throw err
+    } finally {
+      employeesPromise = null
+    }
+  })()
+
+  return employeesPromise
+}
+
+/**
+ * Atualiza incrementalmente um registro de funcionário no cache em memória.
+ * Evita recarregar a base inteira (~3.180 colaboradores) em tempo real.
+ */
+export function updateCachedEmployee(
+  action: 'create' | 'update' | 'delete',
+  record: Employee,
+): Employee[] | null {
+  if (!employeesCache) return null
+
+  if (action === 'delete') {
+    employeesCache = employeesCache.filter((e) => e.id !== record.id)
+    return employeesCache
+  }
+
+  const index = employeesCache.findIndex((e) => e.id === record.id)
+  if (index >= 0) {
+    employeesCache[index] = { ...employeesCache[index], ...record }
+  } else {
+    employeesCache.push(record)
+  }
+  return employeesCache
+}
+
+/**
+ * Limpa o cache de funcionários caso seja necessário forçar recarga completa externa.
+ */
+export function invalidateEmployeesCache(): void {
+  employeesCache = null
+  employeesPromise = null
+}
+
 /** Busca todos os funcionários aplicando os filtros informados, com paginação sequencial e retry para evitar 429. */
 export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<Employee[]> {
+  // Se não tem filtros específicos, aproveita o cache compartilhado se disponível
+  const hasFilter = Object.values(filters).some((v) => v !== undefined && v !== '')
+  if (!hasFilter && employeesCache && employeesCache.length > 0) {
+    return employeesCache
+  }
   return listEmployeesControlled(filters)
 }
 
