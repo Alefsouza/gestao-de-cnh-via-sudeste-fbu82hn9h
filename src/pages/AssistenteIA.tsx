@@ -127,6 +127,9 @@ export default function AssistenteIA() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: 'welcome', role: 'assistant', content: BOAS_VINDAS },
   ])
+  const messagesRef = useRef<ChatMessage[]>(messages)
+  messagesRef.current = messages
+
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
 
@@ -436,7 +439,18 @@ export default function AssistenteIA() {
         }
       }
 
-      const answer: AssistantAnswer = processAssistantQuery(trimmed, currentEmployees)
+      // Prepara histórico dos turnos anteriores para interpretação contextual
+      // messagesRef.current contém as mensagens anteriores + a recém-adicionada do usuário
+      const priorHistory = messagesRef.current
+        .filter((m) => m.id !== 'welcome')
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+          exportableRows: m.exportableRows,
+          matchedEmployee: m.matchedEmployee,
+        }))
+
+      const answer: AssistantAnswer = processAssistantQuery(trimmed, currentEmployees, priorHistory)
       const assistantMsgId = `assistant-${Date.now()}`
 
       // Dispara download automático caso tenha sido solicitado

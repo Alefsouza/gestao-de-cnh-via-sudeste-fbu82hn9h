@@ -10,6 +10,23 @@ export interface AssistantAnswer {
   exportSheetName?: string
   autoDownload?: boolean
   matchedEmployee?: Employee
+  extractedContext?: ConversationContext
+}
+
+export interface ConversationHistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
+  exportableRows?: Employee[]
+  matchedEmployee?: Employee
+}
+
+export interface ConversationContext {
+  funcao?: string | null
+  filial?: 'CURSINO' | 'SAPOPEMBA' | 'ITAQUERA' | 'GUAIANASES' | null
+  situacao?: 'Ativo' | 'Afastado' | 'Desligado' | null
+  dateFilter?: DateFilter | null
+  lastTopic?: 'cnh_vencida' | 'cnh_geral' | 'afastados' | 'funcao' | 'garagem' | 'geral'
+  lastExportableRows?: Employee[]
 }
 
 const MAIN_COMPANY = 'Via Sudeste Transportes'
@@ -20,6 +37,7 @@ const MONTH_NAMES_MAP: Record<string, number> = {
   fevereiro: 2,
   fev: 2,
   marco: 3,
+  março: 3,
   mar: 3,
   abril: 4,
   abr: 4,
@@ -75,7 +93,6 @@ export function extractDateFilter(rawQuestion: string, now = new Date()): DateFi
   const q = normalizeText(rawQuestion)
 
   // 1. Período "entre X e Y"
-  // Ex: "entre 01/2026 e 12/2026", "entre janeiro de 2026 e marco de 2026"
   const rangeMatch = q.match(/entre\s+([a-z0-9/\s-]+?)\s+e\s+([a-z0-9/\s-]+?)(?=$|\s|,|\?|\.)/)
   if (rangeMatch) {
     const startFilter = extractSingleDateOrMonth(rangeMatch[1], now)
@@ -171,11 +188,11 @@ export function extractDateFilter(rawQuestion: string, now = new Date()): DateFi
     }
   }
 
-  // 8. Padrão genérico de mês/ano ou ano isolado
+  // 8. Padrão genérico de mês/ano, mês isolado ou ano isolado
   return extractSingleDateOrMonth(q, now)
 }
 
-function extractSingleDateOrMonth(text: string, _now = new Date()): DateFilter | null {
+function extractSingleDateOrMonth(text: string, now = new Date()): DateFilter | null {
   const clean = text.trim()
 
   // Data completa dd/mm/aaaa ou dd-mm-aaaa
@@ -235,6 +252,31 @@ function extractSingleDateOrMonth(text: string, _now = new Date()): DateFilter |
     const m = MONTH_NAMES_MAP[monthKey]
     const y = parseInt(monthNameMatch[2], 10)
     if (m && y >= 1990 && y <= 2099) {
+      const lastDay = daysInMonth(y, m)
+      return {
+        type: 'month',
+        start: makeUtcDate(y, m - 1, 1),
+        end: makeUtcDate(y, m - 1, lastDay, true),
+        description: `${String(m).padStart(2, '0')}/${y}`,
+      }
+    }
+  }
+
+  // Padrão mês isolado com preposição ou menção a mês: "no mes 09", "mes 9", "no mes de setembro"
+  // Ex.: "e os vencidos no mes 09?", "e no mes 10?", "no mes de outubro"
+  const isolatedMonthMatch = clean.match(
+    /(?:no\s+mes\s+(?:de\s+)?|mes\s+|para\s+o\s+mes\s+(?:de\s+)?|em\s+)(0?[1-9]|1[0-2]|janeiro|fevereiro|marco|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b/,
+  )
+  if (isolatedMonthMatch) {
+    const rawVal = isolatedMonthMatch[1]
+    let m: number | undefined
+    if (/^\d{1,2}$/.test(rawVal)) {
+      m = parseInt(rawVal, 10)
+    } else {
+      m = MONTH_NAMES_MAP[normalizeText(rawVal)]
+    }
+    if (m && m >= 1 && m <= 12) {
+      const y = now.getFullYear()
       const lastDay = daysInMonth(y, m)
       return {
         type: 'month',
@@ -323,6 +365,109 @@ export function isExportRequest(question: string): boolean {
 }
 
 /**
+ * Detecta expressões pronominais ou anafóricas que indicam continuidade do resultado anterior
+ * Ex: "dessa lista...", "destes...", "deles...", "deles quem...", "desses...", "e os vencidos...", "e na sapopemba?"
+ */
+export function isFollowUpOrReference(question: string): boolean {
+  const q = normalizeText(question)
+  return (
+    q.startsWith('e ') ||
+    q.startsWith('e, ') ||
+    q.startsWith('mas ') ||
+    q.includes('dessa lista') ||
+    q.includes('desta lista') ||
+    q.includes('dessa') ||
+    q.includes('desta') ||
+    q.includes('desses') ||
+    q.includes('destes') ||
+    q.includes('deles') ||
+    q.includes('delas') ||
+    q.includes('da mesma') ||
+    q.includes('dos mesmos') ||
+    q.includes('quem e da') ||
+    q.includes('quem sao da') ||
+    q.includes('quem e de') ||
+    q.includes('e os ') ||
+    q.includes('e as ') ||
+    q.includes('e quanto a')
+  )
+}
+
+/**
+ * Extrai o contexto acumulado dos turnos anteriores da conversa.
+ * Analisa as mensagens da mais recente para a mais antiga para obter os valores vigentes.
+ */
+export function extractConversationContext(
+  history: ConversationHistoryMessage[],
+): ConversationContext {
+  const context: ConversationContext = {}
+
+  if (!history || history.length === 0) {
+    return context
+  }
+
+  // Pega até os últimos 10 turnos (mais que suficiente para conversação ativa)
+  const recentTurns = [...history].slice(-10)
+
+  // Encontra as últimas linhas exportadas / resultados de lista
+  for (let i = recentTurns.length - 1; i >= 0; i--) {
+    const msg = recentTurns[i]
+    if (msg.role === 'assistant' && msg.exportableRows && msg.exportableRows.length > 0) {
+      context.lastExportableRows = msg.exportableRows
+      break
+    }
+  }
+
+  // Percorre as mensagens para extrair o contexto mais recente de filtros
+  for (let i = recentTurns.length - 1; i >= 0; i--) {
+    const msg = recentTurns[i]
+    const content = msg.content
+
+    // Função
+    if (!context.funcao) {
+      const f = extractFuncao(content)
+      if (f) context.funcao = f
+    }
+
+    // Filial / Garagem
+    if (!context.filial) {
+      const g = extractFilial(content)
+      if (g) context.filial = g
+    }
+
+    // Situação
+    if (!context.situacao) {
+      const s = extractSituacao(content)
+      if (s) context.situacao = s
+    }
+
+    // DateFilter
+    if (!context.dateFilter && msg.role === 'user') {
+      const df = extractDateFilter(content)
+      if (df) context.dateFilter = df
+    }
+
+    // Tópico mais recente
+    if (!context.lastTopic) {
+      const norm = normalizeText(content)
+      if (norm.includes('cnh') && (norm.includes('venc') || norm.includes('expir'))) {
+        context.lastTopic = 'cnh_vencida'
+      } else if (norm.includes('cnh') || norm.includes('habilitac')) {
+        context.lastTopic = 'cnh_geral'
+      } else if (norm.includes('afastad')) {
+        context.lastTopic = 'afastados'
+      } else if (extractFuncao(content)) {
+        context.lastTopic = 'funcao'
+      } else if (extractFilial(content)) {
+        context.lastTopic = 'garagem'
+      }
+    }
+  }
+
+  return context
+}
+
+/**
  * Busca funcionário específico por chapa/registro ou nome.
  */
 export function findSpecificEmployee(question: string, employees: Employee[]): Employee | null {
@@ -330,7 +475,6 @@ export function findSpecificEmployee(question: string, employees: Employee[]): E
   const qNorm = normalizeText(question)
 
   // 1. Busca por chapa ou registro explícito
-  // Ex: "chapa 013233", "chapa: 013233", "registro 000055", "chapa 55"
   const chapaMatch = raw.match(/(?:chapa|registro|matricula|matrícula)\s*[:#-]?\s*(\d{1,8})\b/i)
   if (chapaMatch) {
     const digits = chapaMatch[1]
@@ -343,25 +487,21 @@ export function findSpecificEmployee(question: string, employees: Employee[]): E
   }
 
   // 2. Busca por menção explícita de nome
-  // Ex: "funcionario JOSE CARLOS", "colaborador JOAO DA SILVA", "cnh do JOSE CARLOS"
   const nameIntroMatch = raw.match(
     /(?:funcionario|colaborador|motorista|fiscal|cnh\s+do|cnh\s+da|sobre\s+o|sobre\s+a)\s+([A-Za-zÀ-ÖØ-öø-ÿ\s]{3,})/i,
   )
   if (nameIntroMatch) {
     const candidateName = normalizeText(nameIntroMatch[1])
-      // Remove trailing stopwords
       .replace(/\s+(?:tem|esta|estah|vence|venceu|com|da|do|de|na|no|em)\b.*/, '')
       .trim()
 
     if (candidateName.length >= 3) {
-      // Procura correspondência exata primeiro, depois prefixo, depois substring
       const exact = employees.find((e) => normalizeText(e.name) === candidateName)
       if (exact) return exact
 
       const starts = employees.find((e) => normalizeText(e.name).startsWith(candidateName))
       if (starts) return starts
 
-      // Só aceita substring se o termo tiver mais de 4 caracteres (evita falsos positivos como "ana")
       if (candidateName.length >= 4) {
         const contains = employees.find((e) => normalizeText(e.name).includes(candidateName))
         if (contains) return contains
@@ -370,7 +510,6 @@ export function findSpecificEmployee(question: string, employees: Employee[]): E
   }
 
   // 3. Busca por nome próprio se a pergunta parecer um nome de colaborador direto
-  // Ex.: "JOSE CARLOS NOVAES" ou "Quem e Lourival Ferreira da Silva?"
   for (const emp of employees) {
     const empNorm = normalizeText(emp.name)
     if (empNorm.length > 5 && qNorm.includes(empNorm)) {
@@ -450,17 +589,17 @@ export function exportEmployeesToXlsx(
 
   const worksheet = XLSX.utils.json_to_sheet(rows)
   worksheet['!cols'] = [
-    { wch: 14 }, // REGISTRO
-    { wch: 34 }, // Nome
-    { wch: 22 }, // Função
-    { wch: 18 }, // Filial/Garagem
-    { wch: 20 }, // CNH
-    { wch: 12 }, // Categoria
-    { wch: 16 }, // Validade
-    { wch: 20 }, // Dias para vencer
-    { wch: 14 }, // Situação
-    { wch: 16 }, // Situação CNH
-    { wch: 24 }, // Empresa
+    { wch: 14 },
+    { wch: 34 },
+    { wch: 22 },
+    { wch: 18 },
+    { wch: 20 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 24 },
   ]
 
   const workbook = XLSX.utils.book_new()
@@ -488,12 +627,27 @@ const MAX_DISPLAY_BULLETS = 25
 
 /**
  * Função principal que processa a pergunta do usuário e produz uma resposta completa.
+ * Agora suporta histórico de mensagens para interpretação contextualizada.
  */
 export function processAssistantQuery(
   rawQuestion: string,
   employees: Employee[],
-  now = new Date(),
+  historyOrNow?: ConversationHistoryMessage[] | Date,
+  maybeNow?: Date,
 ): AssistantAnswer {
+  // Trata polimorfismo dos argumentos para compatibilidade reversa
+  let history: ConversationHistoryMessage[] = []
+  let now = new Date()
+
+  if (Array.isArray(historyOrNow)) {
+    history = historyOrNow
+    if (maybeNow instanceof Date) {
+      now = maybeNow
+    }
+  } else if (historyOrNow instanceof Date) {
+    now = historyOrNow
+  }
+
   const questionNorm = normalizeText(rawQuestion)
   const wantsExport = isExportRequest(rawQuestion)
   const todayStr = new Date().toISOString().slice(0, 10)
@@ -506,16 +660,36 @@ export function processAssistantQuery(
     }
   }
 
-  // 1. Extração de filtros combinados primeiro para evitar falso positivo de colaborador
-  const dateFilter = extractDateFilter(rawQuestion, now)
+  // 1. Extração de contexto conversacional acumulado dos turnos anteriores
+  const prevContext = extractConversationContext(history)
+
+  // 2. Extração de entidades explícitas na pergunta atual
+  const explicitDateFilter = extractDateFilter(rawQuestion, now)
+  const explicitFilial = extractFilial(rawQuestion)
+  const explicitFuncao = extractFuncao(rawQuestion)
+  const explicitSituacao = extractSituacao(rawQuestion)
+
+  // Verifica se o usuário fez uma pergunta de retomada ou pronome ("dessa lista...", "e os vencidos em 09?", etc.)
+  const isReferenceQuery = isFollowUpOrReference(rawQuestion)
+
+  // Determina se a pergunta atual traz um escopo novo que invalida filtros anteriores
+  // Regra: se o usuário citou explicitamente outra função, filial ou situação, ela sobrepõe a anterior.
+  // Se ele não citou, herdamos a do contexto prévio.
+  const effectiveFuncao = explicitFuncao ?? prevContext.funcao ?? null
+  const effectiveFilial = explicitFilial ?? prevContext.filial ?? null
+  const effectiveSituacao = explicitSituacao ?? prevContext.situacao ?? null
+  const effectiveDateFilter =
+    explicitDateFilter ?? (isReferenceQuery ? (prevContext.dateFilter ?? null) : null)
+
   const isGeneralQuery =
-    dateFilter !== null ||
+    explicitDateFilter !== null ||
+    effectiveDateFilter !== null ||
     questionNorm.includes('quantos') ||
     questionNorm.includes('quais') ||
     questionNorm.includes('listar') ||
     questionNorm.includes('lista')
 
-  // Se NÃO for uma pergunta de quantificação/listagem com data/lista, tenta colaborador específico
+  // Se NÃO for uma pergunta de quantificação/listagem, tenta colaborador específico
   // OU se a pergunta cita "chapa" ou "registro" explicitamente, prioriza o colaborador
   const hasExplicitChapa = /(?:chapa|registro|matricula|matrícula)\s*[:#-]?\s*\d{1,8}\b/i.test(
     rawQuestion,
@@ -532,18 +706,25 @@ export function processAssistantQuery(
         exportSheetName: 'Colaborador',
         autoDownload: true,
         matchedEmployee: specificEmp,
+        extractedContext: {
+          funcao: specificEmp.funcao,
+          filial: specificEmp.filial as any,
+          situacao: specificEmp.situacao as any,
+        },
       }
     }
     return {
       content: detail,
       matchedEmployee: specificEmp,
+      extractedContext: {
+        funcao: specificEmp.funcao,
+        filial: specificEmp.filial as any,
+        situacao: specificEmp.situacao as any,
+      },
     }
   }
-  const filial = extractFilial(rawQuestion)
-  const funcao = extractFuncao(rawQuestion)
-  const situacao = extractSituacao(rawQuestion)
 
-  // 3. Consultas focadas em CNH com filtro de data ou período
+  // 3. Verifica menções de CNH e vencimento
   const mentionsCnh =
     questionNorm.includes('cnh') ||
     questionNorm.includes('habilitac') ||
@@ -554,28 +735,105 @@ export function processAssistantQuery(
     questionNorm.includes('expir') ||
     questionNorm.includes('validade')
 
-  // Se tem filtro de data e menciona CNH ou vencimento OU pergunta "quais funcionários..." com data
-  if (dateFilter) {
-    // Filtrar funcionários cuja CNH vence no período especificado
-    let filtered = employees.filter((emp) => matchesDateFilter(emp.validade_cnh, dateFilter))
+  // CASO DE REFERÊNCIA DIRETA A UMA LISTA ANTERIOR ("dessa lista, quem é da Sapopemba?")
+  if (
+    (questionNorm.includes('dessa lista') ||
+      questionNorm.includes('desta lista') ||
+      questionNorm.includes('desses') ||
+      questionNorm.includes('destes') ||
+      questionNorm.includes('deles')) &&
+    prevContext.lastExportableRows &&
+    prevContext.lastExportableRows.length > 0
+  ) {
+    let subList = [...prevContext.lastExportableRows]
 
-    // Filtros combinados opcionais
-    if (filial) {
-      filtered = filtered.filter((emp) => emp.filial === filial)
+    if (explicitFilial) {
+      subList = subList.filter((emp) => emp.filial === explicitFilial)
     }
-    if (funcao) {
-      filtered = filtered.filter((emp) => normalizeText(emp.funcao).includes(normalizeText(funcao)))
+    if (explicitFuncao) {
+      subList = subList.filter((emp) =>
+        normalizeText(emp.funcao).includes(normalizeText(explicitFuncao)),
+      )
     }
-    if (situacao) {
-      filtered = filtered.filter((emp) => comparable(emp.situacao) === comparable(situacao))
+    if (explicitSituacao) {
+      subList = subList.filter((emp) => comparable(emp.situacao) === comparable(explicitSituacao))
+    }
+
+    const descList = [
+      explicitFilial ? `da garagem ${explicitFilial}` : null,
+      explicitFuncao ? `com a função ${explicitFuncao}` : null,
+      explicitSituacao ? `na situação ${explicitSituacao}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ')
+
+    if (subList.length === 0) {
+      return {
+        content: `Dessa lista de colaboradores anteriores, nenhum corresponde ao filtro solicitado${descList ? ` (${descList})` : ''}.`,
+      }
+    }
+
+    const total = subList.length
+    const exibidos = subList.slice(0, MAX_DISPLAY_BULLETS)
+    const linhas = exibidos.map(
+      (emp) =>
+        `• ${emp.name} (chapa ${emp.chapa}) — ${emp.funcao || '—'} · sit.: ${emp.situacao || 'Ativo'} · CNH: ${formatCnh(emp.cnh_categoria, emp.cnh_numero)} · venc.: ${formatDate(emp.validade_cnh)} (${labelFilial(emp)})`,
+    )
+
+    let resposta = `Dessa lista anterior, encontrei ${total} colaborador(es)${descList ? ` (${descList})` : ''}:`
+    resposta += '\n' + linhas.join('\n')
+
+    if (total > MAX_DISPLAY_BULLETS) {
+      resposta += `\n\n… e outros ${total - MAX_DISPLAY_BULLETS} colaborador(es). Solicite a planilha para visualizar todos.`
+    }
+
+    if (wantsExport) {
+      resposta += `\n\nArquivo .xlsx com os ${total} registros foi gerado para download.`
+      return {
+        content: resposta,
+        exportableRows: subList,
+        exportFileName: `sublista-filtrada-${todayStr}.xlsx`,
+        exportSheetName: 'Filtrados',
+        autoDownload: true,
+      }
+    }
+
+    return {
+      content: resposta,
+      exportableRows: subList,
+      exportFileName: `sublista-filtrada-${todayStr}.xlsx`,
+      exportSheetName: 'Filtrados',
+    }
+  }
+
+  // 4. Consultas focadas em CNH com filtro de data ou período (explícito ou herdado)
+  const dateFilterToUse = explicitDateFilter || (isReferenceQuery ? effectiveDateFilter : null)
+
+  if (dateFilterToUse) {
+    // Filtrar funcionários cuja CNH vence no período especificado
+    let filtered = employees.filter((emp) => matchesDateFilter(emp.validade_cnh, dateFilterToUse))
+
+    // Aplica função, filial e situação vigentes no contexto
+    if (effectiveFilial) {
+      filtered = filtered.filter((emp) => emp.filial === effectiveFilial)
+    }
+    if (effectiveFuncao) {
+      filtered = filtered.filter((emp) =>
+        normalizeText(emp.funcao).includes(normalizeText(effectiveFuncao)),
+      )
+    }
+    if (effectiveSituacao) {
+      filtered = filtered.filter(
+        (emp) => comparable(emp.situacao) === comparable(effectiveSituacao),
+      )
     }
 
     filtered.sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
 
     const descDetalhada = [
-      filial ? `da garagem ${filial}` : null,
-      funcao ? `função ${funcao}` : null,
-      situacao ? `situação ${situacao}` : null,
+      effectiveFilial ? `da garagem ${effectiveFilial}` : null,
+      effectiveFuncao ? `função ${effectiveFuncao}` : null,
+      effectiveSituacao ? `situação ${effectiveSituacao}` : null,
     ]
       .filter(Boolean)
       .join(', ')
@@ -583,8 +841,16 @@ export function processAssistantQuery(
     const complementoFiltro = descDetalhada ? ` (${descDetalhada})` : ''
 
     if (filtered.length === 0) {
-      const msg = `Nenhum colaborador com CNH com vencimento para ${dateFilter.description}${complementoFiltro} foi encontrado na base.`
-      return { content: msg }
+      const msg = `Nenhum colaborador com CNH com vencimento para ${dateFilterToUse.description}${complementoFiltro} foi encontrado na base.`
+      return {
+        content: msg,
+        extractedContext: {
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          situacao: effectiveSituacao,
+          dateFilter: dateFilterToUse,
+        },
+      }
     }
 
     const total = filtered.length
@@ -594,7 +860,7 @@ export function processAssistantQuery(
         `• ${emp.name} (chapa ${emp.chapa}) — ${emp.funcao || 'Motorista'} · CNH: ${formatCnh(emp.cnh_categoria, emp.cnh_numero)} · vencimento em ${formatDate(emp.validade_cnh)} (${labelFilial(emp)})`,
     )
 
-    let resposta = `Existem ${total} colaborador(es) com CNH com vencimento em ${dateFilter.description}${complementoFiltro}:`
+    let resposta = `Existem ${total} colaborador(es) com CNH com vencimento em ${dateFilterToUse.description}${complementoFiltro}:`
     resposta += '\n' + linhas.join('\n')
 
     if (total > MAX_DISPLAY_BULLETS) {
@@ -606,36 +872,160 @@ export function processAssistantQuery(
       return {
         content: resposta,
         exportableRows: filtered,
-        exportFileName: `cnhs-vencimento-${dateFilter.description.replace(/[^a-zA-Z0-9-]/g, '_')}-${todayStr}.xlsx`,
+        exportFileName: `cnhs-vencimento-${dateFilterToUse.description.replace(/[^a-zA-Z0-9-]/g, '_')}-${todayStr}.xlsx`,
         exportSheetName: 'CNHs',
         autoDownload: true,
+        extractedContext: {
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          situacao: effectiveSituacao,
+          dateFilter: dateFilterToUse,
+          lastTopic: 'cnh_vencida',
+          lastExportableRows: filtered,
+        },
       }
     }
 
     return {
       content: resposta,
       exportableRows: filtered,
-      exportFileName: `cnhs-vencimento-${dateFilter.description.replace(/[^a-zA-Z0-9-]/g, '_')}-${todayStr}.xlsx`,
+      exportFileName: `cnhs-vencimento-${dateFilterToUse.description.replace(/[^a-zA-Z0-9-]/g, '_')}-${todayStr}.xlsx`,
       exportSheetName: 'CNHs',
+      extractedContext: {
+        funcao: effectiveFuncao,
+        filial: effectiveFilial,
+        situacao: effectiveSituacao,
+        dateFilter: dateFilterToUse,
+        lastTopic: 'cnh_vencida',
+        lastExportableRows: filtered,
+      },
     }
   }
 
-  // 4. Consultas combinadas sem data específica:
-  // Ex.: "afastados da SAPOPEMBA", "fiscais da CURSINO", "motoristas ativos da SAPOPEMBA"
-  if (filial && (situacao || funcao)) {
-    let filtered = employees.filter((emp) => emp.filial === filial)
-    if (situacao) {
-      filtered = filtered.filter((emp) => comparable(emp.situacao) === comparable(situacao))
+  // 5. CNHs Vencidas em geral (sem data específica)
+  // Trata tanto menções diretas a CNH vencida como "todas as cnhs vencidas" herdando função/garagem
+  if (
+    mentionsVencimento ||
+    (mentionsCnh && (questionNorm.includes('vencid') || prevContext.lastTopic === 'cnh_vencida'))
+  ) {
+    // Determina a função a ser filtrada:
+    // Se o usuário especificou função ou herdou do contexto, filtra por ela!
+    // Se não há função no contexto nem na pergunta e a pergunta é de motoristas, filtra Motorista.
+    // Se a pergunta falou apenas "todas as cnhs vencidas" e havia contexto anterior (ex: Fiscal), usa o contexto!
+    const targetFuncao = effectiveFuncao || (questionNorm.includes('motorist') ? 'Motorista' : null)
+
+    let candidatos = [...employees]
+    if (targetFuncao) {
+      candidatos = candidatos.filter((emp) =>
+        normalizeText(emp.funcao).includes(normalizeText(targetFuncao)),
+      )
     }
-    if (funcao) {
-      filtered = filtered.filter((emp) => normalizeText(emp.funcao).includes(normalizeText(funcao)))
+    if (effectiveFilial) {
+      candidatos = candidatos.filter((emp) => emp.filial === effectiveFilial)
+    }
+    if (effectiveSituacao) {
+      candidatos = candidatos.filter(
+        (emp) => comparable(emp.situacao) === comparable(effectiveSituacao),
+      )
+    }
+
+    const vencidos = candidatos
+      .filter((emp) => isCnhVencidaLib(emp, now))
+      .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
+
+    const descDetalhes = [
+      targetFuncao ? `da função ${targetFuncao}` : 'no geral',
+      effectiveFilial ? `na garagem ${effectiveFilial}` : null,
+      effectiveSituacao ? `na situação ${effectiveSituacao}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ')
+
+    const roleLabel = targetFuncao ? targetFuncao.toLowerCase() : 'colaborador'
+
+    const exibidos = vencidos.slice(0, MAX_DISPLAY_BULLETS)
+    const linhas = exibidos.map(
+      (emp) =>
+        `• ${emp.name} (chapa ${emp.chapa}) — ${emp.funcao || '—'} · vencida em ${formatDate(emp.validade_cnh)} (${labelFilial(emp)})`,
+    )
+
+    let resposta = `Existem ${vencidos.length} ${roleLabel}(s) com a CNH vencida na base (${descDetalhes}):`
+    if (linhas.length) {
+      resposta += '\n' + linhas.join('\n')
+    } else {
+      resposta += `\n• Nenhum ${roleLabel} com a CNH vencida encontrado com esses filtros.`
+    }
+
+    if (vencidos.length > MAX_DISPLAY_BULLETS) {
+      resposta += `\n\n… e outros ${vencidos.length - MAX_DISPLAY_BULLETS} ${roleLabel}(s). Baixe a planilha para conferir a listagem completa.`
+    }
+
+    if (vencidos.length > 0) {
+      resposta += '\n\nRegularize essas CNHs para evitar restrições operacionais.'
+    }
+
+    const filePrefix = targetFuncao
+      ? `cnhs-vencidas-${normalizeText(targetFuncao).replace(/\s+/g, '-')}`
+      : 'cnhs-vencidas'
+
+    if (wantsExport && vencidos.length > 0) {
+      resposta += `\n\nArquivo .xlsx com todos os registros foi gerado para download.`
+      return {
+        content: resposta,
+        exportableRows: vencidos,
+        exportFileName: `${filePrefix}-${todayStr}.xlsx`,
+        exportSheetName: 'Vencidas',
+        autoDownload: true,
+        extractedContext: {
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          situacao: effectiveSituacao,
+          lastTopic: 'cnh_vencida',
+          lastExportableRows: vencidos,
+        },
+      }
+    }
+
+    return {
+      content: resposta,
+      exportableRows: vencidos.length > 0 ? vencidos : undefined,
+      exportFileName: `${filePrefix}-${todayStr}.xlsx`,
+      exportSheetName: 'Vencidas',
+      extractedContext: {
+        funcao: effectiveFuncao,
+        filial: effectiveFilial,
+        situacao: effectiveSituacao,
+        lastTopic: 'cnh_vencida',
+        lastExportableRows: vencidos,
+      },
+    }
+  }
+
+  // 6. Consultas combinadas sem data específica:
+  // Ex.: "afastados da SAPOPEMBA", "fiscais da CURSINO", "motoristas ativos da SAPOPEMBA"
+  if (effectiveFilial && (effectiveSituacao || effectiveFuncao)) {
+    let filtered = employees.filter((emp) => emp.filial === effectiveFilial)
+    if (effectiveSituacao) {
+      filtered = filtered.filter(
+        (emp) => comparable(emp.situacao) === comparable(effectiveSituacao),
+      )
+    }
+    if (effectiveFuncao) {
+      filtered = filtered.filter((emp) =>
+        normalizeText(emp.funcao).includes(normalizeText(effectiveFuncao)),
+      )
     }
 
     const desc =
-      `${situacao ? situacao.toLowerCase() + 's' : ''} ${funcao ? funcao.toLowerCase() + 's' : ''}`.trim()
+      `${effectiveSituacao ? effectiveSituacao.toLowerCase() + 's' : ''} ${effectiveFuncao ? effectiveFuncao.toLowerCase() + 's' : ''}`.trim()
     if (filtered.length === 0) {
       return {
-        content: `Nenhum colaborador encontrado para a garagem ${filial} com os filtros solicitados.`,
+        content: `Nenhum colaborador encontrado para a garagem ${effectiveFilial} com os filtros solicitados.`,
+        extractedContext: {
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          situacao: effectiveSituacao,
+        },
       }
     }
 
@@ -646,7 +1036,7 @@ export function processAssistantQuery(
         `• ${emp.name} (chapa ${emp.chapa}) — ${emp.funcao || '—'} · sit.: ${emp.situacao || 'Ativo'} · CNH: ${formatCnh(emp.cnh_categoria, emp.cnh_numero)}`,
     )
 
-    let resposta = `Há ${total} colaborador(es) ${desc} na garagem ${filial}:`
+    let resposta = `Há ${total} colaborador(es) ${desc} na garagem ${effectiveFilial}:`
     resposta += '\n' + linhas.join('\n')
     if (total > MAX_DISPLAY_BULLETS) {
       resposta += `\n\n… e outros ${total - MAX_DISPLAY_BULLETS} colaborador(es).`
@@ -657,23 +1047,44 @@ export function processAssistantQuery(
       return {
         content: resposta,
         exportableRows: filtered,
-        exportFileName: `colaboradores-${filial.toLowerCase()}-${todayStr}.xlsx`,
-        exportSheetName: filial,
+        exportFileName: `colaboradores-${effectiveFilial.toLowerCase()}-${todayStr}.xlsx`,
+        exportSheetName: effectiveFilial,
         autoDownload: true,
+        extractedContext: {
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          situacao: effectiveSituacao,
+          lastExportableRows: filtered,
+        },
       }
     }
 
     return {
       content: resposta,
       exportableRows: filtered,
-      exportFileName: `colaboradores-${filial.toLowerCase()}-${todayStr}.xlsx`,
-      exportSheetName: filial,
+      exportFileName: `colaboradores-${effectiveFilial.toLowerCase()}-${todayStr}.xlsx`,
+      exportSheetName: effectiveFilial,
+      extractedContext: {
+        funcao: effectiveFuncao,
+        filial: effectiveFilial,
+        situacao: effectiveSituacao,
+        lastExportableRows: filtered,
+      },
     }
   }
 
-  // 5. Afastados
+  // 7. Afastados
   if (questionNorm.includes('afastad')) {
-    const afastados = employees.filter((emp) => comparable(emp.situacao) === 'afastado')
+    let afastados = employees.filter((emp) => comparable(emp.situacao) === 'afastado')
+    if (effectiveFilial) {
+      afastados = afastados.filter((emp) => emp.filial === effectiveFilial)
+    }
+    if (effectiveFuncao) {
+      afastados = afastados.filter((emp) =>
+        normalizeText(emp.funcao).includes(normalizeText(effectiveFuncao)),
+      )
+    }
+
     const afastadosOutra = afastados.filter(
       (emp) => Boolean(emp.company) && emp.company !== MAIN_COMPANY,
     )
@@ -708,6 +1119,13 @@ export function processAssistantQuery(
           exportFileName: `afastados-outra-empresa-${todayStr}.xlsx`,
           exportSheetName: 'Afastados',
           autoDownload: true,
+          extractedContext: {
+            situacao: 'Afastado',
+            funcao: effectiveFuncao,
+            filial: effectiveFilial,
+            lastTopic: 'afastados',
+            lastExportableRows: afastadosOutra,
+          },
         }
       }
 
@@ -715,12 +1133,19 @@ export function processAssistantQuery(
         content: resposta,
         exportableRows: afastadosOutra.length > 0 ? afastadosOutra : undefined,
         exportFileName: `afastados-outra-empresa-${todayStr}.xlsx`,
+        extractedContext: {
+          situacao: 'Afastado',
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          lastTopic: 'afastados',
+          lastExportableRows: afastadosOutra,
+        },
       }
     }
 
     const afastadosMatriz = afastados.filter((emp) => !emp.company || emp.company === MAIN_COMPANY)
     let resposta = [
-      `Existem ${afastados.length} colaborador(es) afastado(s) no total, sendo ${afastadosMatriz.length} da matriz e ${afastadosOutra.length} em outra empresa.`,
+      `Existem ${afastados.length} colaborador(es) afastado(s) no total${effectiveFilial ? ` na garagem ${effectiveFilial}` : ''}, sendo ${afastadosMatriz.length} da matriz e ${afastadosOutra.length} em outra empresa.`,
       '',
       'Por empresa:',
       ...groupCount(afastados, (emp) => emp.company || 'Sem empresa').map(
@@ -737,6 +1162,13 @@ export function processAssistantQuery(
         exportFileName: `afastados-${todayStr}.xlsx`,
         exportSheetName: 'Afastados',
         autoDownload: true,
+        extractedContext: {
+          situacao: 'Afastado',
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          lastTopic: 'afastados',
+          lastExportableRows: afastados,
+        },
       }
     }
 
@@ -744,69 +1176,43 @@ export function processAssistantQuery(
       content: resposta,
       exportableRows: afastados.length > 0 ? afastados : undefined,
       exportFileName: `afastados-${todayStr}.xlsx`,
+      extractedContext: {
+        situacao: 'Afastado',
+        funcao: effectiveFuncao,
+        filial: effectiveFilial,
+        lastTopic: 'afastados',
+        lastExportableRows: afastados,
+      },
     }
   }
 
-  // 6. CNHs em geral (sem data específica)
-  if (mentionsCnh || (mentionsVencimento && questionNorm.includes('motorist'))) {
-    const motoristas = employees.filter((emp) => normalizeText(emp.funcao).includes('motorista'))
-    const motoristasVencidos = motoristas
+  // 8. CNHs em geral (situação geral ou a vencer)
+  if (mentionsCnh) {
+    const targetFuncao = effectiveFuncao || 'Motorista'
+    let subset = employees.filter((emp) =>
+      normalizeText(emp.funcao).includes(normalizeText(targetFuncao)),
+    )
+    if (effectiveFilial) {
+      subset = subset.filter((emp) => emp.filial === effectiveFilial)
+    }
+
+    const subsetVencidos = subset
       .filter((emp) => isCnhVencidaLib(emp, now))
       .sort((a, b) => (a.validade_cnh ?? '').localeCompare(b.validade_cnh ?? ''))
 
-    if (mentionsVencimento) {
-      const exibidos = motoristasVencidos.slice(0, MAX_DISPLAY_BULLETS)
-      const linhas = exibidos.map(
-        (emp) =>
-          `• ${emp.name} (chapa ${emp.chapa}) — vencida em ${formatDate(emp.validade_cnh)} (${labelFilial(emp)})`,
-      )
-
-      let resposta = `Existem ${motoristasVencidos.length} motorista(s) com a CNH vencida na base:`
-      if (linhas.length) {
-        resposta += '\n' + linhas.join('\n')
-      } else {
-        resposta += '\n• Nenhum motorista com a CNH vencida.'
-      }
-
-      if (motoristasVencidos.length > MAX_DISPLAY_BULLETS) {
-        resposta += `\n\n… e outros ${motoristasVencidos.length - MAX_DISPLAY_BULLETS} motorista(s). Baixe a planilha para conferir a listagem completa.`
-      }
-
-      resposta += '\n\nRegularize essas CNHs para evitar restrições operacionais.'
-
-      if (wantsExport && motoristasVencidos.length > 0) {
-        resposta += '\n\nArquivo .xlsx com todos os motoristas vencidos foi gerado para download.'
-        return {
-          content: resposta,
-          exportableRows: motoristasVencidos,
-          exportFileName: `cnhs-vencidas-${todayStr}.xlsx`,
-          exportSheetName: 'Vencidas',
-          autoDownload: true,
-        }
-      }
-
-      return {
-        content: resposta,
-        exportableRows: motoristasVencidos.length > 0 ? motoristasVencidos : undefined,
-        exportFileName: `cnhs-vencidas-${todayStr}.xlsx`,
-        exportSheetName: 'Vencidas',
-      }
-    }
-
-    // Situação geral de CNHs
-    const aVencer = employees.filter((emp) => {
+    const aVencer = subset.filter((emp) => {
       if (emp.situacao_cnh !== 'A vencer') return false
       const days = daysUntil(emp.validade_cnh)
       return days !== null && days <= 30
     })
 
     let resposta = [
-      'Situação atual das CNHs de motoristas:',
-      `• Vencidas: ${motoristasVencidos.length}`,
+      `Situação atual das CNHs de ${targetFuncao.toLowerCase()}s${effectiveFilial ? ` (${effectiveFilial})` : ''}:`,
+      `• Vencidas: ${subsetVencidos.length}`,
       `• A vencer (próximos 30 dias): ${aVencer.length}`,
       '',
       'Mais críticas:',
-      ...motoristasVencidos
+      ...subsetVencidos
         .slice(0, 5)
         .map(
           (emp) =>
@@ -818,26 +1224,42 @@ export function processAssistantQuery(
       resposta += '\n\nArquivo .xlsx com os registros de CNH gerado para download.'
       return {
         content: resposta,
-        exportableRows: motoristasVencidos,
-        exportFileName: `cnhs-motoristas-${todayStr}.xlsx`,
+        exportableRows: subsetVencidos,
+        exportFileName: `cnhs-${normalizeText(targetFuncao)}-${todayStr}.xlsx`,
         exportSheetName: 'CNHs',
         autoDownload: true,
+        extractedContext: {
+          funcao: targetFuncao,
+          filial: effectiveFilial,
+          lastTopic: 'cnh_geral',
+          lastExportableRows: subsetVencidos,
+        },
       }
     }
 
     return {
       content: resposta,
-      exportableRows: motoristasVencidos.length > 0 ? motoristasVencidos : undefined,
-      exportFileName: `cnhs-motoristas-${todayStr}.xlsx`,
+      exportableRows: subsetVencidos.length > 0 ? subsetVencidos : undefined,
+      exportFileName: `cnhs-${normalizeText(targetFuncao)}-${todayStr}.xlsx`,
+      extractedContext: {
+        funcao: targetFuncao,
+        filial: effectiveFilial,
+        lastTopic: 'cnh_geral',
+        lastExportableRows: subsetVencidos,
+      },
     }
   }
 
-  // 7. Fiscais
-  if (questionNorm.includes('fiscal')) {
-    const fiscais = employees.filter((emp) => normalizeText(emp.funcao).includes('fiscal'))
+  // 9. Fiscais
+  if (questionNorm.includes('fiscal') || explicitFuncao === 'Fiscal de Viajem') {
+    let fiscais = employees.filter((emp) => normalizeText(emp.funcao).includes('fiscal'))
+    if (effectiveFilial) {
+      fiscais = fiscais.filter((emp) => emp.filial === effectiveFilial)
+    }
+
     const fiscaisAtivos = fiscais.filter((emp) => comparable(emp.situacao) === 'ativo')
 
-    if (questionNorm.includes('ativo')) {
+    if (questionNorm.includes('ativo') || effectiveSituacao === 'Ativo') {
       const porGaragem = ['CURSINO', 'SAPOPEMBA', 'ITAQUERA', 'GUAIANASES']
         .map((g) => ({
           garagem: g,
@@ -846,8 +1268,8 @@ export function processAssistantQuery(
         .filter((item) => item.total > 0)
 
       let resposta = [
-        `Existem ${fiscaisAtivos.length} fiscal(is) de Viajem ativo(s) na base.`,
-        ...(porGaragem.length
+        `Existem ${fiscaisAtivos.length} fiscal(is) de Viajem ativo(s) na base${effectiveFilial ? ` na garagem ${effectiveFilial}` : ''}.`,
+        ...(porGaragem.length && !effectiveFilial
           ? ['', 'Por garagem:', ...porGaragem.map((item) => `• ${item.garagem}: ${item.total}`)]
           : []),
       ].join('\n')
@@ -860,6 +1282,12 @@ export function processAssistantQuery(
           exportFileName: `fiscais-ativos-${todayStr}.xlsx`,
           exportSheetName: 'Fiscais',
           autoDownload: true,
+          extractedContext: {
+            funcao: 'Fiscal de Viajem',
+            situacao: 'Ativo',
+            filial: effectiveFilial,
+            lastExportableRows: fiscaisAtivos,
+          },
         }
       }
 
@@ -867,51 +1295,70 @@ export function processAssistantQuery(
         content: resposta,
         exportableRows: fiscaisAtivos.length > 0 ? fiscaisAtivos : undefined,
         exportFileName: `fiscais-ativos-${todayStr}.xlsx`,
+        extractedContext: {
+          funcao: 'Fiscal de Viajem',
+          situacao: 'Ativo',
+          filial: effectiveFilial,
+          lastExportableRows: fiscaisAtivos,
+        },
       }
     }
 
     return {
-      content: `A base possui ${fiscais.length} fiscal(is) de Viajem, dos quais ${fiscaisAtivos.length} ativo(s) e ${fiscais.length - fiscaisAtivos.length} em outra situação.`,
+      content: `A base possui ${fiscais.length} fiscal(is) de Viajem${effectiveFilial ? ` na garagem ${effectiveFilial}` : ''}, dos quais ${fiscaisAtivos.length} ativo(s) e ${fiscais.length - fiscaisAtivos.length} em outra situação.`,
       exportableRows: wantsExport && fiscais.length > 0 ? fiscais : undefined,
       exportFileName: `fiscais-${todayStr}.xlsx`,
       autoDownload: wantsExport && fiscais.length > 0,
+      extractedContext: {
+        funcao: 'Fiscal de Viajem',
+        filial: effectiveFilial,
+        lastExportableRows: fiscais,
+      },
     }
   }
 
-  // 8. Filial/garagem isolada
-  if (filial) {
-    const naGaragem = employees.filter((emp) => emp.filial === filial)
+  // 10. Filial/garagem isolada
+  if (explicitFilial) {
+    const naGaragem = employees.filter((emp) => emp.filial === explicitFilial)
     const ativosGaragem = naGaragem.filter((emp) => comparable(emp.situacao) === 'ativo').length
     const afastadosGaragem = naGaragem.filter(
       (emp) => comparable(emp.situacao) === 'afastado',
     ).length
 
     let resposta = [
-      `Há ${naGaragem.length} colaborador(es) na garagem ${filial}:`,
+      `Há ${naGaragem.length} colaborador(es) na garagem ${explicitFilial}:`,
       `• Ativos: ${ativosGaragem}`,
       `• Afastados: ${afastadosGaragem}`,
       `• Desligados/outros: ${naGaragem.length - ativosGaragem - afastadosGaragem}`,
     ].join('\n')
 
     if (wantsExport && naGaragem.length > 0) {
-      resposta += `\n\nArquivo .xlsx com os colaboradores da garagem ${filial} gerado para download.`
+      resposta += `\n\nArquivo .xlsx com os colaboradores da garagem ${explicitFilial} gerado para download.`
       return {
         content: resposta,
         exportableRows: naGaragem,
-        exportFileName: `garagem-${filial.toLowerCase()}-${todayStr}.xlsx`,
-        exportSheetName: filial,
+        exportFileName: `garagem-${explicitFilial.toLowerCase()}-${todayStr}.xlsx`,
+        exportSheetName: explicitFilial,
         autoDownload: true,
+        extractedContext: {
+          filial: explicitFilial,
+          lastExportableRows: naGaragem,
+        },
       }
     }
 
     return {
       content: resposta,
       exportableRows: naGaragem.length > 0 ? naGaragem : undefined,
-      exportFileName: `garagem-${filial.toLowerCase()}-${todayStr}.xlsx`,
+      exportFileName: `garagem-${explicitFilial.toLowerCase()}-${todayStr}.xlsx`,
+      extractedContext: {
+        filial: explicitFilial,
+        lastExportableRows: naGaragem,
+      },
     }
   }
 
-  // 9. Outras empresas
+  // 11. Outras empresas
   if (questionNorm.includes('empresa')) {
     const outrasEmpresas = employees.filter(
       (emp) => Boolean(emp.company) && emp.company !== MAIN_COMPANY,
@@ -936,7 +1383,7 @@ export function processAssistantQuery(
     return { content: resposta }
   }
 
-  // 10. Garagens em geral
+  // 12. Garagens em geral
   if (questionNorm.includes('garagem')) {
     return {
       content: [
@@ -951,46 +1398,78 @@ export function processAssistantQuery(
     }
   }
 
-  // 11. Motoristas em geral
-  if (questionNorm.includes('motorista')) {
-    const motoristas = employees.filter((emp) => normalizeText(emp.funcao).includes('motorista'))
+  // 13. Motoristas em geral
+  if (questionNorm.includes('motorista') || explicitFuncao === 'Motorista') {
+    let motoristas = employees.filter((emp) => normalizeText(emp.funcao).includes('motorista'))
+    if (effectiveFilial) {
+      motoristas = motoristas.filter((emp) => emp.filial === effectiveFilial)
+    }
+
     const motoristasVencidos = motoristas.filter((emp) => isCnhVencidaLib(emp, now))
     return {
       content: [
-        `A base possui ${motoristas.length} motorista(s), dos quais ${motoristasVencidos.length} com a CNH vencida.`,
-        '',
-        'Por garagem:',
-        ...['CURSINO', 'SAPOPEMBA', 'ITAQUERA', 'GUAIANASES'].map((g) => {
-          const total = motoristas.filter((emp) => emp.filial === g).length
-          return `• ${g}: ${total}`
-        }),
+        `A base possui ${motoristas.length} motorista(s)${effectiveFilial ? ` na garagem ${effectiveFilial}` : ''}, dos quais ${motoristasVencidos.length} com a CNH vencida.`,
+        ...(!effectiveFilial
+          ? [
+              '',
+              'Por garagem:',
+              ...['CURSINO', 'SAPOPEMBA', 'ITAQUERA', 'GUAIANASES'].map((g) => {
+                const total = motoristas.filter((emp) => emp.filial === g).length
+                return `• ${g}: ${total}`
+              }),
+            ]
+          : []),
       ].join('\n'),
       exportableRows: wantsExport ? motoristas : undefined,
       exportFileName: `motoristas-${todayStr}.xlsx`,
       autoDownload: wantsExport && motoristas.length > 0,
+      extractedContext: {
+        funcao: 'Motorista',
+        filial: effectiveFilial,
+        lastExportableRows: motoristas,
+      },
     }
   }
 
-  // 12. Ativos em geral
+  // 14. Ativos em geral
   if (questionNorm.includes('ativo')) {
-    const ativos = employees.filter((emp) => comparable(emp.situacao) === 'ativo')
+    let ativos = employees.filter((emp) => comparable(emp.situacao) === 'ativo')
+    if (effectiveFuncao) {
+      ativos = ativos.filter((emp) =>
+        normalizeText(emp.funcao).includes(normalizeText(effectiveFuncao)),
+      )
+    }
+    if (effectiveFilial) {
+      ativos = ativos.filter((emp) => emp.filial === effectiveFilial)
+    }
+
     return {
       content: [
-        `A base possui ${ativos.length} colaborador(es) ativo(s) no total.`,
-        '',
-        'Por garagem:',
-        ...['CURSINO', 'SAPOPEMBA', 'ITAQUERA', 'GUAIANASES'].map((g) => {
-          const total = ativos.filter((emp) => emp.filial === g).length
-          return `• ${g}: ${total}`
-        }),
+        `A base possui ${ativos.length} colaborador(es) ativo(s) no total${effectiveFuncao ? ` na função ${effectiveFuncao}` : ''}${effectiveFilial ? ` na garagem ${effectiveFilial}` : ''}.`,
+        ...(!effectiveFilial
+          ? [
+              '',
+              'Por garagem:',
+              ...['CURSINO', 'SAPOPEMBA', 'ITAQUERA', 'GUAIANASES'].map((g) => {
+                const total = ativos.filter((emp) => emp.filial === g).length
+                return `• ${g}: ${total}`
+              }),
+            ]
+          : []),
       ].join('\n'),
       exportableRows: wantsExport ? ativos : undefined,
       exportFileName: `ativos-${todayStr}.xlsx`,
       autoDownload: wantsExport && ativos.length > 0,
+      extractedContext: {
+        situacao: 'Ativo',
+        funcao: effectiveFuncao,
+        filial: effectiveFilial,
+        lastExportableRows: ativos,
+      },
     }
   }
 
-  // 13. Pergunta genérica por exportação / planilha
+  // 15. Pergunta genérica por exportação / planilha
   if (wantsExport) {
     return {
       content: `Gerei uma planilha com todos os ${employees.length} colaboradores da base de dados. O download foi iniciado automaticamente.`,
@@ -1001,7 +1480,7 @@ export function processAssistantQuery(
     }
   }
 
-  // 14. Contagem total
+  // 16. Contagem total
   if (
     questionNorm.includes('colaborador') ||
     questionNorm.includes('quantos') ||
@@ -1026,6 +1505,7 @@ export function processAssistantQuery(
       '• Datas: "Quais funcionários terão a CNH vencida no mês 09/2026?", "CNHs vencendo até 12/2026"\n' +
       '• Funcionário específico: "CNH do José Carlos", "Dados da chapa 003054"\n' +
       '• Combinações: "Motoristas da Cursino com CNH vencida em 09/2026", "Afastados da Sapopemba"\n' +
+      '• Continuidade no chat: "e os vencidos no mês 09?", "dessa lista, quem é da Sapopemba?"\n' +
       '• Exportação: adicione "gere uma planilha" ou "exporte para excel" a qualquer consulta.',
   }
 }
