@@ -14,7 +14,6 @@ import type { Employee } from '@/lib/types'
 /** Capitalização canônica das funções usadas nos cards e filtros. */
 const FUNCOES_CANONICAS: Record<string, string> = {
   motorista: 'Motorista',
-  fiscal: 'Fiscal de Viajem',
   'fiscal de viajem': 'Fiscal de Viajem',
   'fiscal de viagem': 'Fiscal de Viajem',
   cobrador: 'Cobrador',
