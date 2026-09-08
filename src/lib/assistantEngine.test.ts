@@ -272,4 +272,149 @@ describe('assistantEngine - Conversa Real e 5 Pontos de Correção', () => {
     const ans = processAssistantQuery('esses não tem CNH', mockEmployees, history, testNow)
     expect(ans.content).not.toBe(history[1].content)
   })
+
+  it('6. Regressão: Sequência de CNH vencida em garagens e depois pergunta por fiscais com CNH', () => {
+    // Sequência do bug reportado:
+    // 1. "Funcionários da Cursino com CNH vencida em 09/2026"
+    // 2. "Funcionários da Sapopemba com CNH vencida em 09/2026"
+    // 3. "agora me liste os fiscais que tem cnh"
+    // A 3ª resposta NÃO pode reaproveitar a lista anterior e dizer "Dessa lista anterior, encontrei 5 colaborador(es)",
+    // e sim filtrar os Fiscais com CNH.
+
+    const testEmployees: Employee[] = [
+      // 6 Motoristas Cursino vencendo em 09/2026
+      ...Array.from({ length: 6 }, (_, i) =>
+        createEmployee({
+          id: `mot-cur-${i}`,
+          name: `MOTORISTA CURSINO ${i + 1}`,
+          chapa: `100${i}`,
+          registro: `100${i}`,
+          funcao: 'Motorista',
+          filial: 'CURSINO',
+          situacao: 'Ativo',
+          cnh_numero: `1111111110${i}`,
+          cnh_categoria: 'D',
+          validade_cnh: '2026-09-15',
+          situacao_cnh: 'A vencer',
+        }),
+      ),
+      // 5 Motoristas Sapopemba vencendo em 09/2026
+      ...Array.from({ length: 5 }, (_, i) =>
+        createEmployee({
+          id: `mot-sap-${i}`,
+          name: `MOTORISTA SAPOPEMBA ${i + 1}`,
+          chapa: `200${i}`,
+          registro: `200${i}`,
+          funcao: 'Motorista',
+          filial: 'SAPOPEMBA',
+          situacao: 'Ativo',
+          cnh_numero: `2222222220${i}`,
+          cnh_categoria: 'D',
+          validade_cnh: '2026-09-20',
+          situacao_cnh: 'A vencer',
+        }),
+      ),
+      // 4 Fiscais com CNH na base (1 Cursino, 3 Sapopemba)
+      createEmployee({
+        id: 'fisc-cur-1',
+        name: 'ADEMIR KANGANEN',
+        chapa: '006470',
+        registro: '006470',
+        funcao: 'Fiscal de Viajem',
+        filial: 'CURSINO',
+        situacao: 'Ativo',
+        cnh_numero: '03131956952',
+        cnh_categoria: 'D',
+        validade_cnh: '2017-08-31',
+        situacao_cnh: 'Vencida',
+      }),
+      createEmployee({
+        id: 'fisc-sap-1',
+        name: 'EDNALDO FRANCISCO DA SILVA',
+        chapa: '000071',
+        registro: '000071',
+        funcao: 'Fiscal de Viajem',
+        filial: 'SAPOPEMBA',
+        situacao: 'Ativo',
+        cnh_numero: '03545754164',
+        cnh_categoria: 'C',
+        validade_cnh: '2015-07-29',
+        situacao_cnh: 'Vencida',
+      }),
+      createEmployee({
+        id: 'fisc-sap-2',
+        name: 'MARCELO DA SILVA MENDES',
+        chapa: '002847',
+        registro: '002847',
+        funcao: 'Fiscal de Viajem',
+        filial: 'SAPOPEMBA',
+        situacao: 'Ativo',
+        cnh_numero: '04749574780',
+        cnh_categoria: 'B',
+        validade_cnh: '2019-02-11',
+        situacao_cnh: 'Vencida',
+      }),
+      createEmployee({
+        id: 'fisc-sap-3',
+        name: 'ANTONIO MARTINS PAIXAO',
+        chapa: '041749',
+        registro: '041749',
+        funcao: 'Fiscal de Viajem',
+        filial: 'SAPOPEMBA',
+        situacao: 'Ativo',
+        cnh_numero: '03069334907',
+        cnh_categoria: 'AD',
+        validade_cnh: '2018-12-13',
+        situacao_cnh: 'Vencida',
+      }),
+      // Fiscais SEM CNH (para validar o filtro com CNH)
+      createEmployee({
+        id: 'fisc-sem-1',
+        name: 'CARLOS SEM CNH',
+        chapa: '009999',
+        registro: '009999',
+        funcao: 'Fiscal de Viajem',
+        filial: 'CURSINO',
+        situacao: 'Ativo',
+        cnh_numero: '',
+        cnh_categoria: '',
+        validade_cnh: null,
+        situacao_cnh: 'Sem CNH',
+      }),
+    ]
+
+    const history: ConversationHistoryMessage[] = []
+
+    // 1. "Funcionários da Cursino com CNH vencida em 09/2026"
+    const q1 = 'Funcionários da Cursino com CNH vencida em 09/2026'
+    const a1 = processAssistantQuery(q1, testEmployees, history, testNow)
+    expect(a1.content).toContain('6 colaborador(es)')
+    expect(a1.exportableRows?.length).toBe(6)
+    history.push({ role: 'user', content: q1 })
+    history.push({ role: 'assistant', content: a1.content, exportableRows: a1.exportableRows })
+
+    // 2. "Funcionários da Sapopemba com CNH vencida em 09/2026"
+    const q2 = 'Funcionários da Sapopemba com CNH vencida em 09/2026'
+    const a2 = processAssistantQuery(q2, testEmployees, history, testNow)
+    expect(a2.content).toContain('5 colaborador(es)')
+    expect(a2.exportableRows?.length).toBe(5)
+    history.push({ role: 'user', content: q2 })
+    history.push({ role: 'assistant', content: a2.content, exportableRows: a2.exportableRows })
+
+    // 3. "agora me liste os fiscais que tem cnh"
+    const q3 = 'agora me liste os fiscais que tem cnh'
+    const a3 = processAssistantQuery(q3, testEmployees, history, testNow)
+
+    // NÃO deve reaproveitar a lista anterior de motoristas da Sapopemba!
+    expect(a3.content).not.toContain('Dessa lista anterior')
+    expect(a3.content).not.toContain('MOTORISTA')
+
+    // Deve listar os 4 Fiscais que possuem CNH
+    expect(a3.exportableRows?.length).toBe(4)
+    expect(a3.content).toContain('ADEMIR KANGANEN')
+    expect(a3.content).toContain('EDNALDO FRANCISCO DA SILVA')
+    expect(a3.content).toContain('MARCELO DA SILVA MENDES')
+    expect(a3.content).toContain('ANTONIO MARTINS PAIXAO')
+    expect(a3.content).not.toContain('CARLOS SEM CNH')
+  })
 })

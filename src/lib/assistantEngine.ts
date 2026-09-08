@@ -989,13 +989,18 @@ function internalProcessAssistantQuery(
 
   // CASO DE REFERÊNCIA DIRETA A UMA LISTA ANTERIOR ("dessa lista...", "esses...", "deles...")
   // OU pergunta de CNH em cima do resultado anterior ("os que tem CNH", "esses não tem CNH")
+  const hasExplicitFuncao = Boolean(explicitFuncao || explicitFuncoesList.length > 0)
+  const hasExplicitFilial = Boolean(explicitFilial)
+  const hasExplicitListReferenceTerms =
+    questionNorm.includes('dessa lista') ||
+    questionNorm.includes('desta lista') ||
+    questionNorm.includes('desses') ||
+    questionNorm.includes('destes') ||
+    questionNorm.includes('deles')
+
   const isDirectReferenceToList =
-    (questionNorm.includes('dessa lista') ||
-      questionNorm.includes('desta lista') ||
-      questionNorm.includes('desses') ||
-      questionNorm.includes('destes') ||
-      questionNorm.includes('deles') ||
-      hasCnhFilterMention) &&
+    (hasExplicitListReferenceTerms ||
+      (hasCnhFilterMention && !hasExplicitFuncao && !hasExplicitFilial)) &&
     !isFutureQuery &&
     !mentionsVencimento &&
     Boolean(prevContext.lastExportableRows && prevContext.lastExportableRows.length > 0)
@@ -1010,7 +1015,7 @@ function internalProcessAssistantQuery(
     if (explicitFilial) {
       subList = subList.filter((emp) => emp.filial === explicitFilial)
     }
-    if (effectiveFuncoesList.length > 0 && !hasCnhFilterMention) {
+    if (effectiveFuncoesList.length > 0 && (hasExplicitFuncao || !hasCnhFilterMention)) {
       subList = subList.filter((emp) => matchesFuncoes(emp.funcao, effectiveFuncoesList))
     }
     if (explicitSituacao) {
