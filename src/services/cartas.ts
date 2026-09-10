@@ -104,20 +104,32 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
           })
         }
 
-        // Para cada processo já existente vinculado a esta carta, registra na timeline o evento da Carta criada
+        // Verificação de duplicidade como proteção extra antes de gravar o evento Carta criada no processo existente:
+        // checa se já existe item na processo_timeline com etapa "Carta criada" e o mesmo número de carta
         try {
-          await createTimelineItem({
-            processo: proc.id,
-            etapa: 'Carta criada',
-            responsavel_nome: respNome,
-            responsavel_perfil: respPerfil,
-            observacoes: `Carta N.º ${input.numero_carta.trim()} criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.`,
-            motivo: '',
-            documentos_recebidos: anexosDocumentos,
-            documentos_pendentes: [],
-            status_documentacao: 'Documentação completa (5/5)',
-            data_hora: new Date(baseTimestamp).toISOString(),
+          const numCarta = input.numero_carta.trim()
+          const safeProcId = proc.id.replace(/"/g, '\\"')
+          const safeNumCarta = numCarta.replace(/"/g, '\\"')
+
+          const jaExiste = await pb.collection('processo_timeline').getFullList({
+            filter: `processo = "${safeProcId}" && etapa = "Carta criada" && observacoes ~ "${safeNumCarta}"`,
+            batch: 1,
           })
+
+          if (jaExiste.length === 0) {
+            await createTimelineItem({
+              processo: proc.id,
+              etapa: 'Carta criada',
+              responsavel_nome: respNome,
+              responsavel_perfil: respPerfil,
+              observacoes: `Carta N.º ${numCarta} criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.`,
+              motivo: '',
+              documentos_recebidos: anexosDocumentos,
+              documentos_pendentes: [],
+              status_documentacao: 'Documentação completa (5/5)',
+              data_hora: new Date(baseTimestamp).toISOString(),
+            })
+          }
         } catch (timelineErr) {
           console.warn(
             'Erro ao registrar evento de carta criada na timeline do processo existente:',
@@ -157,20 +169,31 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
         )
       }
 
-      // 2. Registra o evento "Carta criada" posicionado ACIMA de "Processo criado"
+      // 2. Registra o evento "Carta criada" posicionado ACIMA de "Processo criado" (com verificação de duplicidade)
       try {
-        await createTimelineItem({
-          processo: novoProc.id,
-          etapa: 'Carta criada',
-          responsavel_nome: respNome,
-          responsavel_perfil: respPerfil,
-          observacoes: `Carta N.º ${input.numero_carta.trim()} criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.`,
-          motivo: '',
-          documentos_recebidos: anexosDocumentos,
-          documentos_pendentes: [],
-          status_documentacao: 'Documentação completa (5/5)',
-          data_hora: new Date(baseTimestamp).toISOString(),
+        const numCarta = input.numero_carta.trim()
+        const safeProcId = novoProc.id.replace(/"/g, '\\"')
+        const safeNumCarta = numCarta.replace(/"/g, '\\"')
+
+        const jaExiste = await pb.collection('processo_timeline').getFullList({
+          filter: `processo = "${safeProcId}" && etapa = "Carta criada" && observacoes ~ "${safeNumCarta}"`,
+          batch: 1,
         })
+
+        if (jaExiste.length === 0) {
+          await createTimelineItem({
+            processo: novoProc.id,
+            etapa: 'Carta criada',
+            responsavel_nome: respNome,
+            responsavel_perfil: respPerfil,
+            observacoes: `Carta N.º ${numCarta} criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.`,
+            motivo: '',
+            documentos_recebidos: anexosDocumentos,
+            documentos_pendentes: [],
+            status_documentacao: 'Documentação completa (5/5)',
+            data_hora: new Date(baseTimestamp).toISOString(),
+          })
+        }
       } catch (timelineErr) {
         console.warn(
           'Erro ao registrar evento de carta criada na timeline do novo processo:',
