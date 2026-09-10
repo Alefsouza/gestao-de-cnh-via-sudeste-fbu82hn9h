@@ -39,9 +39,13 @@ onRecordUpdateRequest((e) => {
     // Buscar usuários Admin e RH
     const targets = $app.findRecordsByFilter('users', 'role = "Admin" || role = "RH"', '', 100, 0)
 
+    const obs = String(record.getString('observacoes') || '').trim()
     const labelColab = matricula ? `${colaborador} (${matricula})` : colaborador
     const title = 'Situação de processo alterada'
-    const message = `Situação alterada: ${labelColab} → ${newSituacao} (anterior: ${oldSituacao})`
+    let message = `Situação alterada: ${labelColab} → ${newSituacao} (anterior: ${oldSituacao})`
+    if (obs) {
+      message += ` — OBS: ${obs}`
+    }
 
     // Determinar tipo da notificação: alert para bloqueios, info para demais
     const type =

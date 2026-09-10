@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T13:35:25.464Z",
+  "generatedAt": "2026-09-10T13:45:43.475Z",
   "collections": [
     {
       "name": "users",
@@ -577,6 +577,12 @@
         },
         {
           "name": "alerta_trafego",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
           "type": "text",
           "required": false,
           "system": false

@@ -53,6 +53,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/contexts/AuthContext'
@@ -152,6 +153,7 @@ interface ProcessoCadastral {
   situacao: Situacao
   garagem: 'CURSINO' | 'SAPOPEMBA' | string
   alerta_trafego?: AlertaTrafego | string
+  observacoes?: string
 }
 
 const ALERTA_TRAFEGO_LABELS: Record<string, string> = {
@@ -186,6 +188,7 @@ export default function ProcessosCadastrais() {
   const [selectedProcessoDetalhes, setSelectedProcessoDetalhes] =
     useState<ProcessoCadastral | null>(null)
   const [novaSituacaoTrafego, setNovaSituacaoTrafego] = useState<ProcessoSituacao>('Foto Bloqueada')
+  const [observacaoSituacaoTrafego, setObservacaoSituacaoTrafego] = useState('')
   const [salvandoSituacaoTrafego, setSalvandoSituacaoTrafego] = useState(false)
   const [processos, setProcessos] = useState<ProcessoCadastral[]>([])
   const [selectedCategoria, setSelectedCategoria] = useState<Categoria | null>(null)
@@ -238,6 +241,7 @@ export default function ProcessosCadastrais() {
           situacao: r.situacao,
           garagem: r.garagem || 'CURSINO',
           alerta_trafego: r.alerta_trafego || '',
+          observacoes: r.observacoes || '',
         })),
       )
     } catch (err) {
@@ -494,23 +498,31 @@ export default function ProcessosCadastrais() {
 
     setSalvandoSituacaoTrafego(true)
     try {
-      await updateProcessoSituacao(processoAlterarSituacao.id, novaSituacaoTrafego)
+      const obsValue = observacaoSituacaoTrafego.trim()
+      await updateProcessoSituacao(processoAlterarSituacao.id, novaSituacaoTrafego, obsValue)
       setProcessos((prev) =>
         prev.map((item) =>
           item.id === processoAlterarSituacao.id
-            ? { ...item, situacao: novaSituacaoTrafego }
+            ? { ...item, situacao: novaSituacaoTrafego, observacoes: obsValue }
             : item,
         ),
       )
       toast.success(`Situação alterada para "${novaSituacaoTrafego}" com sucesso!`)
       setProcessoAlterarSituacao(null)
+      setObservacaoSituacaoTrafego('')
     } catch (err) {
       console.error(err)
       toast.error('Erro ao atualizar a situação do processo no servidor.')
     } finally {
       setSalvandoSituacaoTrafego(false)
     }
-  }, [processoAlterarSituacao, novaSituacaoTrafego, isTrafego, userGaragem])
+  }, [
+    processoAlterarSituacao,
+    novaSituacaoTrafego,
+    observacaoSituacaoTrafego,
+    isTrafego,
+    userGaragem,
+  ])
 
   const handleDelete = useCallback(async (processo: ProcessoCadastral) => {
     // Remove imediatamente da listagem local (optimistic update)
@@ -1008,6 +1020,7 @@ export default function ProcessosCadastrais() {
                                     ? 'Impossibilitado de Trabalhar'
                                     : 'Foto Bloqueada',
                                 )
+                                setObservacaoSituacaoTrafego(processo.observacoes || '')
                               }}
                               className="h-8 gap-1.5 border-emerald-600/40 text-xs font-medium text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900"
                             >
@@ -1281,6 +1294,24 @@ export default function ProcessosCadastrais() {
                 Permissão exclusiva: Foto Bloqueada ou Impossibilitado de Trabalhar.
               </p>
             </div>
+
+            {(novaSituacaoTrafego === 'Foto Bloqueada' ||
+              novaSituacaoTrafego === 'Impossibilitado de Trabalhar') && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="obs-situacao-trafego">Observação (OBS)</Label>
+                  <span className="text-[11px] text-muted-foreground">Opcional</span>
+                </div>
+                <Textarea
+                  id="obs-situacao-trafego"
+                  placeholder="Digite observações sobre a alteração (opcional)…"
+                  value={observacaoSituacaoTrafego}
+                  onChange={(e) => setObservacaoSituacaoTrafego(e.target.value)}
+                  rows={3}
+                  className="resize-none text-xs"
+                />
+              </div>
+            )}
           </div>
 
           <DialogFooter>

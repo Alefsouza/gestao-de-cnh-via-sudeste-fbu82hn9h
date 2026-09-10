@@ -100,6 +100,7 @@ export interface ProcessoCadastralRecord {
   situacao: ProcessoSituacao
   garagem?: 'CURSINO' | 'SAPOPEMBA' | string
   alerta_trafego?: AlertaTrafego | string
+  observacoes?: string
   created?: string
   updated?: string
 }

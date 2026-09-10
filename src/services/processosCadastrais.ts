@@ -69,10 +69,15 @@ export async function updateProcessoCadastral(
 export async function updateProcessoSituacao(
   id: string,
   situacao: ProcessoSituacao,
+  observacoes?: string,
 ): Promise<ProcessoCadastralRecord> {
+  const updateData: Partial<ProcessoCadastralRecord> = { situacao }
+  if (observacoes !== undefined) {
+    updateData.observacoes = observacoes
+  }
   const record = await pb
     .collection('processos_cadastrais')
-    .update<ProcessoCadastralRecord>(id, { situacao })
+    .update<ProcessoCadastralRecord>(id, updateData)
   return record
 }
 
