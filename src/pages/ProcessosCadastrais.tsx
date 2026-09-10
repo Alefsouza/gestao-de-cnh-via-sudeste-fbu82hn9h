@@ -499,7 +499,31 @@ export default function ProcessosCadastrais() {
     setSalvandoSituacaoTrafego(true)
     try {
       const obsValue = observacaoSituacaoTrafego.trim()
+      // 1. Atualiza a situação e a observação no processo
       await updateProcessoSituacao(processoAlterarSituacao.id, novaSituacaoTrafego, obsValue)
+
+      // 2. Se houver OBS preenchida, grava o item na Linha do Tempo (processo_timeline)
+      // vinculada à ação do Tráfego com a etapa correspondente
+      if (obsValue) {
+        try {
+          const etapaTimeline =
+            novaSituacaoTrafego === 'Foto Bloqueada'
+              ? 'Foto Bloqueada'
+              : 'Impossibilitado de trabalhar'
+          await createTimelineItem({
+            processo: processoAlterarSituacao.id,
+            etapa: etapaTimeline,
+            responsavel_nome: currentUserName,
+            responsavel_perfil: 'Tráfego',
+            observacoes: obsValue,
+            motivo: novaSituacaoTrafego === 'Impossibilitado de Trabalhar' ? obsValue : '',
+            data_hora: new Date().toISOString(),
+          })
+        } catch (timelineErr) {
+          console.warn('Erro ao registrar ação do Tráfego na linha do tempo:', timelineErr)
+        }
+      }
+
       setProcessos((prev) =>
         prev.map((item) =>
           item.id === processoAlterarSituacao.id
@@ -522,6 +546,7 @@ export default function ProcessosCadastrais() {
     observacaoSituacaoTrafego,
     isTrafego,
     userGaragem,
+    currentUserName,
   ])
 
   const handleDelete = useCallback(async (processo: ProcessoCadastral) => {
@@ -1219,10 +1244,18 @@ export default function ProcessosCadastrais() {
             prev && prev.id === updated.id ? { ...prev, ...updated } : prev,
           )
         }}
-        onUpdateSituacaoTrafego={async (id, situacao) => {
-          await updateProcessoSituacao(id, situacao)
+        onUpdateSituacaoTrafego={async (id, situacao, observacoes) => {
+          await updateProcessoSituacao(id, situacao, observacoes)
           setProcessos((prev) =>
-            prev.map((item) => (item.id === id ? { ...item, situacao } : item)),
+            prev.map((item) =>
+              item.id === id
+                ? {
+                    ...item,
+                    situacao,
+                    ...(observacoes !== undefined ? { observacoes } : {}),
+                  }
+                : item,
+            ),
           )
         }}
       />

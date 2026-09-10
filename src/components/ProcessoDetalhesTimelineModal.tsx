@@ -56,7 +56,11 @@ interface ProcessoDetalhesTimelineModalProps {
   onOpenChange: (open: boolean) => void
   processo: ProcessoCadastralRecord | null
   onProcessoUpdated?: (updated: ProcessoCadastralRecord) => void
-  onUpdateSituacaoTrafego?: (id: string, situacao: ProcessoSituacao) => Promise<void>
+  onUpdateSituacaoTrafego?: (
+    id: string,
+    situacao: ProcessoSituacao,
+    observacoes?: string,
+  ) => Promise<void>
 }
 
 export function ProcessoDetalhesTimelineModal({
@@ -251,11 +255,13 @@ export function ProcessoDetalhesTimelineModal({
       ) {
         const novaSit: ProcessoSituacao =
           etapaSelecionada === 'Foto Bloqueada' ? 'Foto Bloqueada' : 'Impossibilitado de Trabalhar'
-        await onUpdateSituacaoTrafego(processo.id, novaSit)
+        const obsParaProcesso = observacoes.trim() || motivo.trim() || undefined
+        await onUpdateSituacaoTrafego(processo.id, novaSit, obsParaProcesso)
         if (onProcessoUpdated) {
           onProcessoUpdated({
             ...processo,
             situacao: novaSit,
+            ...(obsParaProcesso !== undefined ? { observacoes: obsParaProcesso } : {}),
           })
         }
       }
