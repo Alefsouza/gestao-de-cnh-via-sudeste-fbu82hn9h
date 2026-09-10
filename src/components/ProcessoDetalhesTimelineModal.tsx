@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
   Building2,
@@ -94,6 +94,9 @@ export function ProcessoDetalhesTimelineModal({
   const [observacoes, setObservacoes] = useState('')
   const [motivo, setMotivo] = useState('')
   const [documentosRecebidos, setDocumentosRecebidos] = useState<string[]>([])
+  const [documentosAdicionadosNestaEntrega, setDocumentosAdicionadosNestaEntrega] = useState<
+    string[]
+  >([])
   const [submitting, setSubmitting] = useState(false)
 
   // Carregar timeline ao abrir o modal
@@ -104,6 +107,7 @@ export function ProcessoDetalhesTimelineModal({
       setObservacoes('')
       setMotivo('')
       setDocumentosRecebidos([])
+      setDocumentosAdicionadosNestaEntrega([])
       return
     }
 
@@ -176,29 +180,77 @@ export function ProcessoDetalhesTimelineModal({
       : []),
   ]
 
-  // Configuração padrão do checklist ao selecionar "Entrega dos documentos"
-  useEffect(() => {
-    if (etapaSelecionada === 'Entrega dos documentos') {
-      if (documentosRecebidos.length === 0) {
-        // Inicializa desmarcado para o usuário marcar os que foram de fato entregues
-        setDocumentosRecebidos([])
+  // Documentos previamente recebidos em registros anteriores da timeline
+  // Mapeia para cada documento as informações de quando e por quem foi recebido pela primeira vez
+  const documentosJaRecebidosInfo = useMemo(() => {
+    const mapa = new Map<
+      string,
+      {
+        data_hora: string
+        responsavel_nome: string
+        responsavel_perfil?: string
+      }
+    >()
+
+    // Itera os registros em ordem cronológica (created / data_hora)
+    for (const item of timeline) {
+      if (
+        item.etapa === 'Entrega dos documentos' &&
+        Array.isArray(item.documentos_recebidos) &&
+        item.documentos_recebidos.length > 0
+      ) {
+        for (const doc of item.documentos_recebidos) {
+          if (!mapa.has(doc)) {
+            mapa.set(doc, {
+              data_hora: item.data_hora || item.created || '',
+              responsavel_nome: item.responsavel_nome || 'RH',
+              responsavel_perfil: item.responsavel_perfil,
+            })
+          }
+        }
       }
     }
-  }, [etapaSelecionada, documentosRecebidos.length])
+    return mapa
+  }, [timeline])
+
+  // Lista dos documentos já recebidos anteriormente
+  const listaDocsJaRecebidos = useMemo(() => {
+    return Array.from(documentosJaRecebidosInfo.keys())
+  }, [documentosJaRecebidosInfo])
+
+  // Documentos que ainda estão pendentes de entrega
+  const docsAindaPendentes = useMemo(() => {
+    return TIMELINE_DOCUMENTOS_OBRIGATORIOS.filter((doc) => !documentosJaRecebidosInfo.has(doc))
+  }, [documentosJaRecebidosInfo])
+
+  // Inicializa o checklist cumulativo ao selecionar "Entrega dos documentos"
+  useEffect(() => {
+    if (etapaSelecionada === 'Entrega dos documentos') {
+      // Documentos recebidos acumulados = já recebidos antes + os marcados nesta nova entrega
+      setDocumentosRecebidos([...listaDocsJaRecebidos, ...documentosAdicionadosNestaEntrega])
+    }
+  }, [etapaSelecionada, listaDocsJaRecebidos, documentosAdicionadosNestaEntrega])
 
   if (!processo) return null
 
   const handleToggleDocumento = (doc: string) => {
-    setDocumentosRecebidos((prev) =>
+    // Se o documento já foi recebido em registro anterior, ele é mantido como recebido
+    if (documentosJaRecebidosInfo.has(doc)) {
+      return
+    }
+
+    setDocumentosAdicionadosNestaEntrega((prev) =>
       prev.includes(doc) ? prev.filter((d) => d !== doc) : [...prev, doc],
     )
   }
 
-  const handleSelectAllDocs = () => {
-    if (documentosRecebidos.length === TIMELINE_DOCUMENTOS_OBRIGATORIOS.length) {
-      setDocumentosRecebidos([])
+  const handleMarcarTodosPendentes = () => {
+    if (documentosAdicionadosNestaEntrega.length === docsAindaPendentes.length) {
+      // Se todos os pendentes estavam marcados, desmarca todos os pendentes desta entrega
+      setDocumentosAdicionadosNestaEntrega([])
     } else {
-      setDocumentosRecebidos([...TIMELINE_DOCUMENTOS_OBRIGATORIOS])
+      // Marca todos os documentos pendentes
+      setDocumentosAdicionadosNestaEntrega([...docsAindaPendentes])
     }
   }
 
@@ -273,6 +325,7 @@ export function ProcessoDetalhesTimelineModal({
       setObservacoes('')
       setMotivo('')
       setDocumentosRecebidos([])
+      setDocumentosAdicionadosNestaEntrega([])
     } catch (err) {
       console.error('Erro ao salvar etapa na timeline:', err)
       toast.error('Erro ao registrar etapa na linha do tempo. Tente novamente.')
@@ -503,55 +556,110 @@ export function ProcessoDetalhesTimelineModal({
 
                 {/* Checklist de Entrega de Documentos (RH / Admin) */}
                 {etapaSelecionada === 'Entrega dos documentos' && (
-                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2.5">
                     <div className="flex items-center justify-between border-b pb-1.5">
                       <Label className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                         <FileCheck2 className="h-3.5 w-3.5 text-primary" />
-                        Checklist de Documentos Recebidos
+                        Checklist de Documentos ({documentosRecebidos.length}/
+                        {TIMELINE_DOCUMENTOS_OBRIGATORIOS.length})
                       </Label>
-                      <button
-                        type="button"
-                        onClick={handleSelectAllDocs}
-                        className="text-[11px] font-medium text-primary hover:underline"
-                      >
-                        {documentosRecebidos.length === TIMELINE_DOCUMENTOS_OBRIGATORIOS.length
-                          ? 'Desmarcar todos'
-                          : 'Marcar todos'}
-                      </button>
+                      {docsAindaPendentes.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleMarcarTodosPendentes}
+                          className="text-[11px] font-medium text-primary hover:underline"
+                        >
+                          {documentosAdicionadosNestaEntrega.length === docsAindaPendentes.length
+                            ? 'Desmarcar novos'
+                            : 'Marcar pendentes'}
+                        </button>
+                      )}
                     </div>
 
-                    <p className="text-[11px] text-muted-foreground">
-                      Selecione os documentos entregues pelo colaborador. Documentos desmarcados
-                      serão marcados como pendentes.
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {listaDocsJaRecebidos.length > 0
+                        ? `${listaDocsJaRecebidos.length} documento(s) já recebido(s) anteriormente. Marque abaixo somente os novos documentos entregues hoje:`
+                        : 'Selecione os documentos entregues pelo colaborador nesta etapa. Documentos desmarcados serão marcados como pendentes.'}
                     </p>
 
-                    <div className="space-y-2 pt-1">
+                    <div className="space-y-2 pt-0.5">
                       {TIMELINE_DOCUMENTOS_OBRIGATORIOS.map((doc) => {
-                        const isChecked = documentosRecebidos.includes(doc)
+                        const jaRecebido = documentosJaRecebidosInfo.get(doc)
+                        const marcadoNestaEntrega = documentosAdicionadosNestaEntrega.includes(doc)
+                        const isChecked = Boolean(jaRecebido) || marcadoNestaEntrega
+
+                        let dataHoraFormatada = ''
+                        if (jaRecebido?.data_hora) {
+                          try {
+                            const d = new Date(jaRecebido.data_hora)
+                            dataHoraFormatada = d.toLocaleDateString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                            })
+                          } catch (_) {
+                            dataHoraFormatada = ''
+                          }
+                        }
+
                         return (
                           <div
                             key={doc}
-                            className="flex items-center space-x-2 rounded-md bg-white p-1.5 border"
+                            className={cn(
+                              'flex flex-col gap-1 rounded-md p-2 border transition-colors',
+                              jaRecebido
+                                ? 'bg-emerald-50/70 border-emerald-200'
+                                : marcadoNestaEntrega
+                                  ? 'bg-blue-50/70 border-blue-200'
+                                  : 'bg-white border-border',
+                            )}
                           >
-                            <Checkbox
-                              id={`doc-${doc}`}
-                              checked={isChecked}
-                              onCheckedChange={() => handleToggleDocumento(doc)}
-                            />
-                            <label
-                              htmlFor={`doc-${doc}`}
-                              className="text-xs font-medium cursor-pointer flex-1"
-                            >
-                              {doc}
-                            </label>
-                            {isChecked ? (
-                              <span className="text-[10px] text-emerald-600 font-semibold">
-                                Recebido
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-amber-600 font-semibold">
-                                Pendente
-                              </span>
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`doc-${doc}`}
+                                checked={isChecked}
+                                disabled={Boolean(jaRecebido)}
+                                onCheckedChange={() => handleToggleDocumento(doc)}
+                              />
+                              <label
+                                htmlFor={`doc-${doc}`}
+                                className={cn(
+                                  'text-xs font-medium flex-1 select-none',
+                                  jaRecebido
+                                    ? 'text-emerald-950 cursor-default'
+                                    : 'text-foreground cursor-pointer',
+                                )}
+                              >
+                                {doc}
+                              </label>
+
+                              {jaRecebido ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-emerald-100/90 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                  Já recebido
+                                </span>
+                              ) : marcadoNestaEntrega ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">
+                                  <CheckCircle2 className="h-3 w-3 text-blue-600" />
+                                  Entregue agora
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                                  <AlertCircle className="h-3 w-3 text-amber-600" />
+                                  Pendente
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Detalhe do recebimento anterior (data + responsável) */}
+                            {jaRecebido && (
+                              <div className="pl-6 text-[10px] text-emerald-700 flex items-center gap-1">
+                                <span>
+                                  Recebido{dataHoraFormatada ? ` em ${dataHoraFormatada}` : ''} —{' '}
+                                  <strong className="font-medium text-emerald-900">
+                                    {jaRecebido.responsavel_nome}
+                                  </strong>
+                                </span>
+                              </div>
                             )}
                           </div>
                         )
@@ -559,7 +667,7 @@ export function ProcessoDetalhesTimelineModal({
                     </div>
 
                     {/* Alerta de Documentação Incompleta caso falte algum */}
-                    {documentosRecebidos.length < TIMELINE_DOCUMENTOS_OBRIGATORIOS.length && (
+                    {documentosRecebidos.length < TIMELINE_DOCUMENTOS_OBRIGATORIOS.length ? (
                       <div className="flex items-start gap-1.5 rounded-md bg-amber-100/70 p-2 text-[11px] text-amber-900">
                         <AlertCircle className="h-4 w-4 text-amber-600 flex-none mt-0.5" />
                         <div>
@@ -568,6 +676,11 @@ export function ProcessoDetalhesTimelineModal({
                             (d) => !documentosRecebidos.includes(d),
                           ).join(', ')}
                         </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 rounded-md bg-emerald-100/70 p-2 text-[11px] text-emerald-900 font-medium">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-none" />
+                        <span>Todos os 5 documentos obrigatórios foram recebidos!</span>
                       </div>
                     )}
                   </div>
