@@ -10,6 +10,7 @@ import {
   History,
   Info,
   Loader2,
+  Mail,
   PlusCircle,
   ShieldAlert,
   Truck,
@@ -117,7 +118,19 @@ export function ProcessoDetalhesTimelineModal({
     listTimelineByProcesso(processo.id)
       .then((records) => {
         if (!active) return
-        setTimeline(records)
+        // Ordena com segurança para que eventos mais recentes apareçam abaixo ou acima:
+        // A timeline é exibida do mais antigo no topo ao mais novo embaixo,
+        // ou quando ambos forem criados juntos, "Carta criada" fica após "Processo criado" (mais recente).
+        const sorted = [...records].sort((a, b) => {
+          const tA = new Date(a.data_hora || a.created || 0).getTime()
+          const tB = new Date(b.data_hora || b.created || 0).getTime()
+          if (tA !== tB) return tA - tB
+          // Desempate: Processo criado vem antes de Carta criada
+          if (a.etapa === 'Processo criado' && b.etapa === 'Carta criada') return -1
+          if (a.etapa === 'Carta criada' && b.etapa === 'Processo criado') return 1
+          return (a.created || '').localeCompare(b.created || '')
+        })
+        setTimeline(sorted)
       })
       .catch((err) => {
         console.error('Erro ao carregar timeline:', err)
@@ -357,7 +370,9 @@ export function ProcessoDetalhesTimelineModal({
   const getEtapaBadgeStyle = (etapa: string) => {
     switch (etapa) {
       case 'Processo criado':
-        return 'bg-emerald-50 text-emerald-800 border-emerald-200'
+        return 'bg-slate-50 text-slate-800 border-slate-200'
+      case 'Carta criada':
+        return 'bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-200'
       case 'Tráfego informado':
         return 'bg-blue-50 text-blue-700 border-blue-200'
       case 'Operador notificado':
@@ -772,12 +787,14 @@ export function ProcessoDetalhesTimelineModal({
                           <div
                             className={cn(
                               'absolute -left-[23px] top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white transition-all',
-                              item.etapa === 'Conclusão'
-                                ? 'bg-emerald-600 ring-2 ring-emerald-200'
-                                : item.etapa === 'Foto Bloqueada' ||
-                                    item.etapa === 'Impossibilitado de trabalhar'
-                                  ? 'bg-rose-600 ring-2 ring-rose-200'
-                                  : 'bg-primary ring-2 ring-primary/20',
+                              item.etapa === 'Carta criada'
+                                ? 'bg-emerald-600 ring-2 ring-emerald-300'
+                                : item.etapa === 'Conclusão'
+                                  ? 'bg-emerald-600 ring-2 ring-emerald-200'
+                                  : item.etapa === 'Foto Bloqueada' ||
+                                      item.etapa === 'Impossibilitado de trabalhar'
+                                    ? 'bg-rose-600 ring-2 ring-rose-200'
+                                    : 'bg-primary ring-2 ring-primary/20',
                             )}
                           >
                             <div className="h-1.5 w-1.5 rounded-full bg-white" />
@@ -790,10 +807,13 @@ export function ProcessoDetalhesTimelineModal({
                               <div className="flex items-center gap-2">
                                 <span
                                   className={cn(
-                                    'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold',
+                                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-bold',
                                     getEtapaBadgeStyle(item.etapa),
                                   )}
                                 >
+                                  {item.etapa === 'Carta criada' && (
+                                    <Mail className="h-3.5 w-3.5 text-emerald-700 flex-none" />
+                                  )}
                                   {item.etapa}
                                 </span>
                                 {getPerfilBadge(item.responsavel_perfil)}
@@ -833,32 +853,45 @@ export function ProcessoDetalhesTimelineModal({
                               </div>
                             )}
 
-                            {/* Checklist de Documentos (se for etapa de entrega) */}
-                            {item.etapa === 'Entrega dos documentos' && (
+                            {/* Checklist de Documentos (se for etapa de entrega OU carta criada) */}
+                            {(item.etapa === 'Entrega dos documentos' ||
+                              item.etapa === 'Carta criada') && (
                               <div className="rounded-md border bg-muted/30 p-2.5 text-xs space-y-2">
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-foreground flex items-center gap-1">
                                     <FileCheck2 className="h-3.5 w-3.5 text-primary" />
-                                    Status da Documentação:
+                                    {item.etapa === 'Carta criada'
+                                      ? 'Documentos Anexados à Carta:'
+                                      : 'Status da Documentação:'}
                                   </span>
-                                  {isCompleteDocs && (
+                                  {item.etapa === 'Carta criada' ? (
                                     <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 text-[10px]">
-                                      Documentação completa
+                                      Todos os 5 anexos incluídos
                                     </Badge>
-                                  )}
-                                  {isIncompleteDocs && (
-                                    <Badge variant="destructive" className="text-[10px]">
-                                      Documentação incompleta
-                                    </Badge>
+                                  ) : (
+                                    <>
+                                      {isCompleteDocs && (
+                                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 text-[10px]">
+                                          Documentação completa
+                                        </Badge>
+                                      )}
+                                      {isIncompleteDocs && (
+                                        <Badge variant="destructive" className="text-[10px]">
+                                          Documentação incompleta
+                                        </Badge>
+                                      )}
+                                    </>
                                   )}
                                 </div>
 
-                                {/* Lista de recebidos */}
+                                {/* Lista de recebidos / anexados */}
                                 {item.documentos_recebidos &&
                                   item.documentos_recebidos.length > 0 && (
                                     <div className="space-y-1">
                                       <span className="text-[11px] font-semibold text-emerald-800">
-                                        Documentos recebidos ({item.documentos_recebidos.length}):
+                                        {item.etapa === 'Carta criada'
+                                          ? `Anexos conferidos (${item.documentos_recebidos.length}):`
+                                          : `Documentos recebidos (${item.documentos_recebidos.length}):`}
                                       </span>
                                       <div className="flex flex-wrap gap-1">
                                         {item.documentos_recebidos.map((doc) => (

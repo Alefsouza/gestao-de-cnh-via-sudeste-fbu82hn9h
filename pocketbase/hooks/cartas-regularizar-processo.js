@@ -77,6 +77,51 @@ onRecordAfterCreateSuccess((e) => {
             'atualizado para Regular',
           )
         }
+
+        // Se o processo existente ainda não possui o evento "Carta criada" para este número de carta, registra
+        try {
+          const numCarta = String(carta.getString('numero_carta') || '').trim()
+          const timelineCol = $app.findCollectionByNameOrId('processo_timeline')
+          if (timelineCol) {
+            const existingEvents = $app.findRecordsByFilter(
+              'processo_timeline',
+              `processo = "${proc.id}" && etapa = "Carta criada" && observacoes ~ "${numCarta}"`,
+              '',
+              1,
+              0,
+            )
+            if (!existingEvents || existingEvents.length === 0) {
+              const timelineItemCarta = new Record(timelineCol)
+              timelineItemCarta.set('processo', proc.id)
+              timelineItemCarta.set('etapa', 'Carta criada')
+              timelineItemCarta.set('data_hora', new Date().toISOString())
+              timelineItemCarta.set('responsavel_nome', 'Emissão de Carta')
+              timelineItemCarta.set('responsavel_perfil', 'RH')
+              timelineItemCarta.set(
+                'observacoes',
+                'Carta N.º ' +
+                  (numCarta || '—') +
+                  ' criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.',
+              )
+              timelineItemCarta.set('motivo', '')
+              timelineItemCarta.set('documentos_recebidos', [
+                'CNH',
+                'Prontuário',
+                'Comprovante de Residência',
+                'Atestado',
+                'Doc. Assinado pela Gestora',
+              ])
+              timelineItemCarta.set('documentos_pendentes', [])
+              timelineItemCarta.set('status_documentacao', 'Documentação completa (5/5)')
+              $app.save(timelineItemCarta)
+            }
+          }
+        } catch (errTimelineExistente) {
+          console.log(
+            'regularizar_processo_carta erro ao gravar evento Carta criada em processo existente:',
+            String((errTimelineExistente && errTimelineExistente.message) || errTimelineExistente),
+          )
+        }
       }
     }
 
@@ -122,32 +167,62 @@ onRecordAfterCreateSuccess((e) => {
         matricula,
       )
 
-      // Registra o primeiro item na linha do tempo para processos nascidos de cartas
+      // Registra os itens na linha do tempo para processos nascidos de cartas:
+      // 1) "Processo criado" (mais antigo)
+      // 2) "Carta criada" (mais recente, acima de "Processo criado")
       try {
         const timelineCol = $app.findCollectionByNameOrId('processo_timeline')
         if (timelineCol) {
           const numCarta = String(carta.getString('numero_carta') || '').trim()
-          const timelineItem = new Record(timelineCol)
-          timelineItem.set('processo', newProc.id)
-          timelineItem.set('etapa', 'Processo criado')
-          timelineItem.set('data_hora', new Date().toISOString())
-          timelineItem.set('responsavel_nome', 'Emissão de Carta')
-          timelineItem.set('responsavel_perfil', 'RH')
-          timelineItem.set(
+          const nowMs = Date.now()
+
+          // 1. Processo criado
+          const timelineItemCriado = new Record(timelineCol)
+          timelineItemCriado.set('processo', newProc.id)
+          timelineItemCriado.set('etapa', 'Processo criado')
+          timelineItemCriado.set('data_hora', new Date(nowMs - 2000).toISOString())
+          timelineItemCriado.set('responsavel_nome', 'Emissão de Carta')
+          timelineItemCriado.set('responsavel_perfil', 'RH')
+          timelineItemCriado.set(
             'observacoes',
             numCarta
               ? 'Processo criado a partir da Carta N.º ' + numCarta
               : 'Processo criado a partir da Carta',
           )
-          timelineItem.set('motivo', '')
-          timelineItem.set('documentos_recebidos', [])
-          timelineItem.set('documentos_pendentes', [])
-          timelineItem.set('status_documentacao', '')
-          $app.save(timelineItem)
+          timelineItemCriado.set('motivo', '')
+          timelineItemCriado.set('documentos_recebidos', [])
+          timelineItemCriado.set('documentos_pendentes', [])
+          timelineItemCriado.set('status_documentacao', '')
+          $app.save(timelineItemCriado)
+
+          // 2. Carta criada
+          const timelineItemCarta = new Record(timelineCol)
+          timelineItemCarta.set('processo', newProc.id)
+          timelineItemCarta.set('etapa', 'Carta criada')
+          timelineItemCarta.set('data_hora', new Date(nowMs).toISOString())
+          timelineItemCarta.set('responsavel_nome', 'Emissão de Carta')
+          timelineItemCarta.set('responsavel_perfil', 'RH')
+          timelineItemCarta.set(
+            'observacoes',
+            'Carta N.º ' +
+              (numCarta || '—') +
+              ' criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.',
+          )
+          timelineItemCarta.set('motivo', '')
+          timelineItemCarta.set('documentos_recebidos', [
+            'CNH',
+            'Prontuário',
+            'Comprovante de Residência',
+            'Atestado',
+            'Doc. Assinado pela Gestora',
+          ])
+          timelineItemCarta.set('documentos_pendentes', [])
+          timelineItemCarta.set('status_documentacao', 'Documentação completa (5/5)')
+          $app.save(timelineItemCarta)
         }
       } catch (errTimeline) {
         console.log(
-          'regularizar_processo_carta erro ao gravar primeiro item na timeline:',
+          'regularizar_processo_carta erro ao gravar itens na timeline:',
           String((errTimeline && errTimeline.message) || errTimeline),
         )
       }

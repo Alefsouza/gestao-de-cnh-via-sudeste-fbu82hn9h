@@ -77,12 +77,52 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
       })
     }
 
+    const respNome =
+      input.responsavel_nome ||
+      pb.authStore.record?.name ||
+      pb.authStore.record?.email ||
+      'Analista RH'
+    const respPerfil: UserRole =
+      input.responsavel_perfil ||
+      ((pb.authStore.record?.role as UserRole) === 'Admin' ? 'Admin' : 'RH')
+
+    const anexosDocumentos = [
+      'CNH',
+      'Prontuário',
+      'Comprovante de Residência',
+      'Atestado',
+      'Doc. Assinado pela Gestora',
+    ]
+
+    const baseTimestamp = Date.now()
+
     if (matchingProcessos.length > 0) {
       for (const proc of matchingProcessos) {
         if (proc.situacao !== 'Regular') {
           await pb.collection('processos_cadastrais').update(proc.id, {
             situacao: 'Regular',
           })
+        }
+
+        // Para cada processo já existente vinculado a esta carta, registra na timeline o evento da Carta criada
+        try {
+          await createTimelineItem({
+            processo: proc.id,
+            etapa: 'Carta criada',
+            responsavel_nome: respNome,
+            responsavel_perfil: respPerfil,
+            observacoes: `Carta N.º ${input.numero_carta.trim()} criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.`,
+            motivo: '',
+            documentos_recebidos: anexosDocumentos,
+            documentos_pendentes: [],
+            status_documentacao: 'Documentação completa (5/5)',
+            data_hora: new Date(baseTimestamp).toISOString(),
+          })
+        } catch (timelineErr) {
+          console.warn(
+            'Erro ao registrar evento de carta criada na timeline do processo existente:',
+            timelineErr,
+          )
         }
       }
     } else {
@@ -99,17 +139,8 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
         alerta_trafego: '',
       })
 
-      // Processo recém-criado a partir da carta nasce com o primeiro item "Processo criado" na timeline
+      // 1. Processo recém-criado nasce com "Processo criado"
       try {
-        const respNome =
-          input.responsavel_nome ||
-          pb.authStore.record?.name ||
-          pb.authStore.record?.email ||
-          'Analista RH'
-        const respPerfil: UserRole =
-          input.responsavel_perfil ||
-          ((pb.authStore.record?.role as UserRole) === 'Admin' ? 'Admin' : 'RH')
-
         await createTimelineItem({
           processo: novoProc.id,
           etapa: 'Processo criado',
@@ -117,10 +148,34 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
           responsavel_perfil: respPerfil,
           observacoes: `Processo criado a partir da Carta N.º ${input.numero_carta}`,
           motivo: '',
-          data_hora: new Date().toISOString(),
+          data_hora: new Date(baseTimestamp - 2000).toISOString(),
         })
       } catch (timelineErr) {
-        console.warn('Erro ao registrar timeline do novo processo gerado por carta:', timelineErr)
+        console.warn(
+          'Erro ao registrar primeiro item na timeline do novo processo gerado por carta:',
+          timelineErr,
+        )
+      }
+
+      // 2. Registra o evento "Carta criada" posicionado ACIMA de "Processo criado"
+      try {
+        await createTimelineItem({
+          processo: novoProc.id,
+          etapa: 'Carta criada',
+          responsavel_nome: respNome,
+          responsavel_perfil: respPerfil,
+          observacoes: `Carta N.º ${input.numero_carta.trim()} criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.`,
+          motivo: '',
+          documentos_recebidos: anexosDocumentos,
+          documentos_pendentes: [],
+          status_documentacao: 'Documentação completa (5/5)',
+          data_hora: new Date(baseTimestamp).toISOString(),
+        })
+      } catch (timelineErr) {
+        console.warn(
+          'Erro ao registrar evento de carta criada na timeline do novo processo:',
+          timelineErr,
+        )
       }
     }
   } catch (err) {
