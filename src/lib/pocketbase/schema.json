@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-08T16:24:16.774Z",
+  "generatedAt": "2026-09-10T13:28:13.304Z",
   "collections": [
     {
       "name": "users",
@@ -677,6 +677,99 @@
       "indexes": [
         "CREATE INDEX idx_cartas_numero ON cartas (numero_carta)",
         "CREATE INDEX idx_cartas_colaborador ON cartas (colaborador)"
+      ]
+    },
+    {
+      "name": "processo_timeline",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "processo",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "processos_cadastrais"
+        },
+        {
+          "name": "etapa",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_hora",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "responsavel_nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "responsavel_perfil",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Admin", "RH", "Tráfego"]
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documentos_recebidos",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documentos_pendentes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_documentacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_timeline_processo ON processo_timeline (processo)",
+        "CREATE INDEX idx_timeline_data_hora ON processo_timeline (data_hora)"
       ]
     }
   ]

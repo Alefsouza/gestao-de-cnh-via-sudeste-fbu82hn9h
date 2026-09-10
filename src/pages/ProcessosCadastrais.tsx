@@ -8,6 +8,7 @@ import {
   FileDown,
   FilePlus2,
   FileSearch,
+  FileText,
   FileX2,
   Loader2,
   Mail,
@@ -23,6 +24,7 @@ import * as XLSX from 'xlsx'
 
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import VisualizarCartasModal from '@/components/VisualizarCartasModal'
+import { ProcessoDetalhesTimelineModal } from '@/components/ProcessoDetalhesTimelineModal'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -173,6 +175,8 @@ export default function ProcessosCadastrais() {
   const [processoAlterarSituacao, setProcessoAlterarSituacao] = useState<ProcessoCadastral | null>(
     null,
   )
+  const [selectedProcessoDetalhes, setSelectedProcessoDetalhes] =
+    useState<ProcessoCadastral | null>(null)
   const [novaSituacaoTrafego, setNovaSituacaoTrafego] = useState<ProcessoSituacao>('Foto Bloqueada')
   const [salvandoSituacaoTrafego, setSalvandoSituacaoTrafego] = useState(false)
   const [processos, setProcessos] = useState<ProcessoCadastral[]>([])
@@ -884,9 +888,20 @@ export default function ProcessosCadastrais() {
               </thead>
               <tbody>
                 {paginatedProcessos.map((processo) => (
-                  <tr key={processo.id} className="border-b last:border-b-0 hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium text-foreground">{processo.matricula}</td>
-                    <td className="px-4 py-3 text-foreground">{processo.colaborador}</td>
+                  <tr
+                    key={processo.id}
+                    onClick={() => setSelectedProcessoDetalhes(processo)}
+                    className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                    title="Clique para ver os detalhes e a linha do tempo do processo"
+                  >
+                    <td className="px-4 py-3 font-medium text-foreground">
+                      <span className="font-mono text-primary font-semibold hover:underline">
+                        {processo.matricula}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-foreground font-medium">
+                      {processo.colaborador}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(
@@ -941,9 +956,20 @@ export default function ProcessosCadastrais() {
                         {processo.situacao}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       {isTrafego ? (
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedProcessoDetalhes(processo)}
+                            className="h-8 gap-1 text-xs"
+                            title="Ver linha do tempo e detalhes"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Detalhes
+                          </Button>
                           {processo.situacao === 'Pendente' ||
                           processo.situacao === 'Foto Bloqueada' ||
                           processo.situacao === 'Impossibilitado de Trabalhar' ? (
@@ -964,12 +990,20 @@ export default function ProcessosCadastrais() {
                               <RefreshCcw className="h-3.5 w-3.5" />
                               Alterar situação
                             </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Sem ações</span>
-                          )}
+                          ) : null}
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProcessoDetalhes(processo)}
+                            className="inline-flex h-8 px-2.5 items-center justify-center rounded-md border text-xs font-medium text-primary hover:bg-primary/10 transition-colors gap-1"
+                            title="Ver detalhes e linha do tempo"
+                            aria-label={`Ver linha do tempo de ${processo.colaborador}`}
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            <span>Detalhes</span>
+                          </button>
                           <button
                             type="button"
                             onClick={() => setEditingProcesso(processo)}
@@ -1132,6 +1166,29 @@ export default function ProcessosCadastrais() {
 
       {/* Modal Visualizar Cartas (Admin e RH) */}
       <VisualizarCartasModal open={cartasModalOpen} onOpenChange={setCartasModalOpen} />
+
+      {/* Modal Detalhes com Linha do Tempo (Timeline) */}
+      <ProcessoDetalhesTimelineModal
+        open={selectedProcessoDetalhes !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedProcessoDetalhes(null)
+        }}
+        processo={selectedProcessoDetalhes}
+        onProcessoUpdated={(updated) => {
+          setProcessos((prev) =>
+            prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+          )
+          setSelectedProcessoDetalhes((prev) =>
+            prev && prev.id === updated.id ? { ...prev, ...updated } : prev,
+          )
+        }}
+        onUpdateSituacaoTrafego={async (id, situacao) => {
+          await updateProcessoSituacao(id, situacao)
+          setProcessos((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, situacao } : item)),
+          )
+        }}
+      />
 
       {/* Modal Restrito do perfil Tráfego: Apenas Alterar Situação */}
       <Dialog

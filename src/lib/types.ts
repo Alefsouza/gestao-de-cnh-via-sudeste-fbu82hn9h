@@ -103,3 +103,41 @@ export interface ProcessoCadastralRecord {
   created?: string
   updated?: string
 }
+
+export const TIMELINE_DOCUMENTOS_OBRIGATORIOS = [
+  'CNH',
+  'Prontuário',
+  'Comprovante de Residência',
+  'Atestado',
+  'Doc. Assinado pela Gestora',
+] as const
+
+export type TimelineDocumento = (typeof TIMELINE_DOCUMENTOS_OBRIGATORIOS)[number]
+
+export const TIMELINE_ETAPAS_ORDEM = [
+  'Tráfego informado',
+  'Operador notificado',
+  'Comparecimento ao RH',
+  'Entrega dos documentos',
+  'Conferência',
+  'Envio para a SPTrans',
+  'Conclusão',
+] as const
+
+export type TimelineEtapaOrdem = (typeof TIMELINE_ETAPAS_ORDEM)[number]
+
+export interface ProcessoTimelineRecord {
+  id: string
+  processo: string
+  etapa: string
+  data_hora: string
+  responsavel_nome: string
+  responsavel_perfil: UserRole
+  observacoes?: string
+  motivo?: string
+  documentos_recebidos?: string[]
+  documentos_pendentes?: string[]
+  status_documentacao?: string
+  created?: string
+  updated?: string
+}
