@@ -115,6 +115,7 @@ export const TIMELINE_DOCUMENTOS_OBRIGATORIOS = [
 export type TimelineDocumento = (typeof TIMELINE_DOCUMENTOS_OBRIGATORIOS)[number]
 
 export const TIMELINE_ETAPAS_ORDEM = [
+  'Processo criado',
   'Tráfego informado',
   'Operador notificado',
   'Comparecimento ao RH',

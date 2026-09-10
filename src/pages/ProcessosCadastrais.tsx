@@ -66,8 +66,9 @@ import {
   updateProcessoSituacao,
   deleteProcessoCadastral,
 } from '@/services/processosCadastrais'
+import { createTimelineItem } from '@/services/processoTimeline'
 import { createMovement } from '@/services/movements'
-import type { AlertaTrafego, Employee, ProcessoSituacao } from '@/lib/types'
+import type { AlertaTrafego, Employee, ProcessoSituacao, UserRole } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 // Categorias exibidas nos cards de resumo (ordem exata solicitada)
@@ -164,6 +165,13 @@ export default function ProcessosCadastrais() {
   const { user } = useAuth()
   const userRole = ((user?.role as string) || 'Admin').toLowerCase()
   const isTrafego = userRole === 'tráfego' || userRole === 'trafego'
+  const isRH = userRole === 'rh'
+  const currentRole: UserRole = isTrafego ? 'Tráfego' : isRH ? 'RH' : 'Admin'
+  const currentUserName =
+    user?.name ||
+    user?.email ||
+    (isTrafego ? 'Operador Tráfego' : isRH ? 'Analista RH' : 'Administrador')
+
   // Garagem do usuário (para Tráfego: 'CURSINO' ou 'SAPOPEMBA')
   const userGaragem = (user?.garagem as string) || (isTrafego ? 'CURSINO' : 'Todas')
 
@@ -359,6 +367,22 @@ export default function ProcessosCadastrais() {
           ...prev,
         ])
 
+        // Cria automaticamente o PRIMEIRO item na linha do tempo (timeline)
+        // Requisito: Etapa "Processo criado", responsável logado, sem quebrar se falhar (best-effort)
+        try {
+          await createTimelineItem({
+            processo: created.id,
+            etapa: 'Processo criado',
+            responsavel_nome: currentUserName,
+            responsavel_perfil: currentRole,
+            observacoes: '',
+            motivo: '',
+            data_hora: new Date().toISOString(),
+          })
+        } catch (timelineErr) {
+          console.warn('Erro ao registrar primeiro item na linha do tempo:', timelineErr)
+        }
+
         // Persiste também como movimentação no banco se houver colaborador vinculado
         if (data.employeeId) {
           try {
@@ -380,7 +404,7 @@ export default function ProcessosCadastrais() {
         toast.error('Erro ao salvar processo no backend')
       }
     },
-    [],
+    [currentUserName, currentRole],
   )
 
   const handleUpdate = useCallback(

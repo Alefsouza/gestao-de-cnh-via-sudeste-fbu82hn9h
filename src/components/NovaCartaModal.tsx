@@ -20,8 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useAuth } from '@/contexts/AuthContext'
 import { createCarta } from '@/services/cartas'
-import type { Employee } from '@/lib/types'
+import type { Employee, UserRole } from '@/lib/types'
 
 interface NovaCartaModalProps {
   open: boolean
@@ -55,6 +56,16 @@ export default function NovaCartaModal({
   processoSituacao,
   onSuccess,
 }: NovaCartaModalProps) {
+  const { user } = useAuth()
+  const userRole = ((user?.role as string) || 'Admin').toLowerCase()
+  const isRH = userRole === 'rh'
+  const isTrafego = userRole === 'tráfego' || userRole === 'trafego'
+  const currentRole: UserRole = isTrafego ? 'Tráfego' : isRH ? 'RH' : 'Admin'
+  const currentUserName =
+    user?.name ||
+    user?.email ||
+    (isTrafego ? 'Operador Tráfego' : isRH ? 'Analista RH' : 'Administrador')
+
   const [numeroCarta, setNumeroCarta] = useState('')
   const [tipoCarta, setTipoCarta] = useState(
     processoSituacao === 'Foto Bloqueada'
@@ -153,6 +164,8 @@ export default function NovaCartaModal({
         atestado: files.atestado!,
         doc_assinado_gestora: files.doc_assinado_gestora!,
         garagem: employee.filial || 'CURSINO',
+        responsavel_nome: currentUserName,
+        responsavel_perfil: currentRole,
       })
 
       toast.success(

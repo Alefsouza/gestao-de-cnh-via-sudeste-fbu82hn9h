@@ -16,6 +16,9 @@ export interface CartaRecord {
   updated: string
 }
 
+import { createTimelineItem } from '@/services/processoTimeline'
+import type { UserRole } from '@/lib/types'
+
 export interface CreateCartaInput {
   numero_carta: string
   colaborador: string
@@ -28,6 +31,8 @@ export interface CreateCartaInput {
   atestado: File
   doc_assinado_gestora: File
   garagem?: string
+  responsavel_nome?: string
+  responsavel_perfil?: UserRole
 }
 
 /**
@@ -82,7 +87,7 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
       }
     } else {
       // Nenhum processo cadastral existia para esse colaborador; cria um novo processo com situação "Regular"
-      await pb.collection('processos_cadastrais').create({
+      const novoProc = await pb.collection('processos_cadastrais').create({
         matricula: mat,
         colaborador: colab,
         funcao: input.funcao_carta || 'Motorista',
@@ -93,6 +98,30 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
         garagem: input.garagem || 'CURSINO',
         alerta_trafego: '',
       })
+
+      // Processo recém-criado a partir da carta nasce com o primeiro item "Processo criado" na timeline
+      try {
+        const respNome =
+          input.responsavel_nome ||
+          pb.authStore.record?.name ||
+          pb.authStore.record?.email ||
+          'Analista RH'
+        const respPerfil: UserRole =
+          input.responsavel_perfil ||
+          ((pb.authStore.record?.role as UserRole) === 'Admin' ? 'Admin' : 'RH')
+
+        await createTimelineItem({
+          processo: novoProc.id,
+          etapa: 'Processo criado',
+          responsavel_nome: respNome,
+          responsavel_perfil: respPerfil,
+          observacoes: `Processo criado a partir da Carta N.º ${input.numero_carta}`,
+          motivo: '',
+          data_hora: new Date().toISOString(),
+        })
+      } catch (timelineErr) {
+        console.warn('Erro ao registrar timeline do novo processo gerado por carta:', timelineErr)
+      }
     }
   } catch (err) {
     console.warn('Erro ao atualizar situação em processos_cadastrais pelo frontend:', err)

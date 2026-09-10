@@ -297,6 +297,8 @@ export function ProcessoDetalhesTimelineModal({
 
   const getEtapaBadgeStyle = (etapa: string) => {
     switch (etapa) {
+      case 'Processo criado':
+        return 'bg-emerald-50 text-emerald-800 border-emerald-200'
       case 'Tráfego informado':
         return 'bg-blue-50 text-blue-700 border-blue-200'
       case 'Operador notificado':

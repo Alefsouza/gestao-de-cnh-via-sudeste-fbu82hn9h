@@ -121,6 +121,36 @@ onRecordAfterCreateSuccess((e) => {
         'regularizar_processo_carta: novo processo criado automaticamente como Regular para',
         matricula,
       )
+
+      // Registra o primeiro item na linha do tempo para processos nascidos de cartas
+      try {
+        const timelineCol = $app.findCollectionByNameOrId('processo_timeline')
+        if (timelineCol) {
+          const numCarta = String(carta.getString('numero_carta') || '').trim()
+          const timelineItem = new Record(timelineCol)
+          timelineItem.set('processo', newProc.id)
+          timelineItem.set('etapa', 'Processo criado')
+          timelineItem.set('data_hora', new Date().toISOString())
+          timelineItem.set('responsavel_nome', 'Emissão de Carta')
+          timelineItem.set('responsavel_perfil', 'RH')
+          timelineItem.set(
+            'observacoes',
+            numCarta
+              ? 'Processo criado a partir da Carta N.º ' + numCarta
+              : 'Processo criado a partir da Carta',
+          )
+          timelineItem.set('motivo', '')
+          timelineItem.set('documentos_recebidos', [])
+          timelineItem.set('documentos_pendentes', [])
+          timelineItem.set('status_documentacao', '')
+          $app.save(timelineItem)
+        }
+      } catch (errTimeline) {
+        console.log(
+          'regularizar_processo_carta erro ao gravar primeiro item na timeline:',
+          String((errTimeline && errTimeline.message) || errTimeline),
+        )
+      }
     }
   } catch (err) {
     console.log(
