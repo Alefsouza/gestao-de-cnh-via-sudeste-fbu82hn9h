@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  ArrowRightLeft,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -155,6 +156,9 @@ interface ProcessoCadastral {
   garagem: 'CURSINO' | 'SAPOPEMBA' | string
   alerta_trafego?: AlertaTrafego | string
   observacoes?: string
+  funcao_antiga?: string
+  funcao_atual?: string
+  data_troca_funcao?: string
 }
 
 const ALERTA_TRAFEGO_LABELS: Record<string, string> = {
@@ -244,6 +248,9 @@ export default function ProcessosCadastrais() {
           garagem: r.garagem || 'CURSINO',
           alerta_trafego: r.alerta_trafego || '',
           observacoes: r.observacoes || '',
+          funcao_antiga: r.funcao_antiga || '',
+          funcao_atual: r.funcao_atual || '',
+          data_troca_funcao: r.data_troca_funcao || '',
         })),
       )
     } catch (err) {
@@ -346,6 +353,9 @@ export default function ProcessosCadastrais() {
             garagem?: string
             alerta_trafego?: AlertaTrafego | string
             employeeId?: string
+            funcao_antiga?: string
+            funcao_atual?: string
+            data_troca_funcao?: string
           }
         | Array<{
             processo: Categoria
@@ -358,6 +368,9 @@ export default function ProcessosCadastrais() {
             garagem?: string
             alerta_trafego?: AlertaTrafego | string
             employeeId?: string
+            funcao_antiga?: string
+            funcao_atual?: string
+            data_troca_funcao?: string
           }>,
     ) => {
       const itemsToCreate = Array.isArray(data) ? data : [data]
@@ -368,6 +381,7 @@ export default function ProcessosCadastrais() {
 
         for (const item of itemsToCreate) {
           const isoPrazo = toSafeIsoString(item.prazo)
+          const isoDataTroca = toSafeIsoString(item.data_troca_funcao)
           const created = await createProcessoCadastral({
             matricula: item.matricula,
             colaborador: item.nome,
@@ -378,6 +392,9 @@ export default function ProcessosCadastrais() {
             situacao: item.situacao,
             garagem: item.garagem || 'CURSINO',
             alerta_trafego: item.alerta_trafego || '',
+            funcao_antiga: item.funcao_antiga || '',
+            funcao_atual: item.funcao_atual || '',
+            data_troca_funcao: isoDataTroca || '',
           })
 
           novosCriados.push({
@@ -392,6 +409,9 @@ export default function ProcessosCadastrais() {
             garagem: created.garagem || item.garagem || 'CURSINO',
             alerta_trafego: created.alerta_trafego || item.alerta_trafego || '',
             observacoes: '',
+            funcao_antiga: created.funcao_antiga || item.funcao_antiga || '',
+            funcao_atual: created.funcao_atual || item.funcao_atual || '',
+            data_troca_funcao: created.data_troca_funcao || isoDataTroca || '',
           })
 
           // Cria automaticamente o PRIMEIRO item na linha do tempo (timeline)
@@ -454,9 +474,13 @@ export default function ProcessosCadastrais() {
       garagem?: string
       alerta_trafego?: AlertaTrafego | string
       employeeId?: string
+      funcao_antiga?: string
+      funcao_atual?: string
+      data_troca_funcao?: string
     }) => {
       try {
         const isoPrazo = toSafeIsoString(data.prazo)
+        const isoDataTroca = toSafeIsoString(data.data_troca_funcao)
         await updateProcessoCadastral(data.id, {
           matricula: data.matricula,
           colaborador: data.nome,
@@ -467,12 +491,15 @@ export default function ProcessosCadastrais() {
           situacao: data.situacao,
           garagem: data.garagem,
           alerta_trafego: data.alerta_trafego ?? '',
+          funcao_antiga: data.funcao_antiga ?? '',
+          funcao_atual: data.funcao_atual ?? '',
+          data_troca_funcao: isoDataTroca || '',
         })
 
         setProcessos((prev) =>
           prev.map((item) => {
             if (item.id === data.id) {
-              return {
+              const updatedItem: ProcessoCadastral = {
                 ...item,
                 matricula: data.matricula,
                 colaborador: data.nome,
@@ -483,7 +510,11 @@ export default function ProcessosCadastrais() {
                 situacao: data.situacao,
                 garagem: data.garagem || item.garagem,
                 alerta_trafego: data.alerta_trafego ?? item.alerta_trafego,
+                funcao_antiga: data.funcao_antiga ?? item.funcao_antiga,
+                funcao_atual: data.funcao_atual ?? item.funcao_atual,
+                data_troca_funcao: isoDataTroca || data.data_troca_funcao || item.data_troca_funcao,
               }
+              return updatedItem
             }
             return item
           }),
@@ -699,6 +730,9 @@ export default function ProcessosCadastrais() {
         Garagem: item.garagem,
         Função: item.funcao,
         Processo: item.processo,
+        'Função Antiga': item.funcao_antiga || '',
+        'Função Atual': item.funcao_atual || '',
+        'Data Troca Função': formatDate(item.data_troca_funcao),
         Etapa: item.etapa,
         Prazo: formatDate(item.prazo),
         Situação: item.situacao,
@@ -716,6 +750,9 @@ export default function ProcessosCadastrais() {
         { wch: 16 }, // Garagem
         { wch: 26 }, // Função
         { wch: 22 }, // Processo
+        { wch: 24 }, // Função Antiga
+        { wch: 24 }, // Função Atual
+        { wch: 18 }, // Data Troca Função
         { wch: 26 }, // Etapa
         { wch: 14 }, // Prazo
         { wch: 14 }, // Situação
@@ -1460,6 +1497,9 @@ interface ProcessoCadastralFormData {
   garagem?: string
   alerta_trafego?: AlertaTrafego | string
   employeeId?: string
+  funcao_antiga?: string
+  funcao_atual?: string
+  data_troca_funcao?: string
 }
 
 interface ProcessoCadastralFormModalProps {
@@ -1499,6 +1539,9 @@ function ProcessoCadastralFormModal({
   const [singleMatricula, setSingleMatricula] = useState('')
   const [singleNome, setSingleNome] = useState('')
   const [singleFuncao, setSingleFuncao] = useState('')
+  const [funcaoAntiga, setFuncaoAntiga] = useState('')
+  const [funcaoAtual, setFuncaoAtual] = useState('')
+  const [dataTrocaFuncao, setDataTrocaFuncao] = useState('')
   const [singleGaragem, setSingleGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
   const [singleSearching, setSingleSearching] = useState(false)
   const [singleResolvedEmpId, setSingleResolvedEmpId] = useState<string | undefined>(undefined)
@@ -1524,6 +1567,10 @@ function ProcessoCadastralFormModal({
         setSingleMatricula(initialData.matricula || '')
         setSingleNome(initialData.colaborador || '')
         setSingleFuncao(initialData.funcao || '')
+        setFuncaoAntiga(initialData.funcao_antiga || '')
+        setFuncaoAtual(initialData.funcao_atual || '')
+        const rawDataTroca = initialData.data_troca_funcao || ''
+        setDataTrocaFuncao(rawDataTroca ? rawDataTroca.slice(0, 10) : '')
         setEtapa(initialData.etapa || ETAPA_INICIAL)
         const isSemPrazoAlertaInitial =
           initialData.processo === 'Inclusão' || initialData.processo === 'Mudança de Função'
@@ -1539,6 +1586,9 @@ function ProcessoCadastralFormModal({
         setSingleMatricula('')
         setSingleNome('')
         setSingleFuncao('')
+        setFuncaoAntiga('')
+        setFuncaoAtual('')
+        setDataTrocaFuncao('')
         setEtapa(ETAPA_INICIAL)
         setPrazo('')
         setSituacao('Pendente')
@@ -1634,7 +1684,11 @@ function ProcessoCadastralFormModal({
         const match = await searchEmployeeData(term)
         if (!isMounted || !match) return
         if (match.nome) setSingleNome(match.nome)
-        if (match.funcao) setSingleFuncao(match.funcao)
+        if (match.funcao) {
+          setSingleFuncao(match.funcao)
+          // Se for Mudança de Função e a Função antiga ainda não foi digitada, auto-sugere a função atual do colaborador
+          setFuncaoAntiga((prev) => (prev.trim() === '' ? match.funcao : prev))
+        }
         setSingleGaragem(match.garagem)
         setSingleResolvedEmpId(match.id)
       } finally {
@@ -1720,8 +1774,28 @@ function ProcessoCadastralFormModal({
       return colaboradores.every((c) => c.matricula.trim() !== '' && c.nome.trim() !== '')
     }
 
+    if (processo === 'Mudança de Função') {
+      return (
+        singleMatricula.trim() !== '' &&
+        singleNome.trim() !== '' &&
+        funcaoAntiga.trim() !== '' &&
+        funcaoAtual.trim() !== '' &&
+        dataTrocaFuncao.trim() !== ''
+      )
+    }
+
     return singleMatricula.trim() !== '' && singleNome.trim() !== ''
-  }, [saving, processo, isMultiInclusao, colaboradores, singleMatricula, singleNome])
+  }, [
+    saving,
+    processo,
+    isMultiInclusao,
+    colaboradores,
+    singleMatricula,
+    singleNome,
+    funcaoAntiga,
+    funcaoAtual,
+    dataTrocaFuncao,
+  ])
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -1758,17 +1832,44 @@ function ProcessoCadastralFormModal({
         await onSubmit(payloadList)
       } else {
         const isSemPrazoAlerta = processo === 'Inclusão' || processo === 'Mudança de Função'
+        const isMudancaFuncao = processo === 'Mudança de Função'
+
+        // Validação extra amigável de campos para Mudança de Função
+        if (isMudancaFuncao) {
+          if (!funcaoAntiga.trim() || !funcaoAtual.trim()) {
+            toast.error('Informe a Função antiga e a Função atual para a Mudança de Função.')
+            return
+          }
+          if (!dataTrocaFuncao.trim()) {
+            toast.error('Informe a Data de Troca de Função.')
+            return
+          }
+          const parsedDataTroca = new Date(
+            dataTrocaFuncao.includes('T') ? dataTrocaFuncao : `${dataTrocaFuncao}T12:00:00Z`,
+          )
+          if (Number.isNaN(parsedDataTroca.getTime())) {
+            toast.error('Por favor, informe uma Data de Troca de Função válida.')
+            return
+          }
+        }
+
+        // Para Mudança de Função, o campo principal de função reflete a nova função
+        const mainFuncao = isMudancaFuncao ? funcaoAtual.trim() : singleFuncao.trim()
+
         await onSubmit({
           processo,
           matricula: singleMatricula.trim(),
           nome: singleNome.trim(),
-          funcao: singleFuncao.trim(),
+          funcao: mainFuncao,
           etapa,
           prazo: isSemPrazoAlerta ? '' : prazo,
           situacao: isEditing ? situacao : 'Pendente',
           garagem: singleGaragem,
           alerta_trafego: isSemPrazoAlerta ? '' : alertaTrafego,
           employeeId: singleResolvedEmpId,
+          funcao_antiga: isMudancaFuncao ? funcaoAntiga.trim() : '',
+          funcao_atual: isMudancaFuncao ? funcaoAtual.trim() : '',
+          data_troca_funcao: isMudancaFuncao ? dataTrocaFuncao : '',
         })
       }
       onOpenChange(false)
@@ -1817,6 +1918,10 @@ function ProcessoCadastralFormModal({
                   if (newProcesso === 'Inclusão' || newProcesso === 'Mudança de Função') {
                     setPrazo('')
                     setAlertaTrafego('')
+                  }
+                  // Se mudar para Mudança de Função e a Função antiga estiver vazia, aproveita a função já encontrada
+                  if (newProcesso === 'Mudança de Função' && !funcaoAntiga && singleFuncao) {
+                    setFuncaoAntiga(singleFuncao)
                   }
                 }}
                 disabled={isEditing}
@@ -2107,16 +2212,78 @@ function ProcessoCadastralFormModal({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="modal-funcao">Função</Label>
-                <Input
-                  id="modal-funcao"
-                  placeholder="Função do colaborador"
-                  value={singleFuncao}
-                  onChange={(event) => setSingleFuncao(event.target.value)}
-                  autoComplete="off"
-                />
-              </div>
+              {processo === 'Mudança de Função' ? (
+                /* Bloco exclusivo: Mudança de Função */
+                <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wide">
+                    <ArrowRightLeft className="h-4 w-4" />
+                    <span>Dados da Mudança de Função</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="modal-funcao-antiga" className="text-xs font-semibold">
+                        Função antiga *
+                      </Label>
+                      <Input
+                        id="modal-funcao-antiga"
+                        placeholder="Ex: Motorista"
+                        value={funcaoAntiga}
+                        onChange={(event) => setFuncaoAntiga(event.target.value)}
+                        autoComplete="off"
+                        className="bg-white text-xs"
+                      />
+                      <span className="text-[10px] text-muted-foreground">
+                        Função que exercia antes da troca
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="modal-funcao-atual" className="text-xs font-semibold">
+                        Função atual *
+                      </Label>
+                      <Input
+                        id="modal-funcao-atual"
+                        placeholder="Ex: Fiscal de Linha"
+                        value={funcaoAtual}
+                        onChange={(event) => setFuncaoAtual(event.target.value)}
+                        autoComplete="off"
+                        className="bg-white text-xs"
+                      />
+                      <span className="text-[10px] text-muted-foreground">
+                        Nova função assumida pelo colaborador
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <Label htmlFor="modal-data-troca" className="text-xs font-semibold">
+                      Data de Troca de Função *
+                    </Label>
+                    <Input
+                      id="modal-data-troca"
+                      type="date"
+                      value={dataTrocaFuncao}
+                      onChange={(event) => setDataTrocaFuncao(event.target.value)}
+                      className="bg-white text-xs"
+                    />
+                    <span className="text-[10px] text-muted-foreground">
+                      Data em que a troca de função aconteceu
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="modal-funcao">Função</Label>
+                  <Input
+                    id="modal-funcao"
+                    placeholder="Função do colaborador"
+                    value={singleFuncao}
+                    onChange={(event) => setSingleFuncao(event.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+              )}
             </>
           )}
 

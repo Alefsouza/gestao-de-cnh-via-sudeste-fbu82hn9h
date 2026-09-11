@@ -101,6 +101,9 @@ export interface ProcessoCadastralRecord {
   garagem?: 'CURSINO' | 'SAPOPEMBA' | string
   alerta_trafego?: AlertaTrafego | string
   observacoes?: string
+  funcao_antiga?: string
+  funcao_atual?: string
+  data_troca_funcao?: string
   created?: string
   updated?: string
 }

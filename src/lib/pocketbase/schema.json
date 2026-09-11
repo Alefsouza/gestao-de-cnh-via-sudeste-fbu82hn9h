@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T16:22:06.078Z",
+  "generatedAt": "2026-09-11T16:32:07.952Z",
   "collections": [
     {
       "name": "users",
@@ -590,6 +590,24 @@
         {
           "name": "observacoes",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "funcao_antiga",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "funcao_atual",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_troca_funcao",
+          "type": "date",
           "required": false,
           "system": false
         }

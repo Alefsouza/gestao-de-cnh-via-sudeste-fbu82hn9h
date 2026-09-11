@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
+  ArrowRight,
+  ArrowRightLeft,
   Building2,
   Calendar,
   CheckCircle2,
@@ -514,10 +516,14 @@ export function ProcessoDetalhesTimelineModal({
                   <span className="text-muted-foreground">Etapa do Processo:</span>
                   <span className="font-medium text-foreground">{processo.etapa || '—'}</span>
                 </div>
-                <div className="flex justify-between border-b pb-1.5">
-                  <span className="text-muted-foreground">Prazo:</span>
-                  <span className="font-medium text-foreground">{formatDate(processo.prazo)}</span>
-                </div>
+                {processo.processo !== 'Mudança de Função' && (
+                  <div className="flex justify-between border-b pb-1.5">
+                    <span className="text-muted-foreground">Prazo:</span>
+                    <span className="font-medium text-foreground">
+                      {formatDate(processo.prazo)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Situação Atual:</span>
                   <span className="rounded-full border bg-muted/60 px-2.5 py-0.5 text-[11px] font-semibold text-foreground">
@@ -525,6 +531,46 @@ export function ProcessoDetalhesTimelineModal({
                   </span>
                 </div>
               </div>
+
+              {/* Bloco exclusivo para Mudança de Função */}
+              {processo.processo === 'Mudança de Função' &&
+                (processo.funcao_antiga || processo.funcao_atual || processo.data_troca_funcao) && (
+                  <div className="mt-3 rounded-lg border border-amber-200/80 bg-amber-50/60 p-3 text-xs space-y-2">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                      <ArrowRightLeft className="h-3.5 w-3.5 text-amber-700" />
+                      <span>Dados da Mudança de Função</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 rounded bg-white/80 p-2 border border-amber-200">
+                      <div className="flex-1">
+                        <span className="block text-[10px] text-muted-foreground">
+                          Função Antiga
+                        </span>
+                        <span className="font-semibold text-foreground">
+                          {processo.funcao_antiga || '—'}
+                        </span>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-amber-600 flex-none" />
+                      <div className="flex-1">
+                        <span className="block text-[10px] text-muted-foreground">
+                          Função Atual
+                        </span>
+                        <span className="font-semibold text-emerald-700">
+                          {processo.funcao_atual || '—'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {processo.data_troca_funcao && (
+                      <div className="flex items-center justify-between pt-0.5 text-[11px]">
+                        <span className="text-amber-900 font-medium">Data de Troca de Função:</span>
+                        <span className="font-semibold text-foreground">
+                          {formatDate(processo.data_troca_funcao)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
 
             {/* Formulário: Registrar nova etapa / ação na timeline */}
