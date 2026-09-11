@@ -1747,7 +1747,7 @@ function ProcessoCadastralFormModal({
           prazo: '', // Prazo não se aplica para Inclusão
           situacao: 'Pendente',
           garagem: c.garagem,
-          alerta_trafego: alertaTrafego, // Opcional
+          alerta_trafego: '', // Não se aplica para Inclusão
           employeeId: c.employeeId,
         }))
 
@@ -1759,10 +1759,10 @@ function ProcessoCadastralFormModal({
           nome: singleNome.trim(),
           funcao: singleFuncao.trim(),
           etapa,
-          prazo,
+          prazo: processo === 'Inclusão' ? '' : prazo,
           situacao: isEditing ? situacao : 'Pendente',
           garagem: singleGaragem,
-          alerta_trafego: alertaTrafego,
+          alerta_trafego: processo === 'Inclusão' ? '' : alertaTrafego,
           employeeId: singleResolvedEmpId,
         })
       }
@@ -1806,10 +1806,12 @@ function ProcessoCadastralFormModal({
               <Select
                 value={processo}
                 onValueChange={(value) => {
-                  setProcesso(value as Categoria)
-                  // Se mudar para Inclusão, limpa prazo
-                  if (value === 'Inclusão') {
+                  const newProcesso = value as Categoria
+                  setProcesso(newProcesso)
+                  // Se mudar para Inclusão, limpa prazo e marcação de ciência
+                  if (newProcesso === 'Inclusão') {
                     setPrazo('')
+                    setAlertaTrafego('')
                   }
                 }}
                 disabled={isEditing}
@@ -2143,75 +2145,75 @@ function ProcessoCadastralFormModal({
             </div>
           )}
 
-          {/* Marcação de ciência para o Tráfego (opcional) */}
-          <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-semibold text-foreground">
-                Marcação de ciência (opcional)
-              </Label>
-              {alertaTrafego && (
-                <button
-                  type="button"
-                  onClick={() => setAlertaTrafego('')}
-                  className="text-[11px] text-muted-foreground hover:text-foreground underline"
+          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão; mantido para Atualização e outros tipos */}
+          {processo !== 'Inclusão' && (
+            <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-foreground">
+                  Marcação de ciência (opcional)
+                </Label>
+                {alertaTrafego && (
+                  <button
+                    type="button"
+                    onClick={() => setAlertaTrafego('')}
+                    className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                  >
+                    Limpar marcação
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
+                <label
+                  className={cn(
+                    'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
+                    alertaTrafego === 'bloquear_foto'
+                      ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
+                      : 'border-border/70 hover:bg-muted/40 text-foreground',
+                  )}
                 >
-                  Limpar marcação
-                </button>
+                  <input
+                    type="radio"
+                    name="alerta_trafego"
+                    value="bloquear_foto"
+                    checked={alertaTrafego === 'bloquear_foto'}
+                    onChange={() => setAlertaTrafego('bloquear_foto')}
+                    className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span>Bloquear foto</span>
+                </label>
+
+                <label
+                  className={cn(
+                    'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
+                    alertaTrafego === 'impossibilitado_trabalhar'
+                      ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
+                      : 'border-border/70 hover:bg-muted/40 text-foreground',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="alerta_trafego"
+                    value="impossibilitado_trabalhar"
+                    checked={alertaTrafego === 'impossibilitado_trabalhar'}
+                    onChange={() => setAlertaTrafego('impossibilitado_trabalhar')}
+                    className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span>Impossibilitar de Trabalhar</span>
+                </label>
+              </div>
+
+              {alertaTrafego ? (
+                <p className="text-[11px] text-amber-800 font-medium pt-0.5">
+                  Apenas informativo — não altera a Situação do processo.
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground pt-0.5">
+                  Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.
+                </p>
               )}
             </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
-              <label
-                className={cn(
-                  'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
-                  alertaTrafego === 'bloquear_foto'
-                    ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
-                    : 'border-border/70 hover:bg-muted/40 text-foreground',
-                )}
-              >
-                <input
-                  type="radio"
-                  name="alerta_trafego"
-                  value="bloquear_foto"
-                  checked={alertaTrafego === 'bloquear_foto'}
-                  onChange={() => setAlertaTrafego('bloquear_foto')}
-                  className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
-                />
-                <span>Bloquear foto</span>
-              </label>
-
-              <label
-                className={cn(
-                  'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
-                  alertaTrafego === 'impossibilitado_trabalhar'
-                    ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
-                    : 'border-border/70 hover:bg-muted/40 text-foreground',
-                )}
-              >
-                <input
-                  type="radio"
-                  name="alerta_trafego"
-                  value="impossibilitado_trabalhar"
-                  checked={alertaTrafego === 'impossibilitado_trabalhar'}
-                  onChange={() => setAlertaTrafego('impossibilitado_trabalhar')}
-                  className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
-                />
-                <span>Impossibilitar de Trabalhar</span>
-              </label>
-            </div>
-
-            {alertaTrafego ? (
-              <p className="text-[11px] text-amber-800 font-medium pt-0.5">
-                Apenas informativo — não altera a Situação do processo.
-              </p>
-            ) : (
-              <p className="text-[11px] text-muted-foreground pt-0.5">
-                {processo === 'Inclusão'
-                  ? 'Opcional: selecione apenas se desejar sinalizar o Tráfego.'
-                  : 'Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.'}
-              </p>
-            )}
-          </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
