@@ -1525,10 +1525,14 @@ function ProcessoCadastralFormModal({
         setSingleNome(initialData.colaborador || '')
         setSingleFuncao(initialData.funcao || '')
         setEtapa(initialData.etapa || ETAPA_INICIAL)
-        setPrazo(initialData.prazo || '')
+        const isSemPrazoAlertaInitial =
+          initialData.processo === 'Inclusão' || initialData.processo === 'Mudança de Função'
+        setPrazo(isSemPrazoAlertaInitial ? '' : initialData.prazo || '')
         setSituacao(initialData.situacao || 'Pendente')
         setSingleGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
-        setAlertaTrafego((initialData.alerta_trafego as AlertaTrafego) || '')
+        setAlertaTrafego(
+          isSemPrazoAlertaInitial ? '' : (initialData.alerta_trafego as AlertaTrafego) || '',
+        )
         setSingleResolvedEmpId(undefined)
       } else {
         setProcesso('Inclusão')
@@ -1753,16 +1757,17 @@ function ProcessoCadastralFormModal({
 
         await onSubmit(payloadList)
       } else {
+        const isSemPrazoAlerta = processo === 'Inclusão' || processo === 'Mudança de Função'
         await onSubmit({
           processo,
           matricula: singleMatricula.trim(),
           nome: singleNome.trim(),
           funcao: singleFuncao.trim(),
           etapa,
-          prazo: processo === 'Inclusão' ? '' : prazo,
+          prazo: isSemPrazoAlerta ? '' : prazo,
           situacao: isEditing ? situacao : 'Pendente',
           garagem: singleGaragem,
-          alerta_trafego: processo === 'Inclusão' ? '' : alertaTrafego,
+          alerta_trafego: isSemPrazoAlerta ? '' : alertaTrafego,
           employeeId: singleResolvedEmpId,
         })
       }
@@ -1808,8 +1813,8 @@ function ProcessoCadastralFormModal({
                 onValueChange={(value) => {
                   const newProcesso = value as Categoria
                   setProcesso(newProcesso)
-                  // Se mudar para Inclusão, limpa prazo e marcação de ciência
-                  if (newProcesso === 'Inclusão') {
+                  // Se mudar para Inclusão ou Mudança de Função, limpa prazo e marcação de ciência
+                  if (newProcesso === 'Inclusão' || newProcesso === 'Mudança de Função') {
                     setPrazo('')
                     setAlertaTrafego('')
                   }
@@ -2132,8 +2137,8 @@ function ProcessoCadastralFormModal({
             </Select>
           </div>
 
-          {/* Prazo: Oculto quando o processo for "Inclusão"; Mantido para "Atualização" e demais tipos */}
-          {processo !== 'Inclusão' && (
+          {/* Prazo: Oculto quando o processo for "Inclusão" ou "Mudança de Função"; Mantido para "Atualização" e demais tipos */}
+          {processo !== 'Inclusão' && processo !== 'Mudança de Função' && (
             <div className="space-y-2">
               <Label htmlFor="modal-prazo">Prazo</Label>
               <Input
@@ -2145,8 +2150,8 @@ function ProcessoCadastralFormModal({
             </div>
           )}
 
-          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão; mantido para Atualização e outros tipos */}
-          {processo !== 'Inclusão' && (
+          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão e Mudança de Função; mantido para Atualização e outros tipos */}
+          {processo !== 'Inclusão' && processo !== 'Mudança de Função' && (
             <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-foreground">
