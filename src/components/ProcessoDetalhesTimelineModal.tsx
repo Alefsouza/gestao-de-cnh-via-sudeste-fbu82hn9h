@@ -146,7 +146,7 @@ export function ProcessoDetalhesTimelineModal({
   }, [open, processo])
 
   // Lista de ações permitidas de acordo com o perfil
-  // Tráfego:
+  // Tráfego: valida SOMENTE processos do tipo "Atualização"
   // - "Operador notificado"
   // - "Foto Bloqueada" (bloqueio)
   // - "Impossibilitado de trabalhar" (com motivo obrigatório)
@@ -157,12 +157,13 @@ export function ProcessoDetalhesTimelineModal({
   // - "Envio para a SPTrans"
   // - "Pendências"
   // - "Conclusão"
-  // Admin: todas as ações acima + "Tráfego informado"
+  // Admin: ações de RH + ações de Tráfego (somente quando tipo for "Atualização") + "Tráfego informado" (somente Atualização)
+  const isProcessoAtualizacao = processo?.processo === 'Atualização'
   const acoesDisponiveis = [
-    ...(isAdmin
+    ...(isAdmin && isProcessoAtualizacao
       ? [{ value: 'Tráfego informado', label: 'Tráfego informado', perfil: 'Admin' }]
       : []),
-    ...(isTrafego || isAdmin
+    ...((isTrafego && isProcessoAtualizacao) || (isAdmin && isProcessoAtualizacao)
       ? [
           { value: 'Operador notificado', label: 'Operador notificado', perfil: 'Tráfego' },
           {
@@ -272,6 +273,22 @@ export function ProcessoDetalhesTimelineModal({
 
     if (!etapaSelecionada) {
       toast.error('Selecione uma etapa para registrar.')
+      return
+    }
+
+    if (isTrafego && processo.processo !== 'Atualização') {
+      toast.error('O perfil Tráfego valida exclusivamente processos do tipo "Atualização".')
+      return
+    }
+
+    const acoesExclusivasTrafego = [
+      'Tráfego informado',
+      'Operador notificado',
+      'Foto Bloqueada',
+      'Impossibilitado de trabalhar',
+    ]
+    if (processo.processo !== 'Atualização' && acoesExclusivasTrafego.includes(etapaSelecionada)) {
+      toast.error('Ações de validação do Tráfego só se aplicam a processos do tipo "Atualização".')
       return
     }
 

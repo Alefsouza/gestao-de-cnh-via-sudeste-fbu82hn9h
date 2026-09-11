@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -201,7 +202,7 @@ export default function ProcessosCadastrais() {
   const [employees, setEmployees] = useState<Employee[]>([])
 
   // Monta o filtro PocketBase garantindo regras no backend:
-  // 1. Tráfego: vê apenas sua garagem e nunca vê "Regular"
+  // 1. Tráfego: valida SOMENTE processos do tipo "Atualização", vê apenas sua garagem e nunca vê "Regular"
   // 2. Admin/RH:
   //    - Se viewRegulares === true: somente situacao = "Regular"
   //    - Se viewRegulares === false (padrão): situacao != "Regular"
@@ -210,6 +211,7 @@ export default function ProcessosCadastrais() {
 
     if (isTrafego) {
       const g = userGaragem.toUpperCase()
+      parts.push(`processo = "Atualização"`)
       parts.push(`garagem = "${g}"`)
       parts.push(`situacao != "Regular"`)
     } else {
@@ -286,8 +288,9 @@ export default function ProcessosCadastrais() {
 
   // Processos visíveis para o usuário:
   // Se for perfil Tráfego:
-  // 1. Filtrar exclusivamente pela garagem do usuário (CURSINO ou SAPOPEMBA).
-  // 2. Processos com situação "Regular" NÃO devem aparecer (nem na listagem, nem nos cards, nem no Excel).
+  // 1. Somente processos do tipo "Atualização"
+  // 2. Filtrar exclusivamente pela garagem do usuário (CURSINO ou SAPOPEMBA).
+  // 3. Processos com situação "Regular" NÃO devem aparecer (nem na listagem, nem nos cards, nem no Excel).
   // Admin e RH:
   // Se viewRegulares === true: somente "Regular"
   // Se viewRegulares === false (listagem principal): NÃO contém "Regular"
@@ -295,10 +298,11 @@ export default function ProcessosCadastrais() {
     if (isTrafego) {
       const userGaragemUpper = userGaragem.toUpperCase()
       return processos.filter((p) => {
+        const isAtualizacao = p.processo === 'Atualização'
         const g = (p.garagem || '').toUpperCase()
         const isSameGaragem = g === userGaragemUpper
         const isNotRegular = p.situacao !== 'Regular'
-        return isSameGaragem && isNotRegular
+        return isAtualizacao && isSameGaragem && isNotRegular
       })
     }
     // Admin / RH:
@@ -329,34 +333,54 @@ export default function ProcessosCadastrais() {
   }
 
   const handleCreate = useCallback(
-    async (data: {
-      processo: Categoria
-      matricula: string
-      nome: string
-      funcao: string
-      etapa: Etapa
-      prazo: string
-      situacao: Situacao
-      garagem?: string
-      alerta_trafego?: AlertaTrafego | string
-      employeeId?: string
-    }) => {
-      try {
-        const isoPrazo = toSafeIsoString(data.prazo)
-        const created = await createProcessoCadastral({
-          matricula: data.matricula,
-          colaborador: data.nome,
-          funcao: data.funcao,
-          processo: data.processo,
-          etapa: data.etapa,
-          prazo: isoPrazo,
-          situacao: data.situacao,
-          garagem: data.garagem || 'CURSINO',
-          alerta_trafego: data.alerta_trafego || '',
-        })
+    async (
+      data:
+        | {
+            processo: Categoria
+            matricula: string
+            nome: string
+            funcao: string
+            etapa: Etapa
+            prazo: string
+            situacao: Situacao
+            garagem?: string
+            alerta_trafego?: AlertaTrafego | string
+            employeeId?: string
+          }
+        | Array<{
+            processo: Categoria
+            matricula: string
+            nome: string
+            funcao: string
+            etapa: Etapa
+            prazo: string
+            situacao: Situacao
+            garagem?: string
+            alerta_trafego?: AlertaTrafego | string
+            employeeId?: string
+          }>,
+    ) => {
+      const itemsToCreate = Array.isArray(data) ? data : [data]
+      if (itemsToCreate.length === 0) return
 
-        setProcessos((prev) => [
-          {
+      try {
+        const novosCriados: ProcessoCadastral[] = []
+
+        for (const item of itemsToCreate) {
+          const isoPrazo = toSafeIsoString(item.prazo)
+          const created = await createProcessoCadastral({
+            matricula: item.matricula,
+            colaborador: item.nome,
+            funcao: item.funcao,
+            processo: item.processo,
+            etapa: item.etapa,
+            prazo: isoPrazo,
+            situacao: item.situacao,
+            garagem: item.garagem || 'CURSINO',
+            alerta_trafego: item.alerta_trafego || '',
+          })
+
+          novosCriados.push({
             id: created.id,
             matricula: created.matricula,
             colaborador: created.colaborador,
@@ -365,44 +389,50 @@ export default function ProcessosCadastrais() {
             etapa: created.etapa,
             prazo: created.prazo,
             situacao: created.situacao,
-            garagem: created.garagem || data.garagem || 'CURSINO',
-            alerta_trafego: created.alerta_trafego || data.alerta_trafego || '',
-          },
-          ...prev,
-        ])
-
-        // Cria automaticamente o PRIMEIRO item na linha do tempo (timeline)
-        // Requisito: Etapa "Processo criado", responsável logado, sem quebrar se falhar (best-effort)
-        try {
-          await createTimelineItem({
-            processo: created.id,
-            etapa: 'Processo criado',
-            responsavel_nome: currentUserName,
-            responsavel_perfil: currentRole,
+            garagem: created.garagem || item.garagem || 'CURSINO',
+            alerta_trafego: created.alerta_trafego || item.alerta_trafego || '',
             observacoes: '',
-            motivo: '',
-            data_hora: new Date().toISOString(),
           })
-        } catch (timelineErr) {
-          console.warn('Erro ao registrar primeiro item na linha do tempo:', timelineErr)
-        }
 
-        // Persiste também como movimentação no banco se houver colaborador vinculado
-        if (data.employeeId) {
+          // Cria automaticamente o PRIMEIRO item na linha do tempo (timeline)
+          // Requisito: Etapa "Processo criado", responsável logado, sem quebrar se falhar (best-effort)
           try {
-            const movementDate = isoPrazo || new Date().toISOString()
-            await createMovement({
-              employee: data.employeeId,
-              type: data.processo as never,
-              date: movementDate,
-              notes: `Processo cadastral ${data.processo} — matrícula ${data.matricula}`,
+            await createTimelineItem({
+              processo: created.id,
+              etapa: 'Processo criado',
+              responsavel_nome: currentUserName,
+              responsavel_perfil: currentRole,
+              observacoes: '',
+              motivo: '',
+              data_hora: new Date().toISOString(),
             })
-          } catch {
-            // silencioso
+          } catch (timelineErr) {
+            console.warn('Erro ao registrar primeiro item na linha do tempo:', timelineErr)
+          }
+
+          // Persiste também como movimentação no banco se houver colaborador vinculado
+          if (item.employeeId) {
+            try {
+              const movementDate = isoPrazo || new Date().toISOString()
+              await createMovement({
+                employee: item.employeeId,
+                type: item.processo as never,
+                date: movementDate,
+                notes: `Processo cadastral ${item.processo} — matrícula ${item.matricula}`,
+              })
+            } catch {
+              // silencioso
+            }
           }
         }
 
-        toast.success('Processo cadastrado com sucesso')
+        setProcessos((prev) => [...novosCriados, ...prev])
+
+        if (novosCriados.length > 1) {
+          toast.success(`${novosCriados.length} processos de Inclusão cadastrados com sucesso`)
+        } else {
+          toast.success('Processo cadastrado com sucesso')
+        }
       } catch (err) {
         console.error(err)
         toast.error('Erro ao salvar processo no backend')
@@ -485,7 +515,13 @@ export default function ProcessosCadastrais() {
       return
     }
 
-    // Validação extra: o usuário do Tráfego só pode alterar processos da sua própria garagem
+    // Validação extra: o usuário do Tráfego só valida processos do tipo "Atualização" da sua própria garagem
+    if (isTrafego && processoAlterarSituacao.processo !== 'Atualização') {
+      toast.error('O perfil Tráfego valida exclusivamente processos do tipo "Atualização".')
+      setProcessoAlterarSituacao(null)
+      return
+    }
+
     if (
       isTrafego &&
       processoAlterarSituacao.garagem &&
@@ -1217,7 +1253,7 @@ export default function ProcessosCadastrais() {
         initialData={editingProcesso}
         employees={employees}
         onSubmit={async (data) => {
-          if (editingProcesso) {
+          if (editingProcesso && !Array.isArray(data)) {
             await handleUpdate({
               id: editingProcesso.id,
               ...data,
@@ -1413,23 +1449,35 @@ export default function ProcessosCadastrais() {
 
 // ---------- Modal "Formulário de processo" (Criar / Editar) ----------
 
+interface ProcessoCadastralFormData {
+  processo: Categoria
+  matricula: string
+  nome: string
+  funcao: string
+  etapa: Etapa
+  prazo: string
+  situacao: Situacao
+  garagem?: string
+  alerta_trafego?: AlertaTrafego | string
+  employeeId?: string
+}
+
 interface ProcessoCadastralFormModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialData?: ProcessoCadastral | null
   employees: Employee[]
-  onSubmit: (data: {
-    processo: Categoria
-    matricula: string
-    nome: string
-    funcao: string
-    etapa: Etapa
-    prazo: string
-    situacao: Situacao
-    garagem?: string
-    alerta_trafego?: AlertaTrafego | string
-    employeeId?: string
-  }) => Promise<void> | void
+  onSubmit: (data: ProcessoCadastralFormData | ProcessoCadastralFormData[]) => Promise<void> | void
+}
+
+interface ColaboradorItem {
+  id: string
+  matricula: string
+  nome: string
+  funcao: string
+  garagem: 'CURSINO' | 'SAPOPEMBA'
+  employeeId?: string
+  searching?: boolean
 }
 
 function ProcessoCadastralFormModal({
@@ -1441,101 +1489,152 @@ function ProcessoCadastralFormModal({
 }: ProcessoCadastralFormModalProps) {
   const isEditing = Boolean(initialData)
   const [processo, setProcesso] = useState<Categoria>('Inclusão')
-  const [matricula, setMatricula] = useState('')
-  const [nome, setNome] = useState('')
-  const [funcao, setFuncao] = useState('')
   const [etapa, setEtapa] = useState<Etapa>(ETAPA_INICIAL)
   const [prazo, setPrazo] = useState('')
   const [situacao, setSituacao] = useState<Situacao>('Pendente')
-  const [garagem, setGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
   const [alertaTrafego, setAlertaTrafego] = useState<AlertaTrafego>('')
-  const [searchingEmployee, setSearchingEmployee] = useState(false)
-  const [resolvedEmployeeId, setResolvedEmployeeId] = useState<string | undefined>(undefined)
   const [saving, setSaving] = useState(false)
+
+  // Estado para tipo comum ("Atualização", "Demissão", etc.) ou edição
+  const [singleMatricula, setSingleMatricula] = useState('')
+  const [singleNome, setSingleNome] = useState('')
+  const [singleFuncao, setSingleFuncao] = useState('')
+  const [singleGaragem, setSingleGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
+  const [singleSearching, setSingleSearching] = useState(false)
+  const [singleResolvedEmpId, setSingleResolvedEmpId] = useState<string | undefined>(undefined)
+
+  // Estado para tipo "Inclusão": múltiplos colaboradores
+  const [colaboradores, setColaboradores] = useState<ColaboradorItem[]>([
+    {
+      id: '1',
+      matricula: '',
+      nome: '',
+      funcao: '',
+      garagem: 'CURSINO',
+    },
+  ])
+  const [expandedId, setExpandedId] = useState<string>('1')
+
+  const isMultiInclusao = !isEditing && processo === 'Inclusão'
 
   useEffect(() => {
     if (open) {
       if (initialData) {
         setProcesso(initialData.processo)
-        setMatricula(initialData.matricula || '')
-        setNome(initialData.colaborador || '')
-        setFuncao(initialData.funcao || '')
+        setSingleMatricula(initialData.matricula || '')
+        setSingleNome(initialData.colaborador || '')
+        setSingleFuncao(initialData.funcao || '')
         setEtapa(initialData.etapa || ETAPA_INICIAL)
         setPrazo(initialData.prazo || '')
         setSituacao(initialData.situacao || 'Pendente')
-        setGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
+        setSingleGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
         setAlertaTrafego((initialData.alerta_trafego as AlertaTrafego) || '')
-        setResolvedEmployeeId(undefined)
+        setSingleResolvedEmpId(undefined)
       } else {
         setProcesso('Inclusão')
-        setMatricula('')
-        setNome('')
-        setFuncao('')
+        setSingleMatricula('')
+        setSingleNome('')
+        setSingleFuncao('')
         setEtapa(ETAPA_INICIAL)
         setPrazo('')
         setSituacao('Pendente')
-        setGaragem('CURSINO')
+        setSingleGaragem('CURSINO')
         setAlertaTrafego('')
-        setResolvedEmployeeId(undefined)
+        setSingleResolvedEmpId(undefined)
+
+        const initialColabId = String(Date.now())
+        setColaboradores([
+          {
+            id: initialColabId,
+            matricula: '',
+            nome: '',
+            funcao: '',
+            garagem: 'CURSINO',
+          },
+        ])
+        setExpandedId(initialColabId)
       }
     }
   }, [open, initialData])
 
-  // Auto-preenchimento ao digitar o registro/chapa
-  useEffect(() => {
-    if (!open) return
-    const term = matricula.trim()
-    if (!term) return
+  // Helper de busca de colaborador por registro/chapa
+  const searchEmployeeData = useCallback(
+    async (term: string) => {
+      const cleanTerm = term.trim()
+      if (!cleanTerm) return null
 
-    let isMounted = true
-    const timer = setTimeout(async () => {
-      // 1. Tenta encontrar na lista em memória (se já carregada)
+      // 1. Em memória
       const localMatch = employees.find((emp) => {
         const chapa = (emp.chapa || '').trim().toLowerCase()
         const reg = (emp.registro || '').trim().toLowerCase()
-        const target = term.toLowerCase()
+        const target = cleanTerm.toLowerCase()
         return chapa === target || reg === target
       })
 
       if (localMatch) {
-        if (!isMounted) return
-        if (localMatch.name) setNome(localMatch.name)
-        if (localMatch.funcao) setFuncao(localMatch.funcao)
+        let matchedGaragem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'
         if (localMatch.filial) {
           const f = localMatch.filial.toUpperCase()
-          if (f.includes('SAPOPEMBA')) setGaragem('SAPOPEMBA')
-          else if (f.includes('CURSINO')) setGaragem('CURSINO')
+          if (f.includes('SAPOPEMBA')) matchedGaragem = 'SAPOPEMBA'
         }
-        setResolvedEmployeeId(localMatch.id)
-        return
+        return {
+          id: localMatch.id,
+          nome: localMatch.name || '',
+          funcao: localMatch.funcao || '',
+          garagem: matchedGaragem,
+        }
       }
-      // 2. Se não encontrou em memória, busca na coleção employees do PocketBase
-      setSearchingEmployee(true)
+
+      // 2. No PocketBase
       try {
-        const safe = term.replace(/"/g, '\\"')
-        // Consulta exata ou prefixo com zeros comuns em chapas (ex: 13 -> 000013)
-        const padded6 = /^\d+$/.test(term) ? term.padStart(6, '0') : term
+        const safe = cleanTerm.replace(/"/g, '\\"')
+        const padded6 = /^\d+$/.test(cleanTerm) ? cleanTerm.padStart(6, '0') : cleanTerm
         const safePadded = padded6.replace(/"/g, '\\"')
         const records = await pb.collection<Employee>('employees').getList(1, 1, {
           filter: `chapa = "${safe}" || chapa = "${safePadded}" || registro = "${safe}" || registro = "${safePadded}" || chapa ~ "${safe}"`,
         })
 
-        if (!isMounted) return
         if (records.items.length > 0) {
           const emp = records.items[0]
-          if (emp.name) setNome(emp.name)
-          if (emp.funcao) setFuncao(emp.funcao)
+          let matchedGaragem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'
           if (emp.filial) {
             const f = emp.filial.toUpperCase()
-            if (f.includes('SAPOPEMBA')) setGaragem('SAPOPEMBA')
-            else if (f.includes('CURSINO')) setGaragem('CURSINO')
+            if (f.includes('SAPOPEMBA')) matchedGaragem = 'SAPOPEMBA'
           }
-          setResolvedEmployeeId(emp.id)
+          return {
+            id: emp.id,
+            nome: emp.name || '',
+            funcao: emp.funcao || '',
+            garagem: matchedGaragem,
+          }
         }
-      } catch (error) {
-        console.error('Erro ao buscar colaborador por registro:', error)
+      } catch (err) {
+        console.error('Erro ao buscar colaborador por registro:', err)
+      }
+
+      return null
+    },
+    [employees],
+  )
+
+  // Auto-busca para formulário simples (Atualização, Edição)
+  useEffect(() => {
+    if (!open || isMultiInclusao) return
+    const term = singleMatricula.trim()
+    if (!term) return
+
+    let isMounted = true
+    const timer = setTimeout(async () => {
+      setSingleSearching(true)
+      try {
+        const match = await searchEmployeeData(term)
+        if (!isMounted || !match) return
+        if (match.nome) setSingleNome(match.nome)
+        if (match.funcao) setSingleFuncao(match.funcao)
+        setSingleGaragem(match.garagem)
+        setSingleResolvedEmpId(match.id)
       } finally {
-        if (isMounted) setSearchingEmployee(false)
+        if (isMounted) setSingleSearching(false)
       }
     }, 300)
 
@@ -1543,26 +1642,87 @@ function ProcessoCadastralFormModal({
       isMounted = false
       clearTimeout(timer)
     }
-  }, [matricula, open, employees])
+  }, [singleMatricula, open, isMultiInclusao, searchEmployeeData])
 
-  const selectedEmployee = useMemo(
-    () =>
-      employees.find(
-        (employee) =>
-          employee.id === resolvedEmployeeId ||
-          employee.chapa === matricula.trim() ||
-          employee.registro === matricula.trim() ||
-          employee.name.toLowerCase() === nome.trim().toLowerCase(),
-      ),
-    [employees, matricula, nome, resolvedEmployeeId],
-  )
+  // Atualizador de campo de colaborador para Inclusão
+  const updateColaborador = (id: string, updates: Partial<ColaboradorItem>) => {
+    setColaboradores((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)))
+  }
 
-  const canSubmit = matricula.trim() !== '' && nome.trim() !== '' && processo !== null && !saving
+  // Manipulador de matrícula com auto-busca para colaborador na Inclusão
+  const handleColaboradorMatriculaChange = (id: string, val: string) => {
+    updateColaborador(id, { matricula: val })
+    const term = val.trim()
+    if (!term) return
+
+    const timer = setTimeout(async () => {
+      updateColaborador(id, { searching: true })
+      try {
+        const match = await searchEmployeeData(term)
+        if (match) {
+          updateColaborador(id, {
+            nome: match.nome,
+            funcao: match.funcao,
+            garagem: match.garagem,
+            employeeId: match.id,
+            searching: false,
+          })
+        } else {
+          updateColaborador(id, { searching: false })
+        }
+      } catch {
+        updateColaborador(id, { searching: false })
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }
+
+  const handleAddColaborador = () => {
+    const newId = String(Date.now())
+    setColaboradores((prev) => [
+      ...prev,
+      {
+        id: newId,
+        matricula: '',
+        nome: '',
+        funcao: '',
+        garagem: 'CURSINO',
+      },
+    ])
+    // O novo colaborador fica aberto para edição
+    setExpandedId(newId)
+  }
+
+  const handleRemoveColaborador = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (colaboradores.length <= 1) return
+    setColaboradores((prev) => {
+      const next = prev.filter((c) => c.id !== id)
+      if (expandedId === id && next.length > 0) {
+        setExpandedId(next[next.length - 1].id)
+      }
+      return next
+    })
+  }
+
+  // Validação
+  const canSubmit = useMemo(() => {
+    if (saving) return false
+    if (!processo) return false
+
+    if (isMultiInclusao) {
+      if (colaboradores.length === 0) return false
+      return colaboradores.every((c) => c.matricula.trim() !== '' && c.nome.trim() !== '')
+    }
+
+    return singleMatricula.trim() !== '' && singleNome.trim() !== ''
+  }, [saving, processo, isMultiInclusao, colaboradores, singleMatricula, singleNome])
 
   const handleSubmit = async () => {
     if (!canSubmit) return
 
-    // Se houver valor no campo prazo, valida se é uma data válida antes de submeter
+    // Para Atualização (ou qualquer processo com prazo preenchido): valida data
     if (prazo && prazo.trim() !== '') {
       const trimmedPrazo = prazo.trim()
       const parsedDate = trimmedPrazo.includes('T')
@@ -1576,19 +1736,36 @@ function ProcessoCadastralFormModal({
 
     setSaving(true)
     try {
-      await onSubmit({
-        processo,
-        matricula: matricula.trim(),
-        nome: nome.trim(),
-        funcao: funcao.trim(),
-        etapa,
-        prazo,
-        // Em novo processo a situação é sempre gravada automaticamente como "Pendente"
-        situacao: isEditing ? situacao : 'Pendente',
-        garagem,
-        alerta_trafego: alertaTrafego,
-        employeeId: resolvedEmployeeId || selectedEmployee?.id,
-      })
+      if (isMultiInclusao) {
+        // Envia todos os colaboradores cadastrados
+        const payloadList: ProcessoCadastralFormData[] = colaboradores.map((c) => ({
+          processo,
+          matricula: c.matricula.trim(),
+          nome: c.nome.trim(),
+          funcao: c.funcao.trim(),
+          etapa,
+          prazo: '', // Prazo não se aplica para Inclusão
+          situacao: 'Pendente',
+          garagem: c.garagem,
+          alerta_trafego: alertaTrafego, // Opcional
+          employeeId: c.employeeId,
+        }))
+
+        await onSubmit(payloadList)
+      } else {
+        await onSubmit({
+          processo,
+          matricula: singleMatricula.trim(),
+          nome: singleNome.trim(),
+          funcao: singleFuncao.trim(),
+          etapa,
+          prazo,
+          situacao: isEditing ? situacao : 'Pendente',
+          garagem: singleGaragem,
+          alerta_trafego: alertaTrafego,
+          employeeId: singleResolvedEmpId,
+        })
+      }
       onOpenChange(false)
     } finally {
       setSaving(false)
@@ -1597,7 +1774,7 @@ function ProcessoCadastralFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isEditing ? (
@@ -1608,22 +1785,35 @@ function ProcessoCadastralFormModal({
             ) : (
               <>
                 <Plus className="h-5 w-5 text-primary" />
-                Novo processo
+                Novo processo {processo === 'Inclusão' ? 'de Inclusão' : ''}
               </>
             )}
           </DialogTitle>
           <DialogDescription>
             {isEditing
               ? 'Edite os dados cadastrais do processo selecionado.'
-              : 'Cadastre manualmente uma movimentação de colaborador.'}
+              : processo === 'Inclusão'
+                ? 'Cadastre novos colaboradores no processo de Inclusão. Você pode adicionar múltiplos colaboradores usando o botão "+".'
+                : 'Cadastre manualmente uma movimentação de colaborador.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Linha superior: Tipo do processo (e Garagem se for formulário simples) */}
+          <div className={cn('grid grid-cols-1 gap-4', !isMultiInclusao && 'sm:grid-cols-2')}>
             <div className="space-y-2">
               <Label htmlFor="modal-processo">Tipo de movimentação</Label>
-              <Select value={processo} onValueChange={(value) => setProcesso(value as Categoria)}>
+              <Select
+                value={processo}
+                onValueChange={(value) => {
+                  setProcesso(value as Categoria)
+                  // Se mudar para Inclusão, limpa prazo
+                  if (value === 'Inclusão') {
+                    setPrazo('')
+                  }
+                }}
+                disabled={isEditing}
+              >
                 <SelectTrigger id="modal-processo">
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
@@ -1637,111 +1827,323 @@ function ProcessoCadastralFormModal({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="modal-garagem">Garagem</Label>
-              <Select
-                value={garagem}
-                onValueChange={(val) => setGaragem(val as 'CURSINO' | 'SAPOPEMBA')}
-              >
-                <SelectTrigger id="modal-garagem">
-                  <SelectValue placeholder="Selecione a garagem" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CURSINO">CURSINO</SelectItem>
-                  <SelectItem value="SAPOPEMBA">SAPOPEMBA</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="modal-matricula">Registro / Chapa</Label>
-              {searchingEmployee && (
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                  Buscando colaborador…
-                </span>
-              )}
-            </div>
-            <Input
-              id="modal-matricula"
-              placeholder="Digite o registro ou chapa (ex: 000055)"
-              value={matricula}
-              onChange={(event) => setMatricula(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="modal-nome">Nome Completo</Label>
-            <Input
-              id="modal-nome"
-              placeholder="Nome completo do colaborador"
-              value={nome}
-              onChange={(event) => setNome(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="modal-funcao">Função</Label>
-            <Input
-              id="modal-funcao"
-              placeholder="Função do colaborador"
-              value={funcao}
-              onChange={(event) => setFuncao(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          {isEditing ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {!isMultiInclusao && (
               <div className="space-y-2">
-                <Label htmlFor="modal-etapa">Etapa</Label>
-                <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
-                  <SelectTrigger id="modal-etapa">
-                    <SelectValue placeholder="Selecione a etapa" />
+                <Label htmlFor="modal-garagem">Garagem</Label>
+                <Select
+                  value={singleGaragem}
+                  onValueChange={(val) => setSingleGaragem(val as 'CURSINO' | 'SAPOPEMBA')}
+                >
+                  <SelectTrigger id="modal-garagem">
+                    <SelectValue placeholder="Selecione a garagem" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ETAPAS.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="CURSINO">CURSINO</SelectItem>
+                    <SelectItem value="SAPOPEMBA">SAPOPEMBA</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            )}
+          </div>
+
+          {/* CASO 1: Inclusão com Múltiplos Colaboradores */}
+          {isMultiInclusao ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b pb-2">
+                <div>
+                  <Label className="text-sm font-semibold text-foreground">
+                    Colaboradores ({colaboradores.length})
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Clique no colaborador para expandir e editar os dados.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddColaborador}
+                  className="gap-1.5 h-8 border-primary/40 text-primary hover:bg-primary/10"
+                  title="Adicionar outro colaborador ao processo"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Adicionar colaborador</span>
+                </Button>
+              </div>
+
+              {/* Lista de colaboradores em acordeão interativo */}
+              <div className="space-y-2.5">
+                {colaboradores.map((colab, idx) => {
+                  const isExpanded = expandedId === colab.id
+                  const hasData = Boolean(colab.matricula.trim() || colab.nome.trim())
+                  const isValid = Boolean(colab.matricula.trim() && colab.nome.trim())
+
+                  return (
+                    <div
+                      key={colab.id}
+                      className={cn(
+                        'rounded-lg border transition-all',
+                        isExpanded
+                          ? 'border-primary/50 bg-card shadow-sm p-3.5 space-y-3'
+                          : 'border-border/70 bg-muted/30 hover:bg-muted/60 p-2.5 cursor-pointer',
+                      )}
+                      onClick={() => {
+                        if (!isExpanded) {
+                          setExpandedId(colab.id)
+                        }
+                      }}
+                    >
+                      {/* Cabeçalho do Card / Resumo compacto quando minimizado */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={cn(
+                              'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                              isExpanded
+                                ? 'bg-primary text-primary-foreground'
+                                : isValid
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-muted text-muted-foreground',
+                            )}
+                          >
+                            {idx + 1}
+                          </span>
+
+                          <div className="min-w-0 truncate">
+                            <span className="text-xs font-semibold text-foreground truncate block">
+                              {colab.nome.trim() || `Colaborador #${idx + 1}`}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground block truncate">
+                              {colab.matricula.trim()
+                                ? `Registro: ${colab.matricula} • Garagem: ${colab.garagem}`
+                                : 'Aguardando preenchimento…'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {colab.searching && (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary mr-1" />
+                          )}
+
+                          {colaboradores.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              onClick={(e) => handleRemoveColaborador(colab.id, e)}
+                              title="Remover este colaborador"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setExpandedId(isExpanded ? '' : colab.id)
+                            }}
+                            title={isExpanded ? 'Recolher' : 'Expandir para editar'}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                'h-4 w-4 transition-transform duration-200',
+                                isExpanded && 'rotate-180',
+                              )}
+                            />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Campos detalhados visíveis SOMENTE quando expandido */}
+                      {isExpanded && (
+                        <div
+                          className="pt-2 border-t border-border/50 space-y-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor={`modal-matricula-${colab.id}`} className="text-xs">
+                                  Registro / Chapa *
+                                </Label>
+                                {colab.searching && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Buscando…
+                                  </span>
+                                )}
+                              </div>
+                              <Input
+                                id={`modal-matricula-${colab.id}`}
+                                placeholder="Ex: 000055"
+                                value={colab.matricula}
+                                onChange={(e) =>
+                                  handleColaboradorMatriculaChange(colab.id, e.target.value)
+                                }
+                                autoComplete="off"
+                                className="h-8 text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`modal-garagem-${colab.id}`} className="text-xs">
+                                Garagem
+                              </Label>
+                              <Select
+                                value={colab.garagem}
+                                onValueChange={(val) =>
+                                  updateColaborador(colab.id, {
+                                    garagem: val as 'CURSINO' | 'SAPOPEMBA',
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  id={`modal-garagem-${colab.id}`}
+                                  className="h-8 text-xs"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="CURSINO">CURSINO</SelectItem>
+                                  <SelectItem value="SAPOPEMBA">SAPOPEMBA</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`modal-nome-${colab.id}`} className="text-xs">
+                                Nome Completo *
+                              </Label>
+                              <Input
+                                id={`modal-nome-${colab.id}`}
+                                placeholder="Nome completo"
+                                value={colab.nome}
+                                onChange={(e) =>
+                                  updateColaborador(colab.id, { nome: e.target.value })
+                                }
+                                autoComplete="off"
+                                className="h-8 text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`modal-funcao-${colab.id}`} className="text-xs">
+                                Função
+                              </Label>
+                              <Input
+                                id={`modal-funcao-${colab.id}`}
+                                placeholder="Função"
+                                value={colab.funcao}
+                                onChange={(e) =>
+                                  updateColaborador(colab.id, { funcao: e.target.value })
+                                }
+                                autoComplete="off"
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Botão de adicionar colaborador no rodapé da lista */}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2 border-dashed border-border hover:border-primary/60 hover:bg-muted/50 text-xs h-9"
+                onClick={handleAddColaborador}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar mais um colaborador à Inclusão
+              </Button>
             </div>
           ) : (
+            /* CASO 2: Formulário Simples (Atualização, Outros tipos, ou Edição) */
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="modal-matricula">Registro / Chapa</Label>
+                  {singleSearching && (
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                      Buscando colaborador…
+                    </span>
+                  )}
+                </div>
+                <Input
+                  id="modal-matricula"
+                  placeholder="Digite o registro ou chapa (ex: 000055)"
+                  value={singleMatricula}
+                  onChange={(event) => setSingleMatricula(event.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="modal-nome">Nome Completo</Label>
+                <Input
+                  id="modal-nome"
+                  placeholder="Nome completo do colaborador"
+                  value={singleNome}
+                  onChange={(event) => setSingleNome(event.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="modal-funcao">Função</Label>
+                <Input
+                  id="modal-funcao"
+                  placeholder="Função do colaborador"
+                  value={singleFuncao}
+                  onChange={(event) => setSingleFuncao(event.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+            </>
+          )}
+
+          {/* Etapa */}
+          <div className="space-y-2">
+            <Label htmlFor="modal-etapa">Etapa</Label>
+            <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
+              <SelectTrigger id="modal-etapa">
+                <SelectValue placeholder="Selecione a etapa" />
+              </SelectTrigger>
+              <SelectContent>
+                {ETAPAS.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Prazo: Oculto quando o processo for "Inclusão"; Mantido para "Atualização" e demais tipos */}
+          {processo !== 'Inclusão' && (
             <div className="space-y-2">
-              <Label htmlFor="modal-etapa">Etapa</Label>
-              <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
-                <SelectTrigger id="modal-etapa">
-                  <SelectValue placeholder="Selecione a etapa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ETAPAS.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="modal-prazo">Prazo</Label>
+              <Input
+                id="modal-prazo"
+                type="date"
+                value={prazo}
+                onChange={(event) => setPrazo(event.target.value)}
+              />
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="modal-prazo">Prazo</Label>
-            <Input
-              id="modal-prazo"
-              type="date"
-              value={prazo}
-              onChange={(event) => setPrazo(event.target.value)}
-            />
-          </div>
-
-          {/* Marcação de ciência para o Tráfego (informativo) */}
+          {/* Marcação de ciência para o Tráfego (opcional) */}
           <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-semibold text-foreground">
@@ -1804,7 +2206,9 @@ function ProcessoCadastralFormModal({
               </p>
             ) : (
               <p className="text-[11px] text-muted-foreground pt-0.5">
-                Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.
+                {processo === 'Inclusão'
+                  ? 'Opcional: selecione apenas se desejar sinalizar o Tráfego.'
+                  : 'Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.'}
               </p>
             )}
           </div>
@@ -1814,7 +2218,13 @@ function ProcessoCadastralFormModal({
               Cancelar
             </Button>
             <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-              {saving ? 'Salvando…' : isEditing ? 'Salvar alterações' : 'Registrar processo'}
+              {saving
+                ? 'Salvando…'
+                : isEditing
+                  ? 'Salvar alterações'
+                  : isMultiInclusao && colaboradores.length > 1
+                    ? `Registrar ${colaboradores.length} processos`
+                    : 'Registrar processo'}
             </Button>
           </DialogFooter>
         </div>
