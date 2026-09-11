@@ -1905,57 +1905,37 @@ function ProcessoCadastralFormModal({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Linha superior: Tipo do processo (e Garagem se for formulário simples) */}
-          <div className={cn('grid grid-cols-1 gap-4', !isMultiInclusao && 'sm:grid-cols-2')}>
-            <div className="space-y-2">
-              <Label htmlFor="modal-processo">Tipo de movimentação</Label>
-              <Select
-                value={processo}
-                onValueChange={(value) => {
-                  const newProcesso = value as Categoria
-                  setProcesso(newProcesso)
-                  // Se mudar para Inclusão ou Mudança de Função, limpa prazo e marcação de ciência
-                  if (newProcesso === 'Inclusão' || newProcesso === 'Mudança de Função') {
-                    setPrazo('')
-                    setAlertaTrafego('')
-                  }
-                  // Se mudar para Mudança de Função e a Função antiga estiver vazia, aproveita a função já encontrada
-                  if (newProcesso === 'Mudança de Função' && !funcaoAntiga && singleFuncao) {
-                    setFuncaoAntiga(singleFuncao)
-                  }
-                }}
-                disabled={isEditing}
-              >
-                <SelectTrigger id="modal-processo">
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIAS.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {!isMultiInclusao && (
-              <div className="space-y-2">
-                <Label htmlFor="modal-garagem">Garagem</Label>
-                <Select
-                  value={singleGaragem}
-                  onValueChange={(val) => setSingleGaragem(val as 'CURSINO' | 'SAPOPEMBA')}
-                >
-                  <SelectTrigger id="modal-garagem">
-                    <SelectValue placeholder="Selecione a garagem" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CURSINO">CURSINO</SelectItem>
-                    <SelectItem value="SAPOPEMBA">SAPOPEMBA</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+          {/* Linha superior: Tipo do processo */}
+          <div className="space-y-2">
+            <Label htmlFor="modal-processo">Tipo de movimentação</Label>
+            <Select
+              value={processo}
+              onValueChange={(value) => {
+                const newProcesso = value as Categoria
+                setProcesso(newProcesso)
+                // Se mudar para Inclusão ou Mudança de Função, limpa prazo e marcação de ciência
+                if (newProcesso === 'Inclusão' || newProcesso === 'Mudança de Função') {
+                  setPrazo('')
+                  setAlertaTrafego('')
+                }
+                // Se mudar para Mudança de Função e a Função antiga estiver vazia, aproveita a função já encontrada
+                if (newProcesso === 'Mudança de Função' && !funcaoAntiga && singleFuncao) {
+                  setFuncaoAntiga(singleFuncao)
+                }
+              }}
+              disabled={isEditing}
+            >
+              <SelectTrigger id="modal-processo">
+                <SelectValue placeholder="Selecione o tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORIAS.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* CASO 1: Inclusão com Múltiplos Colaboradores */}
@@ -2182,23 +2162,41 @@ function ProcessoCadastralFormModal({
           ) : (
             /* CASO 2: Formulário Simples (Atualização, Outros tipos, ou Edição) */
             <>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="modal-matricula">Registro / Chapa</Label>
-                  {singleSearching && (
-                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                      Buscando colaborador…
-                    </span>
-                  )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="modal-matricula">Registro / Chapa</Label>
+                    {singleSearching && (
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                        Buscando colaborador…
+                      </span>
+                    )}
+                  </div>
+                  <Input
+                    id="modal-matricula"
+                    placeholder="Digite o registro ou chapa (ex: 000055)"
+                    value={singleMatricula}
+                    onChange={(event) => setSingleMatricula(event.target.value)}
+                    autoComplete="off"
+                  />
                 </div>
-                <Input
-                  id="modal-matricula"
-                  placeholder="Digite o registro ou chapa (ex: 000055)"
-                  value={singleMatricula}
-                  onChange={(event) => setSingleMatricula(event.target.value)}
-                  autoComplete="off"
-                />
+
+                <div className="space-y-2">
+                  <Label htmlFor="modal-garagem">Garagem</Label>
+                  <Select
+                    value={singleGaragem}
+                    onValueChange={(val) => setSingleGaragem(val as 'CURSINO' | 'SAPOPEMBA')}
+                  >
+                    <SelectTrigger id="modal-garagem">
+                      <SelectValue placeholder="Selecione a garagem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CURSINO">CURSINO</SelectItem>
+                      <SelectItem value="SAPOPEMBA">SAPOPEMBA</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
