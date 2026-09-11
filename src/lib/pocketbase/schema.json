@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T16:11:56.084Z",
+  "generatedAt": "2026-09-11T16:18:22.122Z",
   "collections": [
     {
       "name": "users",
@@ -520,7 +520,13 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["Inclusão", "Alteração", "Exclusão", "Atualização", "Atualização Fiscal"]
+          "selectValues": [
+            "Inclusão",
+            "Mudança de Função",
+            "Exclusão",
+            "Atualização",
+            "Atualização Fiscal"
+          ]
         },
         {
           "name": "etapa",

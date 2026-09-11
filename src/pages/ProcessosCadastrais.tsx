@@ -76,7 +76,7 @@ import { cn } from '@/lib/utils'
 // Categorias exibidas nos cards de resumo (ordem exata solicitada)
 const CATEGORIAS = [
   'Inclusão',
-  'Alteração',
+  'Mudança de Função',
   'Exclusão',
   'Atualização',
   'Atualização Fiscal',
@@ -85,7 +85,7 @@ type Categoria = (typeof CATEGORIAS)[number]
 
 const CATEGORIAS_SPTRANS: Record<Categoria, string> = {
   Inclusão: 'Inclusão',
-  Alteração: 'Alteração',
+  'Mudança de Função': 'Mudança de Função',
   Exclusão: 'Exclusão',
   Atualização: 'Atualização',
   'Atualização Fiscal': 'Atualização Fiscal',
@@ -101,7 +101,7 @@ const CARD_STYLES: Record<
     bg: 'bg-emerald-50',
     text: 'text-emerald-700',
   },
-  Alteração: {
+  'Mudança de Função': {
     icon: RefreshCcw,
     ring: 'border-amber-200',
     bg: 'bg-amber-50',

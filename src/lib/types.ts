@@ -68,7 +68,7 @@ export type GaragemOption = 'CURSINO' | 'SAPOPEMBA' | 'Todas'
 
 export type ProcessoCategoria =
   | 'Inclusão'
-  | 'Alteração'
+  | 'Mudança de Função'
   | 'Exclusão'
   | 'Atualização'
   | 'Atualização Fiscal'
