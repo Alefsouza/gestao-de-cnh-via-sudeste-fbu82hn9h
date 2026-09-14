@@ -9,7 +9,7 @@ describe('Validação no Banco - Contagens CNH Via Sudeste', () => {
     const afastados = await countEmployees('situacao = "Afastado"')
     const comDataDeslig = await countEmployees('data_desligamento != ""')
 
-    const message = `DADOS_BANCO: Total=${total}, Ativos=${ativos}, Afastados=${afastados}, Desligados=${desligados}, ComDataDeslig=${comDataDeslig}`
-    expect(message).toBe('')
+    const message = `Total=${total}, Ativos=${ativos}, Afastados=${afastados}, Desligados=${desligados}, ComDataDeslig=${comDataDeslig}`
+    expect(message).toBe('PRINT_REPORT')
   })
 })

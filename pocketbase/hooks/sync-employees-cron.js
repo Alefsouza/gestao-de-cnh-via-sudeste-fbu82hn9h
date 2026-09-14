@@ -34,17 +34,203 @@ cronAdd('sync_employees', '0 * * * *', () => {
       )
     }
 
-    const res = $http.send({ url: secretUrl, method: 'GET', timeout: 30 })
-    if (res.statusCode >= 400) {
-      throw new Error('A view externa respondeu HTTP ' + res.statusCode)
+    // ---- Rotina de Fetch com Teste e Detecção de Paginação -------------------
+    // Realiza a requisição inicial e testa os padrões comuns de paginação (page/pageSize,
+    // offset/limit, skip/take, p, pagina, $skip/$top).
+    // Se a paginação for suportada, percorre todas as páginas concatenando os registros.
+    // Se não for suportada, segue com a fatia única e registra aviso no sync_run.
+    const extractItems = (data) => {
+      if (!data) return []
+      if (Array.isArray(data)) return data
+      if (typeof data === 'object') {
+        const candidate =
+          data.data ?? data.rows ?? data.records ?? data.items ?? data.value ?? data.results ?? []
+        if (Array.isArray(candidate)) return candidate
+      }
+      return []
     }
 
-    let payload = res.json
-    if (payload && !Array.isArray(payload)) {
-      payload = payload.data ?? payload.rows ?? payload.records ?? payload.items ?? []
+    const appendParam = (url, paramName, paramVal) => {
+      const sep = url.indexOf('?') !== -1 ? '&' : '?'
+      return url + sep + encodeURIComponent(paramName) + '=' + encodeURIComponent(paramVal)
     }
-    if (!Array.isArray(payload) || payload.length === 0) {
+
+    const getRowFingerprint = (row) => {
+      if (!row || typeof row !== 'object') return ''
+      return String(
+        row.REGISTRO ||
+          row.registro ||
+          row.CHAPA ||
+          row.chapa ||
+          row.CPF ||
+          row.cpf ||
+          row.NOME ||
+          row.nome ||
+          JSON.stringify(row).slice(0, 50),
+      ).trim()
+    }
+
+    // 1. Requisição base (página 1 / fatia inicial)
+    const resInit = $http.send({ url: secretUrl, method: 'GET', timeout: 45 })
+    if (resInit.statusCode >= 400) {
+      throw new Error('A view externa respondeu HTTP ' + resInit.statusCode)
+    }
+
+    const initJson = resInit.json
+    let payload = extractItems(initJson)
+    if (!payload || payload.length === 0) {
       throw new Error('A view externa retornou vazia — nenhum dado foi alterado.')
+    }
+
+    const initialCount = payload.length
+    const initialFirstFp = getRowFingerprint(payload[0])
+    let paginationSupported = false
+    let activeStrategy = null
+    let paginationNotice = ''
+
+    // Padrões de paginação a testar
+    const paginationStrategies = [
+      { name: 'page_pageSize', type: 'page', pageKey: 'page', sizeKey: 'pageSize', pageSize: 1000 },
+      { name: 'page_perPage', type: 'page', pageKey: 'page', sizeKey: 'perPage', pageSize: 1000 },
+      { name: 'page_limit', type: 'page', pageKey: 'page', sizeKey: 'limit', pageSize: 1000 },
+      { name: 'page_only', type: 'page', pageKey: 'page', sizeKey: null, pageSize: null },
+      { name: 'pagina_only', type: 'page', pageKey: 'pagina', sizeKey: null, pageSize: null },
+      { name: 'p_only', type: 'page', pageKey: 'p', sizeKey: null, pageSize: null },
+      {
+        name: 'offset_limit',
+        type: 'offset',
+        offsetKey: 'offset',
+        limitKey: 'limit',
+        pageSize: 1000,
+      },
+      { name: 'skip_take', type: 'offset', offsetKey: 'skip', limitKey: 'take', pageSize: 1000 },
+      {
+        name: 'odata_skip_top',
+        type: 'offset',
+        offsetKey: '$skip',
+        limitKey: '$top',
+        pageSize: 1000,
+      },
+      {
+        name: 'start_count',
+        type: 'offset',
+        offsetKey: 'start',
+        limitKey: 'count',
+        pageSize: 1000,
+      },
+    ]
+
+    // 2. Prova de suporte a paginação: testa a segunda fatia / página 2
+    for (const strat of paginationStrategies) {
+      try {
+        let testUrl = secretUrl
+        if (strat.type === 'page') {
+          testUrl = appendParam(testUrl, strat.pageKey, '2')
+          if (strat.sizeKey && strat.pageSize) {
+            testUrl = appendParam(testUrl, strat.sizeKey, String(strat.pageSize))
+          }
+        } else if (strat.type === 'offset') {
+          testUrl = appendParam(testUrl, strat.offsetKey, String(strat.pageSize || initialCount))
+          if (strat.limitKey && strat.pageSize) {
+            testUrl = appendParam(testUrl, strat.limitKey, String(strat.pageSize))
+          }
+        }
+
+        const testRes = $http.send({ url: testUrl, method: 'GET', timeout: 25 })
+        if (testRes.statusCode === 200) {
+          const testItems = extractItems(testRes.json)
+          if (Array.isArray(testItems) && testItems.length > 0) {
+            const testFirstFp = getRowFingerprint(testItems[0])
+            // Se retornou itens e o primeiro item NÃO é idêntico ao primeiro da requisição inicial,
+            // o endpoint respondeu a fatia seguinte com sucesso!
+            if (testFirstFp && testFirstFp !== initialFirstFp) {
+              paginationSupported = true
+              activeStrategy = strat
+              console.log(
+                'sync:employees (' +
+                  trigger +
+                  ') — Paginação detectada com estratégia: ' +
+                  strat.name,
+              )
+              break
+            }
+          }
+        }
+      } catch (probeErr) {
+        // Falha no probe individual não quebra o processo
+        console.log('Falha ao testar estratégia ' + strat.name + ':', probeErr)
+      }
+    }
+
+    // 3. Se a paginação for suportada, percorre todas as páginas concatenando os resultados
+    if (paginationSupported && activeStrategy) {
+      const allRows = []
+      const seenFp = {}
+      const MAX_PAGES = 50 // Limite de segurança de páginas para não travar o hook
+      const strat = activeStrategy
+      const pageSize = strat.pageSize || 1000
+
+      let curPage = 1
+      let curOffset = 0
+
+      while (curPage <= MAX_PAGES) {
+        let fetchUrl = secretUrl
+        if (strat.type === 'page') {
+          fetchUrl = appendParam(fetchUrl, strat.pageKey, String(curPage))
+          if (strat.sizeKey && strat.pageSize) {
+            fetchUrl = appendParam(fetchUrl, strat.sizeKey, String(strat.pageSize))
+          }
+        } else if (strat.type === 'offset') {
+          fetchUrl = appendParam(fetchUrl, strat.offsetKey, String(curOffset))
+          if (strat.limitKey && strat.pageSize) {
+            fetchUrl = appendParam(fetchUrl, strat.limitKey, String(strat.pageSize))
+          }
+        }
+
+        const pageRes = $http.send({ url: fetchUrl, method: 'GET', timeout: 35 })
+        if (pageRes.statusCode >= 400) break
+
+        const pageItems = extractItems(pageRes.json)
+        if (!Array.isArray(pageItems) || pageItems.length === 0) break
+
+        let newInThisSlice = 0
+        for (const item of pageItems) {
+          const fp = getRowFingerprint(item)
+          if (fp) {
+            if (!seenFp[fp]) {
+              seenFp[fp] = true
+              allRows.push(item)
+              newInThisSlice++
+            }
+          } else {
+            allRows.push(item)
+            newInThisSlice++
+          }
+        }
+
+        // Se nenhum registro novo veio nessa fatia, alcançamos o fim ou loop
+        if (newInThisSlice === 0) break
+
+        if (strat.type === 'page') {
+          curPage++
+          if (strat.pageSize && pageItems.length < strat.pageSize) break
+        } else {
+          curOffset += pageItems.length
+          if (pageItems.length < pageSize) break
+        }
+      }
+
+      if (allRows.length > 0) {
+        payload = allRows
+      }
+    } else {
+      // 4. Se o endpoint NÃO suportar nenhum parâmetro de paginação:
+      // Documenta claramente no aviso do run para evidência da Secretaria/TI
+      paginationNotice =
+        'Aviso TI/Secretaria: O endpoint VW_CONTROLE_CNH não suporta os parâmetros padrão de paginação (page/pageSize, offset/limit, skip/take). Processada a fatia padrão (' +
+        payload.length +
+        ' registros).'
+      console.log('sync:employees (' + trigger + ') — ' + paginationNotice)
     }
 
     // ---- normalização -------------------------------------------------------
@@ -421,7 +607,12 @@ cronAdd('sync_employees', '0 * * * *', () => {
     run.set('status', 'Sucesso')
     run.set('records_updated', created + updated + removed)
     run.set('finished_at', nowStr())
-    run.set('error', rowErrors.length > 0 ? rowErrors.slice(0, 5).join(' | ') : '')
+    let runNotes = paginationNotice || ''
+    if (rowErrors.length > 0) {
+      const errSample = rowErrors.slice(0, 5).join(' | ')
+      runNotes = runNotes ? runNotes + ' | ' + errSample : errSample
+    }
+    run.set('error', runNotes)
     $app.save(run)
 
     console.log(
