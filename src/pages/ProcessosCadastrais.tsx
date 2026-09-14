@@ -81,7 +81,7 @@ import type {
 import { cn } from '@/lib/utils'
 
 // Categorias ativas para novos processos, formulários e cards de filtro
-const CATEGORIAS = ['Inclusão', 'Mudança de Função', 'Exclusão', 'Atualização'] as const
+const CATEGORIAS = ['Inclusão', 'PRAT', 'Mudança de Função', 'Exclusão', 'Atualização'] as const
 type Categoria = (typeof CATEGORIAS)[number]
 
 const CARD_STYLES: Record<
@@ -94,6 +94,12 @@ const CARD_STYLES: Record<
     bg: 'bg-emerald-50',
     text: 'text-emerald-700',
   },
+  PRAT: {
+    icon: Plus,
+    ring: 'border-teal-200',
+    bg: 'bg-teal-50',
+    text: 'text-teal-700',
+  },
   'Mudança de Função': {
     icon: RefreshCcw,
     ring: 'border-amber-200',
@@ -102,6 +108,14 @@ const CARD_STYLES: Record<
   },
   Exclusão: { icon: FileX2, ring: 'border-rose-200', bg: 'bg-rose-50', text: 'text-rose-700' },
   Atualização: { icon: RefreshCcw, ring: 'border-sky-200', bg: 'bg-sky-50', text: 'text-sky-700' },
+}
+
+const PROCESSO_BADGE_STYLES: Record<Categoria, string> = {
+  Inclusão: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  PRAT: 'bg-teal-50 text-teal-700 border-teal-200',
+  'Mudança de Função': 'bg-amber-50 text-amber-700 border-amber-200',
+  Exclusão: 'bg-rose-50 text-rose-700 border-rose-200',
+  Atualização: 'bg-sky-50 text-sky-700 border-sky-200',
 }
 
 const ETAPAS = [
@@ -388,6 +402,7 @@ export default function ProcessosCadastrais() {
           const isoDataDesligamento = toSafeIsoString(item.data_desligamento)
           const isSemEtapa =
             item.processo === 'Inclusão' ||
+            item.processo === 'PRAT' ||
             item.processo === 'Mudança de Função' ||
             item.processo === 'Exclusão'
           const safeEtapa = isSemEtapa ? ETAPA_INICIAL : item.etapa || ETAPA_INICIAL
@@ -500,6 +515,7 @@ export default function ProcessosCadastrais() {
         const isoDataDesligamento = toSafeIsoString(data.data_desligamento)
         const isSemEtapa =
           data.processo === 'Inclusão' ||
+          data.processo === 'PRAT' ||
           data.processo === 'Mudança de Função' ||
           data.processo === 'Exclusão'
         const safeEtapa = isSemEtapa ? ETAPA_INICIAL : data.etapa || ETAPA_INICIAL
@@ -869,7 +885,7 @@ export default function ProcessosCadastrais() {
 
       {/* Cards de resumo clicáveis (ocultos quando o perfil for Tráfego) */}
       {!isTrafego && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {CATEGORIAS.map((categoria) => {
             const style = CARD_STYLES[categoria]
             const Icon = style.icon
@@ -1082,7 +1098,13 @@ export default function ProcessosCadastrais() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{processo.funcao}</td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                      <span
+                        className={cn(
+                          'inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                          PROCESSO_BADGE_STYLES[processo.processo as Categoria] ||
+                            'bg-muted text-muted-foreground border-transparent',
+                        )}
+                      >
                         {processo.processo}
                       </span>
                     </td>
@@ -1632,6 +1654,7 @@ function ProcessoCadastralFormModal({
         setEtapa(initialData.etapa || ETAPA_INICIAL)
         const isSemPrazoAlertaInitial =
           initialData.processo === 'Inclusão' ||
+          initialData.processo === 'PRAT' ||
           initialData.processo === 'Mudança de Função' ||
           initialData.processo === 'Exclusão'
         setPrazo(isSemPrazoAlertaInitial ? '' : initialData.prazo || '')
@@ -1864,7 +1887,7 @@ function ProcessoCadastralFormModal({
         )
       }
 
-      // Inclusão e Atualização: exigem registro e nome preenchidos
+      // Inclusão, PRAT e Atualização: exigem registro e nome preenchidos
       return colaboradores.every((c) => c.matricula.trim() !== '' && c.nome.trim() !== '')
     }
 
@@ -1922,7 +1945,10 @@ function ProcessoCadastralFormModal({
     try {
       if (isMultiMode) {
         const isSemPrazoAlerta =
-          processo === 'Inclusão' || processo === 'Mudança de Função' || processo === 'Exclusão'
+          processo === 'Inclusão' ||
+          processo === 'PRAT' ||
+          processo === 'Mudança de Função' ||
+          processo === 'Exclusão'
         const isMudancaFuncao = processo === 'Mudança de Função'
         const isExclusao = processo === 'Exclusão'
 
@@ -1999,7 +2025,10 @@ function ProcessoCadastralFormModal({
         await onSubmit(payloadList)
       } else {
         const isSemPrazoAlerta =
-          processo === 'Inclusão' || processo === 'Mudança de Função' || processo === 'Exclusão'
+          processo === 'Inclusão' ||
+          processo === 'PRAT' ||
+          processo === 'Mudança de Função' ||
+          processo === 'Exclusão'
         const isMudancaFuncao = processo === 'Mudança de Função'
         const isExclusao = processo === 'Exclusão'
 
@@ -2103,9 +2132,10 @@ function ProcessoCadastralFormModal({
               onValueChange={(value) => {
                 const newProcesso = value as Categoria
                 setProcesso(newProcesso)
-                // Se mudar para Inclusão, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo e marcação de ciência
+                // Se mudar para Inclusão, PRAT, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo e marcação de ciência
                 if (
                   newProcesso === 'Inclusão' ||
+                  newProcesso === 'PRAT' ||
                   newProcesso === 'Mudança de Função' ||
                   newProcesso === 'Exclusão'
                 ) {
@@ -2743,8 +2773,9 @@ function ProcessoCadastralFormModal({
             </>
           )}
 
-          {/* Etapa: Oculto quando o processo for "Inclusão", "Mudança de Função" ou "Exclusão"; Visível APENAS para "Atualização" */}
+          {/* Etapa: Oculto quando o processo for "Inclusão", "PRAT", "Mudança de Função" ou "Exclusão"; Visível APENAS para "Atualização" */}
           {processo !== 'Inclusão' &&
+            processo !== 'PRAT' &&
             processo !== 'Mudança de Função' &&
             processo !== 'Exclusão' && (
               <div className="space-y-2">
@@ -2764,8 +2795,9 @@ function ProcessoCadastralFormModal({
               </div>
             )}
 
-          {/* Prazo: Oculto quando o processo for "Inclusão", "Mudança de Função" ou "Exclusão"; Mantido para "Atualização" e demais tipos */}
+          {/* Prazo: Oculto quando o processo for "Inclusão", "PRAT", "Mudança de Função" ou "Exclusão"; Mantido para "Atualização" e demais tipos */}
           {processo !== 'Inclusão' &&
+            processo !== 'PRAT' &&
             processo !== 'Mudança de Função' &&
             processo !== 'Exclusão' && (
               <div className="space-y-2">
@@ -2779,8 +2811,9 @@ function ProcessoCadastralFormModal({
               </div>
             )}
 
-          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão, Mudança de Função e Exclusão; mantido para Atualização e outros tipos */}
+          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão, PRAT, Mudança de Função e Exclusão; mantido para Atualização e outros tipos */}
           {processo !== 'Inclusão' &&
+            processo !== 'PRAT' &&
             processo !== 'Mudança de Função' &&
             processo !== 'Exclusão' && (
               <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">

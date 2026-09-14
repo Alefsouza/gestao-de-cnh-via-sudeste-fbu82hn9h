@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-14T19:48:24.195Z",
+  "generatedAt": "2026-09-14T20:15:39.418Z",
   "collections": [
     {
       "name": "users",
@@ -543,7 +543,8 @@
             "Mudança de Função",
             "Exclusão",
             "Atualização",
-            "Atualização Fiscal"
+            "Atualização Fiscal",
+            "PRAT"
           ]
         },
         {

@@ -75,6 +75,7 @@ export type ProcessoCategoria =
   | 'Exclusão'
   | 'Atualização'
   | 'Atualização Fiscal'
+  | 'PRAT'
 
 export type ProcessoEtapa =
   | 'Análise'
