@@ -736,6 +736,8 @@ export function formatEmployeeDetails(emp: Employee): string {
     `• Função: ${emp.funcao || 'Não informada'}`,
     ...(emp.funcao_anterior ? [`• Função Anterior: ${emp.funcao_anterior}`] : []),
     `• Situação: ${emp.situacao || 'Ativo'}`,
+    ...(emp.data_desligamento ? [`• Data Desligamento: ${formatDate(emp.data_desligamento)}`] : []),
+    ...(emp.motivo_desligamento ? [`• Motivo Desligamento: ${emp.motivo_desligamento}`] : []),
     `• Filial/Garagem: ${emp.filial || 'Não informada'}`,
     `• Empresa: ${emp.company || MAIN_COMPANY}`,
     `• CNH: ${formatCnh(emp.cnh_categoria, emp.cnh_numero)}`,
@@ -780,6 +782,8 @@ export function exportEmployeesToXlsx(
       Validade: formatDate(employee.validade_cnh),
       'Dias para vencer': diasLabel,
       Situação: employee.situacao || 'Ativo',
+      'Data Desligamento': employee.data_desligamento ? formatDate(employee.data_desligamento) : '',
+      'Motivo Desligamento': employee.motivo_desligamento || '',
       'Situação CNH': employee.situacao_cnh || '',
       Empresa: employee.company || MAIN_COMPANY,
     }
@@ -797,6 +801,8 @@ export function exportEmployeesToXlsx(
     { wch: 16 },
     { wch: 20 },
     { wch: 14 },
+    { wch: 18 },
+    { wch: 30 },
     { wch: 16 },
     { wch: 24 },
   ]
@@ -2081,6 +2087,68 @@ function internalProcessAssistantQuery(
         '',
         `Total: ${employees.length}`,
       ].join('\n'),
+    }
+  }
+
+  // 12.5. Desligados
+  if (questionNorm.includes('desligad') || explicitSituacao === 'Desligado') {
+    let desligados = employees.filter((emp) => comparable(emp.situacao) === 'desligado')
+    if (effectiveFilial) {
+      desligados = desligados.filter((emp) => emp.filial === effectiveFilial)
+    }
+    if (effectiveFuncoesList.length > 0) {
+      desligados = desligados.filter((emp) => matchesFuncoes(emp.funcao, effectiveFuncoesList))
+    } else if (effectiveFuncao) {
+      desligados = desligados.filter((emp) =>
+        normalizeText(emp.funcao).includes(normalizeText(effectiveFuncao)),
+      )
+    }
+
+    const total = desligados.length
+    const exibidos = desligados.slice(0, MAX_DISPLAY_BULLETS)
+    const linhas = exibidos.map(
+      (emp) =>
+        `• ${emp.name} (chapa ${emp.chapa}) — ${emp.funcao || '—'} · sit.: ${emp.situacao || 'Desligado'}${emp.data_desligamento ? ` · deslg.: ${formatDate(emp.data_desligamento)}` : ''}${emp.motivo_desligamento ? ` (${emp.motivo_desligamento})` : ''} · CNH: ${formatCnh(emp.cnh_categoria, emp.cnh_numero)} (${labelFilial(emp)})`,
+    )
+
+    let resposta = `A base possui ${total} colaborador(es) desligado(s)${effectiveFuncao ? ` na função ${effectiveFuncao}` : ''}${effectiveFilial ? ` na garagem ${effectiveFilial}` : ''}:`
+    if (linhas.length) {
+      resposta += '\n' + linhas.join('\n')
+    } else {
+      resposta += '\n• Nenhum colaborador desligado encontrado com esses filtros.'
+    }
+
+    if (total > MAX_DISPLAY_BULLETS) {
+      resposta += `\n\n… e outros ${total - MAX_DISPLAY_BULLETS} colaborador(es). Solicite a planilha para ver todos.`
+    }
+
+    if (wantsExport && total > 0) {
+      resposta += '\n\nPlanilha gerada com os colaboradores desligados.'
+      return {
+        content: resposta,
+        exportableRows: desligados,
+        exportFileName: `desligados-${todayStr}.xlsx`,
+        exportSheetName: 'Desligados',
+        autoDownload: true,
+        extractedContext: {
+          situacao: 'Desligado',
+          funcao: effectiveFuncao,
+          filial: effectiveFilial,
+          lastExportableRows: desligados,
+        },
+      }
+    }
+
+    return {
+      content: resposta,
+      exportableRows: total > 0 ? desligados : undefined,
+      exportFileName: `desligados-${todayStr}.xlsx`,
+      extractedContext: {
+        situacao: 'Desligado',
+        funcao: effectiveFuncao,
+        filial: effectiveFilial,
+        lastExportableRows: desligados,
+      },
     }
   }
 

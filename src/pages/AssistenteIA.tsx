@@ -150,11 +150,14 @@ export default function AssistenteIA() {
   // Promessa ativa de carregamento para que perguntas pendentes possam aguardá-la
   const loadingPromiseRef = useRef<Promise<Employee[]> | null>(null)
 
-  // Carrega base de funcionários com retry automático e atualização de progresso
+  // Carrega base de funcionários com retry automático e atualização de progresso.
+  // Com a view agora contendo ~18k registros (incluindo desligados),
+  // carregamos preferencialmente os NÃO desligados para análise rápida e leve do assistente.
   const loadEmployees = useCallback((forceReload = false) => {
     setLoadingError(null)
     const promise = getCachedEmployees({
       forceReload,
+      filter: "situacao != 'Desligado'",
       onProgress: (loadedCount, totalCount) => {
         setLoadProgress({ loaded: loadedCount, total: totalCount })
       },
@@ -781,10 +784,13 @@ export default function AssistenteIA() {
                   <span>Erro ao carregar (tentar novamente)</span>
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 font-semibold text-primary">
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 font-semibold text-primary"
+                  title="Base operacional ativa do assistente (não desligados)"
+                >
                   <Database className="h-3 w-3" />
                   {loaded
-                    ? `${stats.total} registros`
+                    ? `${stats.total} ativos/afastados`
                     : loadProgress && loadProgress.total > 0
                       ? `Carregando base (${loadProgress.loaded}/${loadProgress.total})…`
                       : 'Carregando base de colaboradores…'}

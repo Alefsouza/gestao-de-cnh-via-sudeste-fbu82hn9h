@@ -18,6 +18,8 @@ export interface Employee {
   validade_documento_fiscal: string
   registro?: string
   cpf?: string
+  data_desligamento?: string
+  motivo_desligamento?: string
   created: string
   updated: string
   expand?: { employee?: Employee }

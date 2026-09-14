@@ -484,6 +484,7 @@ export default function Cnhs() {
               <option value="todos">Todas as situações</option>
               <option value="Ativo">Ativos</option>
               <option value="Afastado">Afastados</option>
+              <option value="Desligado">Desligados</option>
             </select>
             <select
               value={garagem}

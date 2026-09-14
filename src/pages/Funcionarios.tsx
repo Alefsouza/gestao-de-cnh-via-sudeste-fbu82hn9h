@@ -373,6 +373,10 @@ export default function Funcionarios() {
           Função: employee.funcao || '',
           'Função Anterior': employee.funcao_anterior || '',
           Situação: employee.situacao || '',
+          'Data Desligamento': employee.data_desligamento
+            ? formatDate(employee.data_desligamento)
+            : '',
+          'Motivo Desligamento': employee.motivo_desligamento || '',
           CNH: status.label,
           'Validade CNH': status.date ?? '',
         }
@@ -388,6 +392,8 @@ export default function Funcionarios() {
         { wch: 24 },
         { wch: 24 },
         { wch: 14 },
+        { wch: 18 },
+        { wch: 30 },
         { wch: 14 },
         { wch: 16 },
       ]
@@ -707,6 +713,22 @@ export default function Funcionarios() {
                       <StatusBadge value={selected.situacao} />
                     </dd>
                   </div>
+                  {selected.data_desligamento && (
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Data Desligamento</dt>
+                      <dd className="text-right font-medium text-rose-700">
+                        {formatDate(selected.data_desligamento)}
+                      </dd>
+                    </div>
+                  )}
+                  {selected.motivo_desligamento && (
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Motivo Desligamento</dt>
+                      <dd className="text-right font-medium text-rose-700">
+                        {selected.motivo_desligamento}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
               </section>
 

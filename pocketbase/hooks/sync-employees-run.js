@@ -70,6 +70,8 @@ routerAdd(
         'documento_fiscal',
         'validade_documento_fiscal',
         'cpf',
+        'data_desligamento',
+        'motivo_desligamento',
       ]
 
       const stripAccents = (s) =>
@@ -227,6 +229,23 @@ routerAdd(
           funcao_anterior: normalizeFuncao(
             pick(norm, ['funcao_anterior', 'funcaoanterior', 'funcao_antiga', 'funcaoantiga']),
           ),
+          data_desligamento: parseDate(
+            pick(norm, [
+              'data_desligamento',
+              'datadesligamento',
+              'data_de_desligamento',
+              'dt_desligamento',
+              'dtdesligamento',
+              'desligamento',
+            ]),
+          ),
+          motivo_desligamento: pick(norm, [
+            'motivodeslig',
+            'motivo_deslig',
+            'motivo_desligamento',
+            'motivodesligamento',
+            'motivo_do_desligamento',
+          ]),
           situacao: normSituacao(norm),
           cnh_numero: pick(norm, ['cnh_numero', 'numero_cnh', 'registro_cnh', 'cnh']),
           cnh_categoria: pick(norm, [
@@ -277,18 +296,33 @@ routerAdd(
         return s1 !== s2
       }
 
-      // ---- índices existentes --------------------------------------------------
-      const existingAll = $app.findRecordsByFilter('employees', '', '', 0, 0)
+      // ---- índices existentes com paginação por lote para evitar context deadline com 18k+ ----
       const byRegistro = {}
       const byChapa = {}
       const byCpf = {}
-      for (const rec of existingAll) {
-        const r = String(rec.getString('registro') ?? '').trim()
-        if (r) byRegistro[r] = rec
-        const c = String(rec.getString('chapa') ?? '').trim()
-        if (c) byChapa[c] = rec
-        const d = String(rec.getString('cpf') ?? '').trim()
-        if (d) byCpf[d] = rec
+      const allExistingIds = []
+      const BATCH_LOAD_SIZE = 2000
+      let offset = 0
+
+      while (true) {
+        const batch = $app.findRecordsByFilter('employees', '', 'id', BATCH_LOAD_SIZE, offset)
+        if (!batch || batch.length === 0) break
+        for (const rec of batch) {
+          allExistingIds.push({
+            id: rec.id,
+            registro: String(rec.getString('registro') ?? '').trim(),
+            chapa: String(rec.getString('chapa') ?? '').trim(),
+            cpf: String(rec.getString('cpf') ?? '').trim(),
+          })
+          const r = String(rec.getString('registro') ?? '').trim()
+          if (r && !byRegistro[r]) byRegistro[r] = rec
+          const c = String(rec.getString('chapa') ?? '').trim()
+          if (c && !byChapa[c]) byChapa[c] = rec
+          const d = String(rec.getString('cpf') ?? '').trim()
+          if (d && !byCpf[d]) byCpf[d] = rec
+        }
+        if (batch.length < BATCH_LOAD_SIZE) break
+        offset += BATCH_LOAD_SIZE
       }
 
       const employeesCol = $app.findCollectionByNameOrId('employees')
@@ -357,14 +391,19 @@ routerAdd(
       }
 
       // ---- espelhamento: remove quem NÃO veio na view (limpa os mocks/seed) ----
-      for (const rec of existingAll) {
-        const r = String(rec.getString('registro') ?? '').trim()
-        const c = String(rec.getString('chapa') ?? '').trim()
-        const d = String(rec.getString('cpf') ?? '').trim()
+      for (const item of allExistingIds) {
+        const r = item.registro
+        const c = item.chapa
+        const d = item.cpf
         const kept = (r && seenRegistros[r]) || (c && seenChapas[c]) || (d && seenCpfs[d])
         if (!kept) {
-          $app.delete(rec)
-          removed++
+          try {
+            const recToDelete = $app.findRecordById('employees', item.id)
+            if (recToDelete) {
+              $app.delete(recToDelete)
+              removed++
+            }
+          } catch (_) {}
         }
       }
 
