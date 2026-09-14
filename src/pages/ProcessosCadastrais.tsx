@@ -9,7 +9,6 @@ import {
   ClipboardList,
   FileDown,
   FilePlus2,
-  FileSearch,
   FileText,
   FileX2,
   Loader2,
@@ -72,26 +71,18 @@ import {
 } from '@/services/processosCadastrais'
 import { createTimelineItem } from '@/services/processoTimeline'
 import { createMovement } from '@/services/movements'
-import type { AlertaTrafego, Employee, ProcessoSituacao, UserRole } from '@/lib/types'
+import type {
+  AlertaTrafego,
+  Employee,
+  ProcessoCategoria,
+  ProcessoSituacao,
+  UserRole,
+} from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-// Categorias exibidas nos cards de resumo (ordem exata solicitada)
-const CATEGORIAS = [
-  'Inclusão',
-  'Mudança de Função',
-  'Exclusão',
-  'Atualização',
-  'Atualização Fiscal',
-] as const
+// Categorias ativas para novos processos, formulários e cards de filtro
+const CATEGORIAS = ['Inclusão', 'Mudança de Função', 'Exclusão', 'Atualização'] as const
 type Categoria = (typeof CATEGORIAS)[number]
-
-const CATEGORIAS_SPTRANS: Record<Categoria, string> = {
-  Inclusão: 'Inclusão',
-  'Mudança de Função': 'Mudança de Função',
-  Exclusão: 'Exclusão',
-  Atualização: 'Atualização',
-  'Atualização Fiscal': 'Atualização Fiscal',
-}
 
 const CARD_STYLES: Record<
   Categoria,
@@ -111,12 +102,6 @@ const CARD_STYLES: Record<
   },
   Exclusão: { icon: FileX2, ring: 'border-rose-200', bg: 'bg-rose-50', text: 'text-rose-700' },
   Atualização: { icon: RefreshCcw, ring: 'border-sky-200', bg: 'bg-sky-50', text: 'text-sky-700' },
-  'Atualização Fiscal': {
-    icon: FileSearch,
-    ring: 'border-violet-200',
-    bg: 'bg-violet-50',
-    text: 'text-violet-700',
-  },
 }
 
 const ETAPAS = [
@@ -150,7 +135,7 @@ interface ProcessoCadastral {
   matricula: string
   colaborador: string
   funcao: string
-  processo: Categoria
+  processo: ProcessoCategoria
   etapa: Etapa
   prazo: string
   situacao: Situacao
@@ -477,7 +462,7 @@ export default function ProcessosCadastrais() {
   const handleUpdate = useCallback(
     async (data: {
       id: string
-      processo: Categoria
+      processo: ProcessoCategoria
       matricula: string
       nome: string
       funcao: string
@@ -862,7 +847,7 @@ export default function ProcessosCadastrais() {
 
       {/* Cards de resumo clicáveis (ocultos quando o perfil for Tráfego) */}
       {!isTrafego && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {CATEGORIAS.map((categoria) => {
             const style = CARD_STYLES[categoria]
             const Icon = style.icon
@@ -1592,7 +1577,11 @@ function ProcessoCadastralFormModal({
   useEffect(() => {
     if (open) {
       if (initialData) {
-        setProcesso(initialData.processo)
+        setProcesso(
+          CATEGORIAS.includes(initialData.processo as Categoria)
+            ? (initialData.processo as Categoria)
+            : 'Atualização',
+        )
         setSingleMatricula(initialData.matricula || '')
         setSingleNome(initialData.colaborador || '')
         setSingleFuncao(initialData.funcao || '')
