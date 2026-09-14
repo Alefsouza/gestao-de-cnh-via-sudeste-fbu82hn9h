@@ -847,6 +847,54 @@ export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<E
   return listEmployeesControlled(filters)
 }
 
+/**
+ * Busca rápida e pontual de um colaborador por matrícula, registro ou chapa.
+ * Usa os índices dedicados idx_employees_chapa e idx_employees_registro do PocketBase.
+ * Sem filtro de situação (encontra Ativos, Afastados e Desligados).
+ */
+export async function findEmployeeByMatriculaOrChapa(term: string): Promise<Employee | null> {
+  const cleanTerm = term.trim()
+  if (!cleanTerm) return null
+
+  // Limpa caracteres especiais mantendo dígitos e letras (evita injeção no filter PocketBase)
+  const digitsOnly = cleanTerm.replace(/\D/g, '')
+  const safe = cleanTerm.replace(/["\\]/g, '')
+  const candidates = new Set<string>()
+
+  if (safe) candidates.add(safe)
+  if (digitsOnly) {
+    candidates.add(digitsOnly)
+    candidates.add(digitsOnly.padStart(6, '0'))
+    candidates.add(digitsOnly.padStart(5, '0'))
+    candidates.add(digitsOnly.padStart(4, '0'))
+    const unpadded = digitsOnly.replace(/^0+/, '')
+    if (unpadded) candidates.add(unpadded)
+  }
+
+  const clauses: string[] = []
+  for (const cand of candidates) {
+    clauses.push(`chapa = "${cand}"`)
+    clauses.push(`registro = "${cand}"`)
+  }
+
+  // Executa com indexed filter direto no PocketBase
+  try {
+    const res = await withRetry(() =>
+      pb.collection<Employee>(COLLECTION).getList(1, 1, {
+        filter: clauses.join(' || '),
+        requestKey: null,
+      }),
+    )
+    if (res.items.length > 0) {
+      return res.items[0]
+    }
+  } catch (err) {
+    console.error('Erro na busca pontual por chapa/registro:', err)
+  }
+
+  return null
+}
+
 export async function getEmployee(id: string): Promise<Employee> {
   return pb.collection<Employee>(COLLECTION).getOne(id)
 }
