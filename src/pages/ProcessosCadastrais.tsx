@@ -447,7 +447,8 @@ export default function ProcessosCadastrais() {
         setProcessos((prev) => [...novosCriados, ...prev])
 
         if (novosCriados.length > 1) {
-          toast.success(`${novosCriados.length} processos de Inclusão cadastrados com sucesso`)
+          const cat = itemsToCreate[0]?.processo || 'Processos'
+          toast.success(`${novosCriados.length} processos de ${cat} cadastrados com sucesso`)
         } else {
           toast.success('Processo cadastrado com sucesso')
         }
@@ -1530,6 +1531,28 @@ interface ColaboradorItem {
   garagem: 'CURSINO' | 'SAPOPEMBA'
   employeeId?: string
   searching?: boolean
+  // Campos específicos de Mudança de Função
+  funcao_antiga?: string
+  funcao_atual?: string
+  data_troca_funcao?: string
+  // Campos específicos de Exclusão (Desligamento)
+  data_desligamento?: string
+  motivo_desligamento?: string
+}
+
+function createEmptyColaborador(garagem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'): ColaboradorItem {
+  return {
+    id: String(Date.now() + Math.random()),
+    matricula: '',
+    nome: '',
+    funcao: '',
+    garagem,
+    funcao_antiga: '',
+    funcao_atual: '',
+    data_troca_funcao: '',
+    data_desligamento: '',
+    motivo_desligamento: '',
+  }
 }
 
 function ProcessoCadastralFormModal({
@@ -1547,7 +1570,7 @@ function ProcessoCadastralFormModal({
   const [alertaTrafego, setAlertaTrafego] = useState<AlertaTrafego>('')
   const [saving, setSaving] = useState(false)
 
-  // Estado para tipo comum ("Atualização", "Demissão", etc.) ou edição
+  // Estado para modo edição (processo único já existente)
   const [singleMatricula, setSingleMatricula] = useState('')
   const [singleNome, setSingleNome] = useState('')
   const [singleFuncao, setSingleFuncao] = useState('')
@@ -1560,19 +1583,12 @@ function ProcessoCadastralFormModal({
   const [singleSearching, setSingleSearching] = useState(false)
   const [singleResolvedEmpId, setSingleResolvedEmpId] = useState<string | undefined>(undefined)
 
-  // Estado para tipo "Inclusão": múltiplos colaboradores
-  const [colaboradores, setColaboradores] = useState<ColaboradorItem[]>([
-    {
-      id: '1',
-      matricula: '',
-      nome: '',
-      funcao: '',
-      garagem: 'CURSINO',
-    },
-  ])
-  const [expandedId, setExpandedId] = useState<string>('1')
+  // Estado para criação: múltiplos colaboradores suportados em todos os tipos (Inclusão, Mudança de Função, Exclusão, Atualização)
+  const [colaboradores, setColaboradores] = useState<ColaboradorItem[]>([createEmptyColaborador()])
+  const [expandedId, setExpandedId] = useState<string>('')
 
-  const isMultiInclusao = !isEditing && processo === 'Inclusão'
+  // Suporte a múltiplos colaboradores ativo na criação para qualquer categoria
+  const isMultiMode = !isEditing
 
   useEffect(() => {
     if (open) {
@@ -1621,17 +1637,9 @@ function ProcessoCadastralFormModal({
         setAlertaTrafego('')
         setSingleResolvedEmpId(undefined)
 
-        const initialColabId = String(Date.now())
-        setColaboradores([
-          {
-            id: initialColabId,
-            matricula: '',
-            nome: '',
-            funcao: '',
-            garagem: 'CURSINO',
-          },
-        ])
-        setExpandedId(initialColabId)
+        const initialColab = createEmptyColaborador()
+        setColaboradores([initialColab])
+        setExpandedId(initialColab.id)
       }
     }
   }, [open, initialData])
@@ -1698,9 +1706,9 @@ function ProcessoCadastralFormModal({
     [employees],
   )
 
-  // Auto-busca para formulário simples (Atualização, Edição)
+  // Auto-busca para formulário simples (apenas no modo de Edição)
   useEffect(() => {
-    if (!open || isMultiInclusao) return
+    if (!open || isMultiMode) return
     const term = singleMatricula.trim()
     if (!term) return
 
@@ -1733,14 +1741,14 @@ function ProcessoCadastralFormModal({
       isMounted = false
       clearTimeout(timer)
     }
-  }, [singleMatricula, open, isMultiInclusao, searchEmployeeData])
+  }, [singleMatricula, open, isMultiMode, searchEmployeeData])
 
-  // Atualizador de campo de colaborador para Inclusão
+  // Atualizador de campo de colaborador para múltiplos
   const updateColaborador = (id: string, updates: Partial<ColaboradorItem>) => {
     setColaboradores((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)))
   }
 
-  // Manipulador de matrícula com auto-busca para colaborador na Inclusão
+  // Manipulador de matrícula com auto-busca para colaborador na criação (todos os tipos)
   const handleColaboradorMatriculaChange = (id: string, val: string) => {
     updateColaborador(id, { matricula: val })
     const term = val.trim()
@@ -1751,13 +1759,29 @@ function ProcessoCadastralFormModal({
       try {
         const match = await searchEmployeeData(term)
         if (match) {
-          updateColaborador(id, {
-            nome: match.nome,
-            funcao: match.funcao,
-            garagem: match.garagem,
-            employeeId: match.id,
-            searching: false,
-          })
+          setColaboradores((prev) =>
+            prev.map((c) => {
+              if (c.id !== id) return c
+              const suggestedAntiga = (match.funcao_anterior || match.funcao || '').trim()
+              return {
+                ...c,
+                nome: match.nome || c.nome,
+                funcao: match.funcao || c.funcao,
+                garagem: match.garagem || c.garagem,
+                employeeId: match.id,
+                searching: false,
+                // Sugestões para Mudança de Função
+                funcao_antiga:
+                  c.funcao_antiga && c.funcao_antiga.trim() !== ''
+                    ? c.funcao_antiga
+                    : suggestedAntiga,
+                funcao_atual:
+                  c.funcao_atual && c.funcao_atual.trim() !== ''
+                    ? c.funcao_atual
+                    : match.funcao || '',
+              }
+            }),
+          )
         } else {
           updateColaborador(id, { searching: false })
         }
@@ -1770,19 +1794,10 @@ function ProcessoCadastralFormModal({
   }
 
   const handleAddColaborador = () => {
-    const newId = String(Date.now())
-    setColaboradores((prev) => [
-      ...prev,
-      {
-        id: newId,
-        matricula: '',
-        nome: '',
-        funcao: '',
-        garagem: 'CURSINO',
-      },
-    ])
+    const newColab = createEmptyColaborador('CURSINO')
+    setColaboradores((prev) => [...prev, newColab])
     // O novo colaborador fica aberto para edição
-    setExpandedId(newId)
+    setExpandedId(newColab.id)
   }
 
   const handleRemoveColaborador = (id: string, e?: React.MouseEvent) => {
@@ -1802,11 +1817,35 @@ function ProcessoCadastralFormModal({
     if (saving) return false
     if (!processo) return false
 
-    if (isMultiInclusao) {
+    if (isMultiMode) {
       if (colaboradores.length === 0) return false
+
+      if (processo === 'Mudança de Função') {
+        return colaboradores.every(
+          (c) =>
+            c.matricula.trim() !== '' &&
+            c.nome.trim() !== '' &&
+            (c.funcao_antiga || '').trim() !== '' &&
+            (c.funcao_atual || '').trim() !== '' &&
+            (c.data_troca_funcao || '').trim() !== '',
+        )
+      }
+
+      if (processo === 'Exclusão') {
+        return colaboradores.every(
+          (c) =>
+            c.matricula.trim() !== '' &&
+            c.nome.trim() !== '' &&
+            (c.data_desligamento || '').trim() !== '' &&
+            (c.motivo_desligamento || '').trim() !== '',
+        )
+      }
+
+      // Inclusão e Atualização: exigem registro e nome preenchidos
       return colaboradores.every((c) => c.matricula.trim() !== '' && c.nome.trim() !== '')
     }
 
+    // Modo Edição (processo único)
     if (processo === 'Mudança de Função') {
       return (
         singleMatricula.trim() !== '' &&
@@ -1830,7 +1869,7 @@ function ProcessoCadastralFormModal({
   }, [
     saving,
     processo,
-    isMultiInclusao,
+    isMultiMode,
     colaboradores,
     singleMatricula,
     singleNome,
@@ -1858,20 +1897,79 @@ function ProcessoCadastralFormModal({
 
     setSaving(true)
     try {
-      if (isMultiInclusao) {
+      if (isMultiMode) {
+        const isSemPrazoAlerta =
+          processo === 'Inclusão' || processo === 'Mudança de Função' || processo === 'Exclusão'
+        const isMudancaFuncao = processo === 'Mudança de Função'
+        const isExclusao = processo === 'Exclusão'
+
+        // Validação adicional de datas nos blocos múltiplos
+        if (isMudancaFuncao) {
+          for (let i = 0; i < colaboradores.length; i++) {
+            const c = colaboradores[i]
+            const dt = (c.data_troca_funcao || '').trim()
+            if (!dt) {
+              toast.error(
+                `Informe a Data de Troca de Função para o colaborador #${i + 1} (${c.nome || c.matricula}).`,
+              )
+              setSaving(false)
+              return
+            }
+            const parsed = new Date(dt.includes('T') ? dt : `${dt}T12:00:00Z`)
+            if (Number.isNaN(parsed.getTime())) {
+              toast.error(
+                `Data de Troca de Função inválida para o colaborador #${i + 1} (${c.nome || c.matricula}).`,
+              )
+              setSaving(false)
+              return
+            }
+          }
+        }
+
+        if (isExclusao) {
+          for (let i = 0; i < colaboradores.length; i++) {
+            const c = colaboradores[i]
+            const dt = (c.data_desligamento || '').trim()
+            if (!dt) {
+              toast.error(
+                `Informe a Data de Desligamento para o colaborador #${i + 1} (${c.nome || c.matricula}).`,
+              )
+              setSaving(false)
+              return
+            }
+            const parsed = new Date(dt.includes('T') ? dt : `${dt}T12:00:00Z`)
+            if (Number.isNaN(parsed.getTime())) {
+              toast.error(
+                `Data de Desligamento inválida para o colaborador #${i + 1} (${c.nome || c.matricula}).`,
+              )
+              setSaving(false)
+              return
+            }
+          }
+        }
+
         // Envia todos os colaboradores cadastrados
-        const payloadList: ProcessoCadastralFormData[] = colaboradores.map((c) => ({
-          processo,
-          matricula: c.matricula.trim(),
-          nome: c.nome.trim(),
-          funcao: c.funcao.trim(),
-          etapa,
-          prazo: '', // Prazo não se aplica para Inclusão
-          situacao: 'Pendente',
-          garagem: c.garagem,
-          alerta_trafego: '', // Não se aplica para Inclusão
-          employeeId: c.employeeId,
-        }))
+        const payloadList: ProcessoCadastralFormData[] = colaboradores.map((c) => {
+          const mainFuncao = isMudancaFuncao ? (c.funcao_atual || '').trim() : c.funcao.trim()
+
+          return {
+            processo,
+            matricula: c.matricula.trim(),
+            nome: c.nome.trim(),
+            funcao: mainFuncao,
+            etapa,
+            prazo: isSemPrazoAlerta ? '' : prazo,
+            situacao: 'Pendente',
+            garagem: c.garagem,
+            alerta_trafego: isSemPrazoAlerta ? '' : alertaTrafego,
+            employeeId: c.employeeId,
+            funcao_antiga: isMudancaFuncao ? (c.funcao_antiga || '').trim() : '',
+            funcao_atual: isMudancaFuncao ? (c.funcao_atual || '').trim() : '',
+            data_troca_funcao: isMudancaFuncao ? c.data_troca_funcao || '' : '',
+            data_desligamento: isExclusao ? c.data_desligamento || '' : '',
+            motivo_desligamento: isExclusao ? (c.motivo_desligamento || '').trim() : '',
+          }
+        })
 
         await onSubmit(payloadList)
       } else {
@@ -1880,7 +1978,7 @@ function ProcessoCadastralFormModal({
         const isMudancaFuncao = processo === 'Mudança de Função'
         const isExclusao = processo === 'Exclusão'
 
-        // Validação extra amigável de campos para Mudança de Função
+        // Validação extra amigável de campos para Mudança de Função na edição
         if (isMudancaFuncao) {
           if (!funcaoAntiga.trim() || !funcaoAtual.trim()) {
             toast.error('Informe a Função antiga e a Função atual para a Mudança de Função.')
@@ -1899,7 +1997,7 @@ function ProcessoCadastralFormModal({
           }
         }
 
-        // Validação extra amigável de campos para Exclusão
+        // Validação extra amigável de campos para Exclusão na edição
         if (isExclusao) {
           if (!dataDesligamento.trim()) {
             toast.error('Informe a Data de Desligamento.')
@@ -1958,16 +2056,14 @@ function ProcessoCadastralFormModal({
             ) : (
               <>
                 <Plus className="h-5 w-5 text-primary" />
-                Novo processo {processo === 'Inclusão' ? 'de Inclusão' : ''}
+                Novo processo de {processo}
               </>
             )}
           </DialogTitle>
           <DialogDescription>
             {isEditing
               ? 'Edite os dados cadastrais do processo selecionado.'
-              : processo === 'Inclusão'
-                ? 'Cadastre novos colaboradores no processo de Inclusão. Você pode adicionar múltiplos colaboradores usando o botão "+".'
-                : 'Cadastre manualmente uma movimentação de colaborador.'}
+              : `Cadastre colaboradores no processo de ${processo}. Você pode adicionar múltiplos colaboradores usando o botão "+".`}
           </DialogDescription>
         </DialogHeader>
 
@@ -2012,8 +2108,8 @@ function ProcessoCadastralFormModal({
             </Select>
           </div>
 
-          {/* CASO 1: Inclusão com Múltiplos Colaboradores */}
-          {isMultiInclusao ? (
+          {/* CASO 1: Múltiplos Colaboradores (Criação para qualquer tipo de processo) */}
+          {isMultiMode ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b pb-2">
                 <div>
@@ -2041,8 +2137,35 @@ function ProcessoCadastralFormModal({
               <div className="space-y-2.5">
                 {colaboradores.map((colab, idx) => {
                   const isExpanded = expandedId === colab.id
-                  const hasData = Boolean(colab.matricula.trim() || colab.nome.trim())
-                  const isValid = Boolean(colab.matricula.trim() && colab.nome.trim())
+                  const isMudanca = processo === 'Mudança de Função'
+                  const isExcl = processo === 'Exclusão'
+
+                  const isValid = isMudanca
+                    ? Boolean(
+                        colab.matricula.trim() &&
+                        colab.nome.trim() &&
+                        (colab.funcao_antiga || '').trim() &&
+                        (colab.funcao_atual || '').trim() &&
+                        (colab.data_troca_funcao || '').trim(),
+                      )
+                    : isExcl
+                      ? Boolean(
+                          colab.matricula.trim() &&
+                          colab.nome.trim() &&
+                          (colab.data_desligamento || '').trim() &&
+                          (colab.motivo_desligamento || '').trim(),
+                        )
+                      : Boolean(colab.matricula.trim() && colab.nome.trim())
+
+                  // Resumo da linha minimizada por tipo
+                  const resumoComplemento =
+                    isMudanca && (colab.funcao_antiga || colab.funcao_atual)
+                      ? ` • ${colab.funcao_antiga || '—'} → ${colab.funcao_atual || '—'}`
+                      : isExcl && colab.data_desligamento
+                        ? ` • Desligamento: ${formatDate(colab.data_desligamento)}`
+                        : colab.funcao
+                          ? ` • ${colab.funcao}`
+                          : ''
 
                   return (
                     <div
@@ -2081,7 +2204,7 @@ function ProcessoCadastralFormModal({
                             </span>
                             <span className="text-[11px] text-muted-foreground block truncate">
                               {colab.matricula.trim()
-                                ? `Registro: ${colab.matricula} • Garagem: ${colab.garagem}`
+                                ? `Registro: ${colab.matricula} • Garagem: ${colab.garagem}${resumoComplemento}`
                                 : 'Aguardando preenchimento…'}
                             </span>
                           </div>
@@ -2132,6 +2255,7 @@ function ProcessoCadastralFormModal({
                           className="pt-2 border-t border-border/50 space-y-3"
                           onClick={(e) => e.stopPropagation()}
                         >
+                          {/* Linha 1: Registro/Chapa e Garagem lado a lado */}
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div className="space-y-1.5">
                               <div className="flex h-4 items-center justify-between">
@@ -2185,7 +2309,13 @@ function ProcessoCadastralFormModal({
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {/* Linha 2: Nome Completo (e Função para Inclusão/Atualização) */}
+                          <div
+                            className={cn(
+                              'grid grid-cols-1 gap-3',
+                              isMudanca || isExcl ? 'sm:grid-cols-1' : 'sm:grid-cols-2',
+                            )}
+                          >
                             <div className="space-y-1.5">
                               <Label htmlFor={`modal-nome-${colab.id}`} className="text-xs">
                                 Nome Completo *
@@ -2202,22 +2332,184 @@ function ProcessoCadastralFormModal({
                               />
                             </div>
 
-                            <div className="space-y-1.5">
-                              <Label htmlFor={`modal-funcao-${colab.id}`} className="text-xs">
-                                Função
-                              </Label>
-                              <Input
-                                id={`modal-funcao-${colab.id}`}
-                                placeholder="Função"
-                                value={colab.funcao}
-                                onChange={(e) =>
-                                  updateColaborador(colab.id, { funcao: e.target.value })
-                                }
-                                autoComplete="off"
-                                className="h-8 text-xs"
-                              />
-                            </div>
+                            {!isMudanca && !isExcl && (
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`modal-funcao-${colab.id}`} className="text-xs">
+                                  Função
+                                </Label>
+                                <Input
+                                  id={`modal-funcao-${colab.id}`}
+                                  placeholder="Função"
+                                  value={colab.funcao}
+                                  onChange={(e) =>
+                                    updateColaborador(colab.id, { funcao: e.target.value })
+                                  }
+                                  autoComplete="off"
+                                  className="h-8 text-xs"
+                                />
+                              </div>
+                            )}
                           </div>
+
+                          {/* Bloco exclusivo por colaborador: Mudança de Função */}
+                          {isMudanca && (
+                            <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wide">
+                                <ArrowRightLeft className="h-3.5 w-3.5" />
+                                <span>Dados da Mudança de Função</span>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="space-y-1.5">
+                                  <Label
+                                    htmlFor={`modal-funcao-antiga-${colab.id}`}
+                                    className="text-xs font-semibold"
+                                  >
+                                    Função antiga *
+                                  </Label>
+                                  <Input
+                                    id={`modal-funcao-antiga-${colab.id}`}
+                                    placeholder="Ex: Motorista"
+                                    value={colab.funcao_antiga || ''}
+                                    onChange={(e) =>
+                                      updateColaborador(colab.id, {
+                                        funcao_antiga: e.target.value,
+                                      })
+                                    }
+                                    autoComplete="off"
+                                    className="bg-white text-xs h-8"
+                                  />
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Função que exercia antes da troca
+                                  </span>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <Label
+                                    htmlFor={`modal-funcao-atual-${colab.id}`}
+                                    className="text-xs font-semibold"
+                                  >
+                                    Função atual *
+                                  </Label>
+                                  <Input
+                                    id={`modal-funcao-atual-${colab.id}`}
+                                    placeholder="Ex: Fiscal de Linha"
+                                    value={colab.funcao_atual || ''}
+                                    onChange={(e) =>
+                                      updateColaborador(colab.id, {
+                                        funcao_atual: e.target.value,
+                                      })
+                                    }
+                                    autoComplete="off"
+                                    className="bg-white text-xs h-8"
+                                  />
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Nova função assumida pelo colaborador
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1.5 pt-1">
+                                <Label
+                                  htmlFor={`modal-data-troca-${colab.id}`}
+                                  className="text-xs font-semibold"
+                                >
+                                  Data de Troca de Função *
+                                </Label>
+                                <Input
+                                  id={`modal-data-troca-${colab.id}`}
+                                  type="date"
+                                  value={colab.data_troca_funcao || ''}
+                                  onChange={(e) =>
+                                    updateColaborador(colab.id, {
+                                      data_troca_funcao: e.target.value,
+                                    })
+                                  }
+                                  className="bg-white text-xs h-8"
+                                />
+                                <span className="text-[10px] text-muted-foreground">
+                                  Data em que a troca de função aconteceu
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Bloco exclusivo por colaborador: Exclusão (Desligamento) */}
+                          {isExcl && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`modal-funcao-${colab.id}`} className="text-xs">
+                                  Função
+                                </Label>
+                                <Input
+                                  id={`modal-funcao-${colab.id}`}
+                                  placeholder="Função do colaborador"
+                                  value={colab.funcao}
+                                  onChange={(e) =>
+                                    updateColaborador(colab.id, { funcao: e.target.value })
+                                  }
+                                  autoComplete="off"
+                                  className="h-8 text-xs"
+                                />
+                              </div>
+
+                              <div className="space-y-3 rounded-lg border border-rose-200 bg-rose-50/50 p-3">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900 uppercase tracking-wide">
+                                  <UserMinus className="h-3.5 w-3.5 text-rose-600" />
+                                  <span>Dados do Desligamento</span>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                  <div className="space-y-1.5">
+                                    <Label
+                                      htmlFor={`modal-data-desligamento-${colab.id}`}
+                                      className="text-xs font-semibold"
+                                    >
+                                      Data Desligamento *
+                                    </Label>
+                                    <Input
+                                      id={`modal-data-desligamento-${colab.id}`}
+                                      type="date"
+                                      value={colab.data_desligamento || ''}
+                                      onChange={(e) =>
+                                        updateColaborador(colab.id, {
+                                          data_desligamento: e.target.value,
+                                        })
+                                      }
+                                      className="bg-white text-xs h-8"
+                                    />
+                                    <span className="text-[10px] text-muted-foreground">
+                                      Data efetiva do desligamento
+                                    </span>
+                                  </div>
+
+                                  <div className="space-y-1.5">
+                                    <Label
+                                      htmlFor={`modal-motivo-desligamento-${colab.id}`}
+                                      className="text-xs font-semibold"
+                                    >
+                                      Motivo Desligamento *
+                                    </Label>
+                                    <Input
+                                      id={`modal-motivo-desligamento-${colab.id}`}
+                                      placeholder="Ex: Pedido de demissão, Sem justa causa..."
+                                      value={colab.motivo_desligamento || ''}
+                                      onChange={(e) =>
+                                        updateColaborador(colab.id, {
+                                          motivo_desligamento: e.target.value,
+                                        })
+                                      }
+                                      autoComplete="off"
+                                      className="bg-white text-xs h-8"
+                                    />
+                                    <span className="text-[10px] text-muted-foreground">
+                                      Motivo ou justificativa do desligamento
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2233,11 +2525,11 @@ function ProcessoCadastralFormModal({
                 onClick={handleAddColaborador}
               >
                 <Plus className="h-3.5 w-3.5" />
-                Adicionar mais um colaborador à Inclusão
+                Adicionar mais um colaborador ({processo})
               </Button>
             </div>
           ) : (
-            /* CASO 2: Formulário Simples (Atualização, Outros tipos, ou Edição) */
+            /* CASO 2: Formulário Simples (apenas no modo de Edição) */
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -2536,7 +2828,7 @@ function ProcessoCadastralFormModal({
                 ? 'Salvando…'
                 : isEditing
                   ? 'Salvar alterações'
-                  : isMultiInclusao && colaboradores.length > 1
+                  : isMultiMode && colaboradores.length > 1
                     ? `Registrar ${colaboradores.length} processos`
                     : 'Registrar processo'}
             </Button>
