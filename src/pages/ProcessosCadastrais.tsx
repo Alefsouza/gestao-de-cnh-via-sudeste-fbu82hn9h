@@ -2145,12 +2145,13 @@ function ProcessoCadastralFormModal({
                         >
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div className="space-y-1.5">
-                              <div className="flex items-center justify-between">
+                              <div className="flex h-4 items-center justify-between">
                                 <Label htmlFor={`modal-matricula-${colab.id}`} className="text-xs">
                                   Registro / Chapa *
                                 </Label>
                                 {colab.searching && (
-                                  <span className="text-[10px] text-muted-foreground">
+                                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground leading-none">
+                                    <Loader2 className="h-2.5 w-2.5 animate-spin text-primary" />
                                     Buscando…
                                   </span>
                                 )}
@@ -2168,9 +2169,11 @@ function ProcessoCadastralFormModal({
                             </div>
 
                             <div className="space-y-1.5">
-                              <Label htmlFor={`modal-garagem-${colab.id}`} className="text-xs">
-                                Garagem
-                              </Label>
+                              <div className="flex h-4 items-center">
+                                <Label htmlFor={`modal-garagem-${colab.id}`} className="text-xs">
+                                  Garagem
+                                </Label>
+                              </div>
                               <Select
                                 value={colab.garagem}
                                 onValueChange={(val) =>
@@ -2249,10 +2252,10 @@ function ProcessoCadastralFormModal({
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex h-5 items-center justify-between">
                     <Label htmlFor="modal-matricula">Registro / Chapa</Label>
                     {singleSearching && (
-                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground leading-none">
                         <Loader2 className="h-3 w-3 animate-spin text-primary" />
                         Buscando colaborador…
                       </span>
@@ -2268,7 +2271,9 @@ function ProcessoCadastralFormModal({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="modal-garagem">Garagem</Label>
+                  <div className="flex h-5 items-center">
+                    <Label htmlFor="modal-garagem">Garagem</Label>
+                  </div>
                   <Select
                     value={singleGaragem}
                     onValueChange={(val) => setSingleGaragem(val as 'CURSINO' | 'SAPOPEMBA')}

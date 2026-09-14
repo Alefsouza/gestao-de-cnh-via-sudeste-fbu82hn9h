@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-14T14:01:48.974Z",
+  "generatedAt": "2026-09-14T14:07:49.935Z",
   "collections": [
     {
       "name": "users",
@@ -189,8 +189,8 @@
           "system": false
         },
         {
-          "name": "data_troca_funcao",
-          "type": "date",
+          "name": "funcao_anterior",
+          "type": "text",
           "required": false,
           "system": false
         }
@@ -608,18 +608,6 @@
         {
           "name": "funcao_atual",
           "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "data_troca_funcao",
-          "type": "date",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "data_desligamento",
-          "type": "date",
           "required": false,
           "system": false
         },
