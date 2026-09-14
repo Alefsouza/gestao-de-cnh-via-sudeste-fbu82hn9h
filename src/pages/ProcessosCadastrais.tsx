@@ -386,12 +386,18 @@ export default function ProcessosCadastrais() {
           const isoPrazo = toSafeIsoString(item.prazo)
           const isoDataTroca = toSafeIsoString(item.data_troca_funcao)
           const isoDataDesligamento = toSafeIsoString(item.data_desligamento)
+          const isSemEtapa =
+            item.processo === 'Inclusão' ||
+            item.processo === 'Mudança de Função' ||
+            item.processo === 'Exclusão'
+          const safeEtapa = isSemEtapa ? ETAPA_INICIAL : item.etapa || ETAPA_INICIAL
+
           const created = await createProcessoCadastral({
             matricula: item.matricula,
             colaborador: item.nome,
             funcao: item.funcao,
             processo: item.processo,
-            etapa: item.etapa,
+            etapa: safeEtapa,
             prazo: isoPrazo,
             situacao: item.situacao,
             garagem: item.garagem || 'CURSINO',
@@ -492,12 +498,18 @@ export default function ProcessosCadastrais() {
         const isoPrazo = toSafeIsoString(data.prazo)
         const isoDataTroca = toSafeIsoString(data.data_troca_funcao)
         const isoDataDesligamento = toSafeIsoString(data.data_desligamento)
+        const isSemEtapa =
+          data.processo === 'Inclusão' ||
+          data.processo === 'Mudança de Função' ||
+          data.processo === 'Exclusão'
+        const safeEtapa = isSemEtapa ? ETAPA_INICIAL : data.etapa || ETAPA_INICIAL
+
         await updateProcessoCadastral(data.id, {
           matricula: data.matricula,
           colaborador: data.nome,
           funcao: data.funcao,
           processo: data.processo,
-          etapa: data.etapa,
+          etapa: safeEtapa,
           prazo: isoPrazo,
           situacao: data.situacao,
           garagem: data.garagem,
@@ -518,7 +530,7 @@ export default function ProcessosCadastrais() {
                 colaborador: data.nome,
                 funcao: data.funcao,
                 processo: data.processo,
-                etapa: data.etapa,
+                etapa: safeEtapa,
                 prazo: isoPrazo || data.prazo,
                 situacao: data.situacao,
                 garagem: data.garagem || item.garagem,
@@ -1962,13 +1974,15 @@ function ProcessoCadastralFormModal({
         // Envia todos os colaboradores cadastrados
         const payloadList: ProcessoCadastralFormData[] = colaboradores.map((c) => {
           const mainFuncao = isMudancaFuncao ? (c.funcao_atual || '').trim() : c.funcao.trim()
+          // Tipos sem etapa explícita gravam sempre a etapa padrão "Documentos solicitados"
+          const etapaGravar = isSemPrazoAlerta ? ETAPA_INICIAL : etapa
 
           return {
             processo,
             matricula: c.matricula.trim(),
             nome: c.nome.trim(),
             funcao: mainFuncao,
-            etapa,
+            etapa: etapaGravar,
             prazo: isSemPrazoAlerta ? '' : prazo,
             situacao: 'Pendente',
             garagem: c.garagem,
@@ -2029,13 +2043,15 @@ function ProcessoCadastralFormModal({
 
         // Para Mudança de Função, o campo principal de função reflete a nova função
         const mainFuncao = isMudancaFuncao ? funcaoAtual.trim() : singleFuncao.trim()
+        // Tipos sem etapa explícita gravam sempre a etapa padrão "Documentos solicitados"
+        const etapaGravar = isSemPrazoAlerta ? ETAPA_INICIAL : etapa
 
         await onSubmit({
           processo,
           matricula: singleMatricula.trim(),
           nome: singleNome.trim(),
           funcao: mainFuncao,
-          etapa,
+          etapa: etapaGravar,
           prazo: isSemPrazoAlerta ? '' : prazo,
           situacao: isEditing ? situacao : 'Pendente',
           garagem: singleGaragem,
@@ -2087,12 +2103,13 @@ function ProcessoCadastralFormModal({
               onValueChange={(value) => {
                 const newProcesso = value as Categoria
                 setProcesso(newProcesso)
-                // Se mudar para Inclusão, Mudança de Função ou Exclusão, limpa prazo e marcação de ciência
+                // Se mudar para Inclusão, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo e marcação de ciência
                 if (
                   newProcesso === 'Inclusão' ||
                   newProcesso === 'Mudança de Função' ||
                   newProcesso === 'Exclusão'
                 ) {
+                  setEtapa(ETAPA_INICIAL)
                   setPrazo('')
                   setAlertaTrafego('')
                 }
@@ -2726,22 +2743,26 @@ function ProcessoCadastralFormModal({
             </>
           )}
 
-          {/* Etapa */}
-          <div className="space-y-2">
-            <Label htmlFor="modal-etapa">Etapa</Label>
-            <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
-              <SelectTrigger id="modal-etapa">
-                <SelectValue placeholder="Selecione a etapa" />
-              </SelectTrigger>
-              <SelectContent>
-                {ETAPAS.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Etapa: Oculto quando o processo for "Inclusão", "Mudança de Função" ou "Exclusão"; Visível APENAS para "Atualização" */}
+          {processo !== 'Inclusão' &&
+            processo !== 'Mudança de Função' &&
+            processo !== 'Exclusão' && (
+              <div className="space-y-2">
+                <Label htmlFor="modal-etapa">Etapa</Label>
+                <Select value={etapa} onValueChange={(value) => setEtapa(value as Etapa)}>
+                  <SelectTrigger id="modal-etapa">
+                    <SelectValue placeholder="Selecione a etapa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ETAPAS.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
           {/* Prazo: Oculto quando o processo for "Inclusão", "Mudança de Função" ou "Exclusão"; Mantido para "Atualização" e demais tipos */}
           {processo !== 'Inclusão' &&
