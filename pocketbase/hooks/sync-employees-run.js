@@ -128,7 +128,25 @@ routerAdd(
       }
 
       const normSituacao = (norm) => {
-        // Coluna SITUACAO da view: situação do colaborador (ATIVO / AFASTADO / DESLIGADO).
+        // 1. Checagem direta de desligamento: data_desligamento preenchida ou motivo_desligamento preenchido
+        const dtDeslig = pick(norm, [
+          'data_desligamento',
+          'datadesligamento',
+          'data_de_desligamento',
+          'dt_desligamento',
+          'dtdesligamento',
+          'desligamento',
+        ])
+        const motDeslig = pick(norm, [
+          'motivodeslig',
+          'motivo_deslig',
+          'motivo_desligamento',
+          'motivodesligamento',
+          'motivo_do_desligamento',
+        ])
+        if (dtDeslig || motDeslig) return 'Desligado'
+
+        // 2. Coluna SITUACAO da view: situação do colaborador (ATIVO / AFASTADO / DESLIGADO).
         const raw = pick(norm, [
           'situacao',
           'situacaocolaborador',
@@ -151,7 +169,7 @@ routerAdd(
           if (value.indexOf('ativ') !== -1) return 'Ativo'
         }
 
-        // Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo'
+        // 3. Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo'
         const motivo = stripAccents(
           pick(norm, [
             'motivo_afastamento',

@@ -25,17 +25,29 @@ onRecordAfterUpdateSuccess((e) => {
       const res = $http.send({ url: secretUrl, method: 'GET', timeout: 45 })
       let payload = res.json
       let isArr = Array.isArray(payload)
-      let rows = isArr ? payload : (payload && (payload.data ?? payload.rows ?? payload.records ?? [])) || []
+      let rows = isArr
+        ? payload
+        : (payload && (payload.data ?? payload.rows ?? payload.records ?? [])) || []
       let cols = rows.length > 0 ? Object.keys(rows[0]) : []
       let arquimedes = null
       for (const r of rows) {
         const n = String(r.nome || r.NOME || r.name || '')
-        if (n.toUpperCase().includes('ARQUIMEDES')) { arquimedes = r; break }
+        if (n.toUpperCase().includes('ARQUIMEDES')) {
+          arquimedes = r
+          break
+        }
       }
       const fieldsAnalysis = {}
       for (const c of cols) {
         const lc = c.toLowerCase()
-        if (lc.includes('sit') || lc.includes('stat') || lc.includes('afast') || lc.includes('deslig') || lc.includes('cond') || lc.includes('motiv')) {
+        if (
+          lc.includes('sit') ||
+          lc.includes('stat') ||
+          lc.includes('afast') ||
+          lc.includes('deslig') ||
+          lc.includes('cond') ||
+          lc.includes('motiv')
+        ) {
           const counts = {}
           for (let i = 0; i < rows.length; i++) {
             const v = String(rows[i][c] ?? '')
@@ -46,7 +58,10 @@ onRecordAfterUpdateSuccess((e) => {
       }
       let sampleAfast = null
       for (const r of rows) {
-        if (JSON.stringify(r).toUpperCase().includes('AFAST')) { sampleAfast = r; break }
+        if (JSON.stringify(r).toUpperCase().includes('AFAST')) {
+          sampleAfast = r
+          break
+        }
       }
 
       const runsCol = $app.findCollectionByNameOrId('sync_runs')
@@ -55,15 +70,18 @@ onRecordAfterUpdateSuccess((e) => {
       rRec.set('finished_at', new Date().toISOString().replace('T', ' '))
       rRec.set('status', 'Inspecionado')
       rRec.set('records_updated', rows.length)
-      rRec.set('error', JSON.stringify({
-        urlStart: (secretUrl || '').slice(0, 45),
-        isArr,
-        totalRows: rows.length,
-        cols,
-        fieldsAnalysis,
-        arquimedes,
-        sampleAfast
-      }).slice(0, 2900))
+      rRec.set(
+        'error',
+        JSON.stringify({
+          urlStart: (secretUrl || '').slice(0, 45),
+          isArr,
+          totalRows: rows.length,
+          cols,
+          fieldsAnalysis,
+          arquimedes,
+          sampleAfast,
+        }).slice(0, 2900),
+      )
       $app.save(rRec)
     }
 
