@@ -35,7 +35,7 @@ const PAGE_SIZE = 15
 const RELOAD_THROTTLE_MS = 5_000
 
 type StatusFilter = 'todas' | 'Válida' | 'A vencer' | 'Vencida'
-type SituacaoFilter = 'todos' | 'Ativo' | 'Afastado'
+type SituacaoFilter = 'todos' | 'Ativo' | 'Afastado' | 'Desligado'
 type SortField = 'validade' | 'dias'
 type SortDirection = 'asc' | 'desc'
 
@@ -168,6 +168,7 @@ export default function Cnhs() {
       filial: garagem || undefined,
       funcao: funcao || undefined,
       situacao: situacao === 'todos' ? undefined : situacao,
+      excludeDesligados: situacao === 'todos',
       customFilter: customParts.join(' && '),
       page,
       perPage: PAGE_SIZE,
@@ -293,6 +294,7 @@ export default function Cnhs() {
         filial: activeFilters.filial,
         funcao: activeFilters.funcao,
         situacao: activeFilters.situacao,
+        excludeDesligados: activeFilters.excludeDesligados,
         customFilter: activeFilters.customFilter,
         sort: activeFilters.sort,
       }

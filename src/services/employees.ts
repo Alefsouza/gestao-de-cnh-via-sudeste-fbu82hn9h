@@ -72,6 +72,7 @@ export interface EmployeeFilters {
   situacao?: string
   situacaoCnh?: string
   customFilter?: string
+  excludeDesligados?: boolean
   page?: number
   perPage?: number
   sort?: string
@@ -89,7 +90,11 @@ export function buildFilter(filters: EmployeeFilters): string {
   if (filters.empresa) parts.push(`company = "${filters.empresa}"`)
   if (filters.filial) parts.push(`filial = "${filters.filial}"`)
   if (filters.funcao) parts.push(`funcao = "${filters.funcao.replace(/"/g, '\\"')}"`)
-  if (filters.situacao) parts.push(`situacao = "${filters.situacao}"`)
+  if (filters.situacao) {
+    parts.push(`situacao = "${filters.situacao}"`)
+  } else if (filters.excludeDesligados) {
+    parts.push('situacao != "Desligado"')
+  }
   if (filters.situacaoCnh) parts.push(`situacao_cnh = "${filters.situacaoCnh}"`)
   if (filters.customFilter) parts.push(`(${filters.customFilter})`)
   return parts.join(' && ')
@@ -125,7 +130,7 @@ export const CNH_VALIDA_FIELD_FILTER =
   'cnh_numero != "" && situacao_cnh != "Sem CNH" && situacao_cnh != ""'
 
 export const CNH_VENCIDA_FILTER =
-  'situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now)'
+  '(situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now)) && situacao != "Desligado"'
 
 /**
  * Retorna a contagem de registros que atendem a um determinado filtro,
@@ -264,14 +269,17 @@ export async function getVisaoGeralStats(): Promise<{ stats: VisaoGeralStats; ha
   }
 
   // Consulta em paralelo todas as métricas e as contagens por filial/garagem
+  // REQUISITO: considerar SOMENTE colaboradores Ativos e Afastados (excluir Desligados de tudo)
   const [totalColaboradores, ativos, afastados, vencidas, fiscais, ...filialCounts] =
     await Promise.all([
-      countSafe(), // total geral de colaboradores na base employees (todas as 3165 registros)
+      countSafe('situacao != "Desligado"'),
       countSafe('situacao = "Ativo"'),
       countSafe('situacao = "Afastado"'),
       countSafe(CNH_VENCIDA_FILTER),
-      countSafe('funcao ~ "fiscal"'),
-      ...KNOWN_FILIAIS.map((garagem) => countSafe(`filial = "${garagem}"`)),
+      countSafe('funcao ~ "fiscal" && situacao != "Desligado"'),
+      ...KNOWN_FILIAIS.map((garagem) =>
+        countSafe(`filial = "${garagem}" && situacao != "Desligado"`),
+      ),
     ])
 
   const porGaragem: Record<string, number> = {}
@@ -313,7 +321,7 @@ export async function getVisaoGeralStats(): Promise<{ stats: VisaoGeralStats; ha
 export async function listCnhsVencidasTop(limit = 5): Promise<Employee[]> {
   return withRetry(async () => {
     const res = await pb.collection<Employee>(COLLECTION).getList(1, limit, {
-      filter: CNH_VENCIDA_FILTER,
+      filter: `${CNH_VENCIDA_FILTER} && situacao != "Desligado"`,
       sort: 'validade_cnh,chapa',
       requestKey: null,
     })
@@ -457,6 +465,9 @@ export async function getCnhsSummary(
       }
       if (baseFilters.situacao) {
         parts.push(`situacao = "${baseFilters.situacao}"`)
+      } else {
+        // Se nenhuma situação foi selecionada explicitamente, considera somente Ativos e Afastados
+        parts.push('situacao != "Desligado"')
       }
       if (extraFilter) {
         parts.push(`(${extraFilter})`)
@@ -653,6 +664,7 @@ export async function getFuncionariosSummary(
       const combined = buildFilter({
         ...baseFilters,
         customFilter: extraFilter,
+        excludeDesligados: true,
       })
       return await countEmployees(combined || undefined)
     } catch (err) {
@@ -663,8 +675,9 @@ export async function getFuncionariosSummary(
   }
 
   // Executa com Promise.allSettled e pequena pausa sequencial/controlada para não disparar rajadas no backend
+  // Requisito: Total considera apenas Ativos e Afastados (exclui desligados)
   const results = await Promise.allSettled([
-    (async () => countSafe())(),
+    (async () => countSafe('situacao != "Desligado"'))(),
     (async () => {
       await wait(120)
       return countSafe('situacao = "Ativo"')
@@ -852,7 +865,10 @@ export async function listAllEmployees(filters: EmployeeFilters = {}): Promise<E
  * Usa os índices dedicados idx_employees_chapa e idx_employees_registro do PocketBase.
  * Sem filtro de situação (encontra Ativos, Afastados e Desligados).
  */
-export async function findEmployeeByMatriculaOrChapa(term: string): Promise<Employee | null> {
+export async function findEmployeeByMatriculaOrChapa(
+  term: string,
+  options: { allowDesligados?: boolean } = {},
+): Promise<Employee | null> {
   const cleanTerm = term.trim()
   if (!cleanTerm) return null
 
@@ -877,11 +893,17 @@ export async function findEmployeeByMatriculaOrChapa(term: string): Promise<Empl
     clauses.push(`registro = "${cand}"`)
   }
 
-  // Executa com indexed filter direto no PocketBase
+  let finalFilter = clauses.join(' || ')
+  // Se não permitir desligados (ex.: Inclusão, Mudança de Função, Atualização), filtra apenas Ativo e Afastado
+  if (!options.allowDesligados) {
+    finalFilter = `(${finalFilter}) && situacao != "Desligado"`
+  }
+
+  // Executa com indexed filter direto no PocketBase (rápido e sem carregar a base toda)
   try {
     const res = await withRetry(() =>
       pb.collection<Employee>(COLLECTION).getList(1, 1, {
-        filter: clauses.join(' || '),
+        filter: finalFilter,
         requestKey: null,
       }),
     )

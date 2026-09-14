@@ -61,7 +61,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/contexts/AuthContext'
 import pb from '@/lib/pocketbase/client'
 import { formatDate } from '@/lib/format'
-import { listAllEmployees } from '@/services/employees'
+import { listEmployees, findEmployeeByMatriculaOrChapa } from '@/services/employees'
 import {
   listProcessosCadastrais,
   createProcessoCadastral,
@@ -260,11 +260,16 @@ export default function ProcessosCadastrais() {
   })
 
   // Base de colaboradores do banco para o autocomplete do formulário
+  // Carrega apenas Ativos e Afastados (exclui os ~18k registros inteiros, mantendo apenas o escopo regular)
   useEffect(() => {
     let cancelled = false
-    listAllEmployees()
-      .then((items) => {
-        if (!cancelled) setEmployees(items)
+    listEmployees({
+      situacao: undefined,
+      excludeDesligados: true,
+      perPage: 200,
+    })
+      .then((res) => {
+        if (!cancelled) setEmployees(res.items)
       })
       .catch(() => {
         // silencioso
@@ -276,8 +281,12 @@ export default function ProcessosCadastrais() {
 
   useRealtime('movements', () => {
     // mantém a base sincronizada caso outra tela crie movimentações
-    listAllEmployees()
-      .then((items) => setEmployees(items))
+    listEmployees({
+      situacao: undefined,
+      excludeDesligados: true,
+      perPage: 200,
+    })
+      .then((res) => setEmployees(res.items))
       .catch(() => {
         // silencioso
       })
@@ -1644,66 +1653,49 @@ function ProcessoCadastralFormModal({
     }
   }, [open, initialData])
 
-  // Helper de busca de colaborador por registro/chapa
+  // Helper de busca de colaborador por registro/chapa usando busca indexada pontual
+  // Regra crítica: se processo for 'Exclusão', busca MESMO DESLIGADO e traz data_desligamento e motivo_desligamento.
+  // Nos demais tipos (Inclusão, Mudança de Função, Atualização), busca SOMENTE Ativos e Afastados.
+  const isProcessoExclusao = processo === 'Exclusão'
+
   const searchEmployeeData = useCallback(
     async (term: string) => {
       const cleanTerm = term.trim()
       if (!cleanTerm) return null
 
-      // 1. Em memória
-      const localMatch = employees.find((emp) => {
-        const chapa = (emp.chapa || '').trim().toLowerCase()
-        const reg = (emp.registro || '').trim().toLowerCase()
-        const target = cleanTerm.toLowerCase()
-        return chapa === target || reg === target
+      // Usa a função otimizada com query indexada no PocketBase
+      const emp = await findEmployeeByMatriculaOrChapa(cleanTerm, {
+        allowDesligados: isProcessoExclusao,
       })
 
-      if (localMatch) {
+      if (emp) {
         let matchedGaragem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'
-        if (localMatch.filial) {
-          const f = localMatch.filial.toUpperCase()
+        if (emp.filial) {
+          const f = emp.filial.toUpperCase()
           if (f.includes('SAPOPEMBA')) matchedGaragem = 'SAPOPEMBA'
         }
+
+        // Formata data de desligamento para o input type="date" (YYYY-MM-DD)
+        let formattedDataDesligamento = ''
+        if (emp.data_desligamento) {
+          const raw = String(emp.data_desligamento).trim()
+          formattedDataDesligamento = raw.includes('T') ? raw.slice(0, 10) : raw.slice(0, 10)
+        }
+
         return {
-          id: localMatch.id,
-          nome: localMatch.name || '',
-          funcao: localMatch.funcao || '',
-          funcao_anterior: localMatch.funcao_anterior || '',
+          id: emp.id,
+          nome: emp.name || '',
+          funcao: emp.funcao || '',
+          funcao_anterior: emp.funcao_anterior || '',
           garagem: matchedGaragem,
+          data_desligamento: formattedDataDesligamento,
+          motivo_desligamento: emp.motivo_desligamento || '',
         }
-      }
-
-      // 2. No PocketBase
-      try {
-        const safe = cleanTerm.replace(/"/g, '\\"')
-        const padded6 = /^\d+$/.test(cleanTerm) ? cleanTerm.padStart(6, '0') : cleanTerm
-        const safePadded = padded6.replace(/"/g, '\\"')
-        const records = await pb.collection<Employee>('employees').getList(1, 1, {
-          filter: `chapa = "${safe}" || chapa = "${safePadded}" || registro = "${safe}" || registro = "${safePadded}" || chapa ~ "${safe}"`,
-        })
-
-        if (records.items.length > 0) {
-          const emp = records.items[0]
-          let matchedGaragem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'
-          if (emp.filial) {
-            const f = emp.filial.toUpperCase()
-            if (f.includes('SAPOPEMBA')) matchedGaragem = 'SAPOPEMBA'
-          }
-          return {
-            id: emp.id,
-            nome: emp.name || '',
-            funcao: emp.funcao || '',
-            funcao_anterior: emp.funcao_anterior || '',
-            garagem: matchedGaragem,
-          }
-        }
-      } catch (err) {
-        console.error('Erro ao buscar colaborador por registro:', err)
       }
 
       return null
     },
-    [employees],
+    [isProcessoExclusao],
   )
 
   // Auto-busca para formulário simples (apenas no modo de Edição)
@@ -1730,6 +1722,14 @@ function ProcessoCadastralFormModal({
         if (suggestedAntiga) {
           setFuncaoAntiga((prev) => (prev.trim() === '' ? suggestedAntiga : prev))
         }
+        if (processo === 'Exclusão') {
+          if (match.data_desligamento) {
+            setDataDesligamento((prev) => (prev.trim() === '' ? match.data_desligamento : prev))
+          }
+          if (match.motivo_desligamento) {
+            setMotivoDesligamento((prev) => (prev.trim() === '' ? match.motivo_desligamento : prev))
+          }
+        }
         setSingleGaragem(match.garagem)
         setSingleResolvedEmpId(match.id)
       } finally {
@@ -1741,7 +1741,7 @@ function ProcessoCadastralFormModal({
       isMounted = false
       clearTimeout(timer)
     }
-  }, [singleMatricula, open, isMultiMode, searchEmployeeData])
+  }, [singleMatricula, open, isMultiMode, searchEmployeeData, processo])
 
   // Atualizador de campo de colaborador para múltiplos
   const updateColaborador = (id: string, updates: Partial<ColaboradorItem>) => {
@@ -1779,6 +1779,17 @@ function ProcessoCadastralFormModal({
                   c.funcao_atual && c.funcao_atual.trim() !== ''
                     ? c.funcao_atual
                     : match.funcao || '',
+                // Sugestões para Exclusão (preenche data_desligamento e motivo_desligamento se existirem no colaborador)
+                data_desligamento:
+                  match.data_desligamento &&
+                  (!c.data_desligamento || c.data_desligamento.trim() === '')
+                    ? match.data_desligamento
+                    : c.data_desligamento,
+                motivo_desligamento:
+                  match.motivo_desligamento &&
+                  (!c.motivo_desligamento || c.motivo_desligamento.trim() === '')
+                    ? match.motivo_desligamento
+                    : c.motivo_desligamento,
               }
             }),
           )

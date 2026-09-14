@@ -235,6 +235,8 @@ export default function Funcionarios() {
   }, [search, empresa, filial, funcao])
 
   // Monta os filtros da listagem paginada no servidor
+  // Regra: por padrão, considera apenas Ativos e Afastados (exclui desligados).
+  // Se o usuário escolher deliberadamente a situação (ex: "Desligado"), respeita a escolha.
   const activeFilters = useMemo<EmployeeFilters>(() => {
     const filters: EmployeeFilters = {
       search: search.trim() || undefined,
@@ -254,6 +256,9 @@ export default function Funcionarios() {
       filters.customFilter = CNH_VENCIDA_FILTER
     } else if (situacao) {
       filters.situacao = situacao
+    } else {
+      // Padrão sem situação selecionada: exclui desligados
+      filters.excludeDesligados = true
     }
 
     return filters
@@ -358,6 +363,7 @@ export default function Funcionarios() {
         funcao: activeFilters.funcao,
         situacao: activeFilters.situacao,
         customFilter: activeFilters.customFilter,
+        excludeDesligados: activeFilters.excludeDesligados,
       }
       const allData = await listAllEmployees(exportFilters)
       const normalized = normalizeEmployees(allData)

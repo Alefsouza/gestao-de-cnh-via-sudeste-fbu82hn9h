@@ -196,7 +196,7 @@ export default function AssistenteIA() {
     const action = event.action
     const record = event.record as unknown as Employee
 
-    if (action === 'delete') {
+    if (action === 'delete' || record.situacao === 'Desligado') {
       updateCachedEmployee('delete', record)
       setEmployees((prev) => prev.filter((e) => e.id !== record.id))
     } else {
