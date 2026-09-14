@@ -768,6 +768,7 @@ let employeesPromise: Promise<Employee[]> | null = null
 export async function getCachedEmployees(
   options: {
     forceReload?: boolean
+    filter?: string
     onProgress?: (loaded: number, total: number) => void
   } = {},
 ): Promise<Employee[]> {
@@ -784,14 +785,12 @@ export async function getCachedEmployees(
 
   employeesPromise = (async () => {
     try {
-      const items = await listEmployeesControlled(
-        {},
-        {
-          batchSize: 200,
-          pageDelayMs: 200,
-          onProgress: options.onProgress,
-        },
-      )
+      const filters: EmployeeFilters = options.filter ? { customFilter: options.filter } : {}
+      const items = await listEmployeesControlled(filters, {
+        batchSize: 200,
+        pageDelayMs: 200,
+        onProgress: options.onProgress,
+      })
       employeesCache = items
       return items
     } catch (err) {
