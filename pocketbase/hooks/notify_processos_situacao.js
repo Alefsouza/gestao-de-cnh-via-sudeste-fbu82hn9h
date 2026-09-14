@@ -14,11 +14,36 @@
  */
 
 onRecordUpdateRequest((e) => {
-  try {
-    const record = e.record
-    if (!record) return e.next()
+  const record = e.record
+  if (!record) return e.next()
 
-    const oldSituacao = String(record.original().getString('situacao') || '').trim()
+  // Proteção de segurança no backend para perfil Tráfego:
+  // O perfil Tráfego valida exclusivamente processos do tipo "Atualização".
+  // Processos do tipo "Inclusão", "Mudança de Função", "Exclusão" e demais não seguem o fluxo do Tráfego.
+  if (e.auth) {
+    const authRole = String(e.auth.getString('role') || '')
+      .trim()
+      .toLowerCase()
+    if (authRole === 'tráfego' || authRole === 'trafego') {
+      const procTipo = String(
+        record.getString('processo') ||
+          (record.original() && record.original().getString('processo')) ||
+          '',
+      ).trim()
+      if (procTipo !== 'Atualização') {
+        throw new BadRequestError(
+          'Acesso negado: o perfil Tráfego valida exclusivamente processos do tipo "Atualização". Processos de ' +
+            (procTipo || 'outro tipo') +
+            ' não seguem o fluxo do Tráfego.',
+        )
+      }
+    }
+  }
+
+  try {
+    const oldSituacao = String(
+      (record.original() && record.original().getString('situacao')) || '',
+    ).trim()
     const newSituacao = String(record.getString('situacao') || '').trim()
 
     // Passa adiante a requisição para salvar no banco
@@ -77,6 +102,5 @@ onRecordUpdateRequest((e) => {
     }
   } catch (err) {
     console.log('notif_processos hook erro ignorado:', String((err && err.message) || err))
-    return e.next()
   }
 }, 'processos_cadastrais')
