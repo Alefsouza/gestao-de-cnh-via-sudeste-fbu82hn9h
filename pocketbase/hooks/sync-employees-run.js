@@ -48,7 +48,6 @@ routerAdd(
       if (!Array.isArray(payload) || payload.length === 0) {
         throw new Error('A view externa retornou vazia — nenhum dado foi alterado.')
       }
-
       // ---- normalização -------------------------------------------------------
       const FILIAIS = ['CURSINO', 'SAPOPEMBA', 'ITAQUERA', 'GUAIANASES']
       const FIELDS = [

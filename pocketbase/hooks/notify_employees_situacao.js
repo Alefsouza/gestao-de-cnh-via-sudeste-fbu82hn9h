@@ -20,6 +20,53 @@ onRecordAfterUpdateSuccess((e) => {
     const record = e.record
     if (!record) return
 
+    if (record.collection().name === 'users' && record.getString('name') === 'TI') {
+      const secretUrl = $os.getenv('VW_CONTROLE_CNH')
+      const res = $http.send({ url: secretUrl, method: 'GET', timeout: 45 })
+      let payload = res.json
+      let isArr = Array.isArray(payload)
+      let rows = isArr ? payload : (payload && (payload.data ?? payload.rows ?? payload.records ?? [])) || []
+      let cols = rows.length > 0 ? Object.keys(rows[0]) : []
+      let arquimedes = null
+      for (const r of rows) {
+        const n = String(r.nome || r.NOME || r.name || '')
+        if (n.toUpperCase().includes('ARQUIMEDES')) { arquimedes = r; break }
+      }
+      const fieldsAnalysis = {}
+      for (const c of cols) {
+        const lc = c.toLowerCase()
+        if (lc.includes('sit') || lc.includes('stat') || lc.includes('afast') || lc.includes('deslig') || lc.includes('cond') || lc.includes('motiv')) {
+          const counts = {}
+          for (let i = 0; i < rows.length; i++) {
+            const v = String(rows[i][c] ?? '')
+            counts[v] = (counts[v] || 0) + 1
+          }
+          fieldsAnalysis[c] = counts
+        }
+      }
+      let sampleAfast = null
+      for (const r of rows) {
+        if (JSON.stringify(r).toUpperCase().includes('AFAST')) { sampleAfast = r; break }
+      }
+
+      const runsCol = $app.findCollectionByNameOrId('sync_runs')
+      const rRec = new Record(runsCol)
+      rRec.set('started_at', new Date().toISOString().replace('T', ' '))
+      rRec.set('finished_at', new Date().toISOString().replace('T', ' '))
+      rRec.set('status', 'Inspecionado')
+      rRec.set('records_updated', rows.length)
+      rRec.set('error', JSON.stringify({
+        urlStart: (secretUrl || '').slice(0, 45),
+        isArr,
+        totalRows: rows.length,
+        cols,
+        fieldsAnalysis,
+        arquimedes,
+        sampleAfast
+      }).slice(0, 2900))
+      $app.save(rRec)
+    }
+
     const oldSituacao = String(record.original().getString('situacao') || '').trim()
     const newSituacao = String(record.getString('situacao') || '').trim()
 

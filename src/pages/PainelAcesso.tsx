@@ -70,6 +70,7 @@ export default function PainelAcesso() {
   const navigate = useNavigate()
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [carregando, setCarregando] = useState(true)
+
   const [form, setForm] = useState(EMPTY_FORM)
   const [salvando, setSalvando] = useState(false)
   const [excluindoId, setExcluindoId] = useState<string | null>(null)

@@ -157,6 +157,7 @@ function CnhBadge({ status }: { status: CnhStatus }) {
 
 export default function Afastados() {
   const [employees, setEmployees] = useState<Employee[]>([])
+
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
