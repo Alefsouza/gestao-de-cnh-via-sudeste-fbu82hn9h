@@ -58,6 +58,7 @@ routerAdd(
         'company',
         'filial',
         'funcao',
+        'funcao_anterior',
         'situacao',
         'cnh_numero',
         'cnh_categoria',
@@ -220,7 +221,12 @@ routerAdd(
           // Decisão de negócio: a empresa é SEMPRE "VIA SUDESTE"
           company: 'VIA SUDESTE',
           filial: normFilial(norm),
-          funcao: normalizeFuncao(pick(norm, ['funcao', 'cargo', 'funcao_do_colaborador'])),
+          funcao: normalizeFuncao(
+            pick(norm, ['funcao_atual', 'funcaoatual', 'funcao', 'cargo', 'funcao_do_colaborador']),
+          ),
+          funcao_anterior: normalizeFuncao(
+            pick(norm, ['funcao_anterior', 'funcaoanterior', 'funcao_antiga', 'funcaoantiga']),
+          ),
           situacao: normSituacao(norm),
           cnh_numero: pick(norm, ['cnh_numero', 'numero_cnh', 'registro_cnh', 'cnh']),
           cnh_categoria: pick(norm, [
@@ -234,10 +240,10 @@ routerAdd(
           ]),
           validade_cnh: parseDate(
             pick(norm, [
+              'vencimentocnh',
+              'vencimento_cnh',
               'validade_cnh',
               'validade_da_cnh',
-              'vencimento_cnh',
-              'vencimentocnh',
               'validade',
             ]),
           ),

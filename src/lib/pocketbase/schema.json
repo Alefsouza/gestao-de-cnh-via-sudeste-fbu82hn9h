@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T16:44:33.425Z",
+  "generatedAt": "2026-09-14T13:40:09.881Z",
   "collections": [
     {
       "name": "users",
@@ -184,6 +184,12 @@
         },
         {
           "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "funcao_anterior",
           "type": "text",
           "required": false,
           "system": false

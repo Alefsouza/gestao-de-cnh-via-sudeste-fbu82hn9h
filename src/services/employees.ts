@@ -83,7 +83,7 @@ export function buildFilter(filters: EmployeeFilters): string {
   if (search) {
     const escaped = search.replace(/"/g, '\\"')
     parts.push(
-      `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+      `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}")`,
     )
   }
   if (filters.empresa) parts.push(`company = "${filters.empresa}"`)
@@ -188,7 +188,7 @@ export async function getAfastadosSummary(
       if (search) {
         const escaped = search.replace(/"/g, '\\"')
         parts.push(
-          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}")`,
         )
       }
       if (baseFilters.empresa) {
@@ -356,7 +356,7 @@ export async function getFiscaisSummary(
       if (search) {
         const escaped = search.replace(/"/g, '\\"')
         parts.push(
-          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}")`,
         )
       }
       if (baseFilters.filial) {
@@ -446,7 +446,7 @@ export async function getCnhsSummary(
       if (search) {
         const escaped = search.replace(/"/g, '\\"')
         parts.push(
-          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}")`,
+          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}")`,
         )
       }
       if (baseFilters.filial) {

@@ -5,6 +5,7 @@ export interface Employee {
   company: string
   filial: 'CURSINO' | 'SAPOPEMBA' | 'ITAQUERA' | 'GUAIANASES' | string
   funcao: string
+  funcao_anterior?: string
   situacao: 'Ativo' | 'Afastado' | 'Desligado' | ''
   cnh_numero: string
   cnh_categoria: string

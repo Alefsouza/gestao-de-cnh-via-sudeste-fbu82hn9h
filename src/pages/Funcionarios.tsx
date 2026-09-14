@@ -371,6 +371,7 @@ export default function Funcionarios() {
           Empresa: employee.company || 'VIA SUDESTE',
           'Filial/Garagem': employee.filial || '',
           Função: employee.funcao || '',
+          'Função Anterior': employee.funcao_anterior || '',
           Situação: employee.situacao || '',
           CNH: status.label,
           'Validade CNH': status.date ?? '',
@@ -384,6 +385,7 @@ export default function Funcionarios() {
         { wch: 18 },
         { wch: 18 },
         { wch: 18 },
+        { wch: 24 },
         { wch: 24 },
         { wch: 14 },
         { wch: 14 },
@@ -693,6 +695,12 @@ export default function Funcionarios() {
                     <dt className="text-muted-foreground">Filial/Garagem</dt>
                     <dd className="text-right font-medium">{selected.filial || '—'}</dd>
                   </div>
+                  {selected.funcao_anterior && (
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Função Anterior</dt>
+                      <dd className="text-right font-medium">{selected.funcao_anterior}</dd>
+                    </div>
+                  )}
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Situação</dt>
                     <dd>

@@ -1635,6 +1635,7 @@ function ProcessoCadastralFormModal({
           id: localMatch.id,
           nome: localMatch.name || '',
           funcao: localMatch.funcao || '',
+          funcao_anterior: localMatch.funcao_anterior || '',
           garagem: matchedGaragem,
         }
       }
@@ -1659,6 +1660,7 @@ function ProcessoCadastralFormModal({
             id: emp.id,
             nome: emp.name || '',
             funcao: emp.funcao || '',
+            funcao_anterior: emp.funcao_anterior || '',
             garagem: matchedGaragem,
           }
         }
@@ -1686,8 +1688,14 @@ function ProcessoCadastralFormModal({
         if (match.nome) setSingleNome(match.nome)
         if (match.funcao) {
           setSingleFuncao(match.funcao)
-          // Se for Mudança de Função e a Função antiga ainda não foi digitada, auto-sugere a função atual do colaborador
-          setFuncaoAntiga((prev) => (prev.trim() === '' ? match.funcao : prev))
+          // Se for Mudança de Função, auto-sugere no campo "Função atual" a função atual do colaborador
+          setFuncaoAtual((prev) => (prev.trim() === '' ? match.funcao : prev))
+        }
+        // Se for Mudança de Função e a Função antiga ainda não foi digitada:
+        // sugere a função anterior real (campo funcao_anterior) se preenchida; senão, cai para a função atual
+        const suggestedAntiga = (match.funcao_anterior || match.funcao || '').trim()
+        if (suggestedAntiga) {
+          setFuncaoAntiga((prev) => (prev.trim() === '' ? suggestedAntiga : prev))
         }
         setSingleGaragem(match.garagem)
         setSingleResolvedEmpId(match.id)
@@ -1921,6 +1929,9 @@ function ProcessoCadastralFormModal({
                 // Se mudar para Mudança de Função e a Função antiga estiver vazia, aproveita a função já encontrada
                 if (newProcesso === 'Mudança de Função' && !funcaoAntiga && singleFuncao) {
                   setFuncaoAntiga(singleFuncao)
+                }
+                if (newProcesso === 'Mudança de Função' && !funcaoAtual && singleFuncao) {
+                  setFuncaoAtual(singleFuncao)
                 }
               }}
               disabled={isEditing}

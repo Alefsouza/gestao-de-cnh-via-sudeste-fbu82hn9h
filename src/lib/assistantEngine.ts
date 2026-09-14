@@ -734,6 +734,7 @@ export function formatEmployeeDetails(emp: Employee): string {
     `Dados do colaborador **${emp.name}**:`,
     `• Chapa/Registro: ${emp.chapa || emp.registro || '—'}`,
     `• Função: ${emp.funcao || 'Não informada'}`,
+    ...(emp.funcao_anterior ? [`• Função Anterior: ${emp.funcao_anterior}`] : []),
     `• Situação: ${emp.situacao || 'Ativo'}`,
     `• Filial/Garagem: ${emp.filial || 'Não informada'}`,
     `• Empresa: ${emp.company || MAIN_COMPANY}`,
@@ -772,6 +773,7 @@ export function exportEmployeesToXlsx(
       REGISTRO: employee.chapa || employee.registro || '',
       Nome: employee.name,
       Função: employee.funcao || '',
+      'Função Anterior': employee.funcao_anterior || '',
       'Filial/Garagem': employee.filial || '',
       CNH: formatCnh(employee.cnh_categoria, employee.cnh_numero),
       Categoria: employee.cnh_categoria || '',
@@ -787,6 +789,7 @@ export function exportEmployeesToXlsx(
   worksheet['!cols'] = [
     { wch: 14 },
     { wch: 34 },
+    { wch: 22 },
     { wch: 22 },
     { wch: 18 },
     { wch: 20 },
