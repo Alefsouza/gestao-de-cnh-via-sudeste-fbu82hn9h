@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Truck,
   User,
+  UserMinus,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -569,6 +570,39 @@ export function ProcessoDetalhesTimelineModal({
                         </span>
                       </div>
                     )}
+                  </div>
+                )}
+
+              {/* Bloco exclusivo para Exclusão (Dados do Desligamento) */}
+              {processo.processo === 'Exclusão' &&
+                (processo.data_desligamento || processo.motivo_desligamento) && (
+                  <div className="mt-3 rounded-lg border border-rose-200/80 bg-rose-50/60 p-3 text-xs space-y-2">
+                    <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                      <UserMinus className="h-3.5 w-3.5 text-rose-700" />
+                      <span>Dados do Desligamento</span>
+                    </div>
+
+                    <div className="space-y-2 rounded bg-white/80 p-2.5 border border-rose-200">
+                      {processo.data_desligamento && (
+                        <div className="flex items-center justify-between text-[11px] border-b pb-1.5 border-rose-100">
+                          <span className="text-rose-900 font-medium">Data Desligamento:</span>
+                          <span className="font-semibold text-foreground">
+                            {formatDate(processo.data_desligamento)}
+                          </span>
+                        </div>
+                      )}
+
+                      {processo.motivo_desligamento && (
+                        <div className="text-[11px]">
+                          <span className="block text-[10px] text-muted-foreground mb-0.5">
+                            Motivo Desligamento:
+                          </span>
+                          <span className="font-semibold text-rose-950 block leading-snug">
+                            {processo.motivo_desligamento}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
             </div>

@@ -20,6 +20,7 @@ import {
   Search,
   Trash2,
   TriangleAlert,
+  UserMinus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
@@ -159,6 +160,8 @@ interface ProcessoCadastral {
   funcao_antiga?: string
   funcao_atual?: string
   data_troca_funcao?: string
+  data_desligamento?: string
+  motivo_desligamento?: string
 }
 
 const ALERTA_TRAFEGO_LABELS: Record<string, string> = {
@@ -251,6 +254,8 @@ export default function ProcessosCadastrais() {
           funcao_antiga: r.funcao_antiga || '',
           funcao_atual: r.funcao_atual || '',
           data_troca_funcao: r.data_troca_funcao || '',
+          data_desligamento: r.data_desligamento || '',
+          motivo_desligamento: r.motivo_desligamento || '',
         })),
       )
     } catch (err) {
@@ -356,6 +361,8 @@ export default function ProcessosCadastrais() {
             funcao_antiga?: string
             funcao_atual?: string
             data_troca_funcao?: string
+            data_desligamento?: string
+            motivo_desligamento?: string
           }
         | Array<{
             processo: Categoria
@@ -371,6 +378,8 @@ export default function ProcessosCadastrais() {
             funcao_antiga?: string
             funcao_atual?: string
             data_troca_funcao?: string
+            data_desligamento?: string
+            motivo_desligamento?: string
           }>,
     ) => {
       const itemsToCreate = Array.isArray(data) ? data : [data]
@@ -382,6 +391,7 @@ export default function ProcessosCadastrais() {
         for (const item of itemsToCreate) {
           const isoPrazo = toSafeIsoString(item.prazo)
           const isoDataTroca = toSafeIsoString(item.data_troca_funcao)
+          const isoDataDesligamento = toSafeIsoString(item.data_desligamento)
           const created = await createProcessoCadastral({
             matricula: item.matricula,
             colaborador: item.nome,
@@ -395,6 +405,8 @@ export default function ProcessosCadastrais() {
             funcao_antiga: item.funcao_antiga || '',
             funcao_atual: item.funcao_atual || '',
             data_troca_funcao: isoDataTroca || '',
+            data_desligamento: isoDataDesligamento || '',
+            motivo_desligamento: item.motivo_desligamento || '',
           })
 
           novosCriados.push({
@@ -412,8 +424,9 @@ export default function ProcessosCadastrais() {
             funcao_antiga: created.funcao_antiga || item.funcao_antiga || '',
             funcao_atual: created.funcao_atual || item.funcao_atual || '',
             data_troca_funcao: created.data_troca_funcao || isoDataTroca || '',
+            data_desligamento: created.data_desligamento || isoDataDesligamento || '',
+            motivo_desligamento: created.motivo_desligamento || item.motivo_desligamento || '',
           })
-
           // Cria automaticamente o PRIMEIRO item na linha do tempo (timeline)
           // Requisito: Etapa "Processo criado", responsável logado, sem quebrar se falhar (best-effort)
           try {
@@ -477,10 +490,13 @@ export default function ProcessosCadastrais() {
       funcao_antiga?: string
       funcao_atual?: string
       data_troca_funcao?: string
+      data_desligamento?: string
+      motivo_desligamento?: string
     }) => {
       try {
         const isoPrazo = toSafeIsoString(data.prazo)
         const isoDataTroca = toSafeIsoString(data.data_troca_funcao)
+        const isoDataDesligamento = toSafeIsoString(data.data_desligamento)
         await updateProcessoCadastral(data.id, {
           matricula: data.matricula,
           colaborador: data.nome,
@@ -494,6 +510,8 @@ export default function ProcessosCadastrais() {
           funcao_antiga: data.funcao_antiga ?? '',
           funcao_atual: data.funcao_atual ?? '',
           data_troca_funcao: isoDataTroca || '',
+          data_desligamento: isoDataDesligamento || '',
+          motivo_desligamento: data.motivo_desligamento ?? '',
         })
 
         setProcessos((prev) =>
@@ -513,6 +531,9 @@ export default function ProcessosCadastrais() {
                 funcao_antiga: data.funcao_antiga ?? item.funcao_antiga,
                 funcao_atual: data.funcao_atual ?? item.funcao_atual,
                 data_troca_funcao: isoDataTroca || data.data_troca_funcao || item.data_troca_funcao,
+                data_desligamento:
+                  isoDataDesligamento || data.data_desligamento || item.data_desligamento,
+                motivo_desligamento: data.motivo_desligamento ?? item.motivo_desligamento,
               }
               return updatedItem
             }
@@ -733,6 +754,8 @@ export default function ProcessosCadastrais() {
         'Função Antiga': item.funcao_antiga || '',
         'Função Atual': item.funcao_atual || '',
         'Data Troca Função': formatDate(item.data_troca_funcao),
+        'Data Desligamento': formatDate(item.data_desligamento),
+        'Motivo Desligamento': item.motivo_desligamento || '',
         Etapa: item.etapa,
         Prazo: formatDate(item.prazo),
         Situação: item.situacao,
@@ -753,6 +776,8 @@ export default function ProcessosCadastrais() {
         { wch: 24 }, // Função Antiga
         { wch: 24 }, // Função Atual
         { wch: 18 }, // Data Troca Função
+        { wch: 18 }, // Data Desligamento
+        { wch: 28 }, // Motivo Desligamento
         { wch: 26 }, // Etapa
         { wch: 14 }, // Prazo
         { wch: 14 }, // Situação
@@ -1500,6 +1525,8 @@ interface ProcessoCadastralFormData {
   funcao_antiga?: string
   funcao_atual?: string
   data_troca_funcao?: string
+  data_desligamento?: string
+  motivo_desligamento?: string
 }
 
 interface ProcessoCadastralFormModalProps {
@@ -1542,6 +1569,8 @@ function ProcessoCadastralFormModal({
   const [funcaoAntiga, setFuncaoAntiga] = useState('')
   const [funcaoAtual, setFuncaoAtual] = useState('')
   const [dataTrocaFuncao, setDataTrocaFuncao] = useState('')
+  const [dataDesligamento, setDataDesligamento] = useState('')
+  const [motivoDesligamento, setMotivoDesligamento] = useState('')
   const [singleGaragem, setSingleGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
   const [singleSearching, setSingleSearching] = useState(false)
   const [singleResolvedEmpId, setSingleResolvedEmpId] = useState<string | undefined>(undefined)
@@ -1571,9 +1600,14 @@ function ProcessoCadastralFormModal({
         setFuncaoAtual(initialData.funcao_atual || '')
         const rawDataTroca = initialData.data_troca_funcao || ''
         setDataTrocaFuncao(rawDataTroca ? rawDataTroca.slice(0, 10) : '')
+        const rawDataDesligamento = initialData.data_desligamento || ''
+        setDataDesligamento(rawDataDesligamento ? rawDataDesligamento.slice(0, 10) : '')
+        setMotivoDesligamento(initialData.motivo_desligamento || '')
         setEtapa(initialData.etapa || ETAPA_INICIAL)
         const isSemPrazoAlertaInitial =
-          initialData.processo === 'Inclusão' || initialData.processo === 'Mudança de Função'
+          initialData.processo === 'Inclusão' ||
+          initialData.processo === 'Mudança de Função' ||
+          initialData.processo === 'Exclusão'
         setPrazo(isSemPrazoAlertaInitial ? '' : initialData.prazo || '')
         setSituacao(initialData.situacao || 'Pendente')
         setSingleGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
@@ -1589,6 +1623,8 @@ function ProcessoCadastralFormModal({
         setFuncaoAntiga('')
         setFuncaoAtual('')
         setDataTrocaFuncao('')
+        setDataDesligamento('')
+        setMotivoDesligamento('')
         setEtapa(ETAPA_INICIAL)
         setPrazo('')
         setSituacao('Pendente')
@@ -1792,6 +1828,15 @@ function ProcessoCadastralFormModal({
       )
     }
 
+    if (processo === 'Exclusão') {
+      return (
+        singleMatricula.trim() !== '' &&
+        singleNome.trim() !== '' &&
+        dataDesligamento.trim() !== '' &&
+        motivoDesligamento.trim() !== ''
+      )
+    }
+
     return singleMatricula.trim() !== '' && singleNome.trim() !== ''
   }, [
     saving,
@@ -1803,6 +1848,8 @@ function ProcessoCadastralFormModal({
     funcaoAntiga,
     funcaoAtual,
     dataTrocaFuncao,
+    dataDesligamento,
+    motivoDesligamento,
   ])
 
   const handleSubmit = async () => {
@@ -1839,8 +1886,10 @@ function ProcessoCadastralFormModal({
 
         await onSubmit(payloadList)
       } else {
-        const isSemPrazoAlerta = processo === 'Inclusão' || processo === 'Mudança de Função'
+        const isSemPrazoAlerta =
+          processo === 'Inclusão' || processo === 'Mudança de Função' || processo === 'Exclusão'
         const isMudancaFuncao = processo === 'Mudança de Função'
+        const isExclusao = processo === 'Exclusão'
 
         // Validação extra amigável de campos para Mudança de Função
         if (isMudancaFuncao) {
@@ -1857,6 +1906,25 @@ function ProcessoCadastralFormModal({
           )
           if (Number.isNaN(parsedDataTroca.getTime())) {
             toast.error('Por favor, informe uma Data de Troca de Função válida.')
+            return
+          }
+        }
+
+        // Validação extra amigável de campos para Exclusão
+        if (isExclusao) {
+          if (!dataDesligamento.trim()) {
+            toast.error('Informe a Data de Desligamento.')
+            return
+          }
+          if (!motivoDesligamento.trim()) {
+            toast.error('Informe o Motivo do Desligamento.')
+            return
+          }
+          const parsedDataDesligamento = new Date(
+            dataDesligamento.includes('T') ? dataDesligamento : `${dataDesligamento}T12:00:00Z`,
+          )
+          if (Number.isNaN(parsedDataDesligamento.getTime())) {
+            toast.error('Por favor, informe uma Data de Desligamento válida.')
             return
           }
         }
@@ -1878,6 +1946,8 @@ function ProcessoCadastralFormModal({
           funcao_antiga: isMudancaFuncao ? funcaoAntiga.trim() : '',
           funcao_atual: isMudancaFuncao ? funcaoAtual.trim() : '',
           data_troca_funcao: isMudancaFuncao ? dataTrocaFuncao : '',
+          data_desligamento: isExclusao ? dataDesligamento : '',
+          motivo_desligamento: isExclusao ? motivoDesligamento.trim() : '',
         })
       }
       onOpenChange(false)
@@ -1921,8 +1991,12 @@ function ProcessoCadastralFormModal({
               onValueChange={(value) => {
                 const newProcesso = value as Categoria
                 setProcesso(newProcesso)
-                // Se mudar para Inclusão ou Mudança de Função, limpa prazo e marcação de ciência
-                if (newProcesso === 'Inclusão' || newProcesso === 'Mudança de Função') {
+                // Se mudar para Inclusão, Mudança de Função ou Exclusão, limpa prazo e marcação de ciência
+                if (
+                  newProcesso === 'Inclusão' ||
+                  newProcesso === 'Mudança de Função' ||
+                  newProcesso === 'Exclusão'
+                ) {
                   setPrazo('')
                   setAlertaTrafego('')
                 }
@@ -2281,6 +2355,65 @@ function ProcessoCadastralFormModal({
                     </span>
                   </div>
                 </div>
+              ) : processo === 'Exclusão' ? (
+                /* Bloco exclusivo: Exclusão (Desligamento) */
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="modal-funcao">Função</Label>
+                    <Input
+                      id="modal-funcao"
+                      placeholder="Função do colaborador"
+                      value={singleFuncao}
+                      onChange={(event) => setSingleFuncao(event.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-rose-200 bg-rose-50/50 p-3.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900 uppercase tracking-wide">
+                      <UserMinus className="h-4 w-4 text-rose-600" />
+                      <span>Dados do Desligamento</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="modal-data-desligamento" className="text-xs font-semibold">
+                          Data Desligamento *
+                        </Label>
+                        <Input
+                          id="modal-data-desligamento"
+                          type="date"
+                          value={dataDesligamento}
+                          onChange={(event) => setDataDesligamento(event.target.value)}
+                          className="bg-white text-xs"
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          Data efetiva do desligamento
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="modal-motivo-desligamento"
+                          className="text-xs font-semibold"
+                        >
+                          Motivo Desligamento *
+                        </Label>
+                        <Input
+                          id="modal-motivo-desligamento"
+                          placeholder="Ex: Pedido de demissão, Demissão sem justa causa..."
+                          value={motivoDesligamento}
+                          onChange={(event) => setMotivoDesligamento(event.target.value)}
+                          autoComplete="off"
+                          className="bg-white text-xs"
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          Motivo ou justificativa do desligamento
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="space-y-2">
                   <Label htmlFor="modal-funcao">Função</Label>
@@ -2313,88 +2446,92 @@ function ProcessoCadastralFormModal({
             </Select>
           </div>
 
-          {/* Prazo: Oculto quando o processo for "Inclusão" ou "Mudança de Função"; Mantido para "Atualização" e demais tipos */}
-          {processo !== 'Inclusão' && processo !== 'Mudança de Função' && (
-            <div className="space-y-2">
-              <Label htmlFor="modal-prazo">Prazo</Label>
-              <Input
-                id="modal-prazo"
-                type="date"
-                value={prazo}
-                onChange={(event) => setPrazo(event.target.value)}
-              />
-            </div>
-          )}
+          {/* Prazo: Oculto quando o processo for "Inclusão", "Mudança de Função" ou "Exclusão"; Mantido para "Atualização" e demais tipos */}
+          {processo !== 'Inclusão' &&
+            processo !== 'Mudança de Função' &&
+            processo !== 'Exclusão' && (
+              <div className="space-y-2">
+                <Label htmlFor="modal-prazo">Prazo</Label>
+                <Input
+                  id="modal-prazo"
+                  type="date"
+                  value={prazo}
+                  onChange={(event) => setPrazo(event.target.value)}
+                />
+              </div>
+            )}
 
-          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão e Mudança de Função; mantido para Atualização e outros tipos */}
-          {processo !== 'Inclusão' && processo !== 'Mudança de Função' && (
-            <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold text-foreground">
-                  Marcação de ciência (opcional)
-                </Label>
-                {alertaTrafego && (
-                  <button
-                    type="button"
-                    onClick={() => setAlertaTrafego('')}
-                    className="text-[11px] text-muted-foreground hover:text-foreground underline"
+          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão, Mudança de Função e Exclusão; mantido para Atualização e outros tipos */}
+          {processo !== 'Inclusão' &&
+            processo !== 'Mudança de Função' &&
+            processo !== 'Exclusão' && (
+              <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-foreground">
+                    Marcação de ciência (opcional)
+                  </Label>
+                  {alertaTrafego && (
+                    <button
+                      type="button"
+                      onClick={() => setAlertaTrafego('')}
+                      className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                    >
+                      Limpar marcação
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
+                  <label
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
+                      alertaTrafego === 'bloquear_foto'
+                        ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
+                        : 'border-border/70 hover:bg-muted/40 text-foreground',
+                    )}
                   >
-                    Limpar marcação
-                  </button>
+                    <input
+                      type="radio"
+                      name="alerta_trafego"
+                      value="bloquear_foto"
+                      checked={alertaTrafego === 'bloquear_foto'}
+                      onChange={() => setAlertaTrafego('bloquear_foto')}
+                      className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Bloquear foto</span>
+                  </label>
+
+                  <label
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
+                      alertaTrafego === 'impossibilitado_trabalhar'
+                        ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
+                        : 'border-border/70 hover:bg-muted/40 text-foreground',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="alerta_trafego"
+                      value="impossibilitado_trabalhar"
+                      checked={alertaTrafego === 'impossibilitado_trabalhar'}
+                      onChange={() => setAlertaTrafego('impossibilitado_trabalhar')}
+                      className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Impossibilitar de Trabalhar</span>
+                  </label>
+                </div>
+
+                {alertaTrafego ? (
+                  <p className="text-[11px] text-amber-800 font-medium pt-0.5">
+                    Apenas informativo — não altera a Situação do processo.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground pt-0.5">
+                    Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.
+                  </p>
                 )}
               </div>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
-                <label
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
-                    alertaTrafego === 'bloquear_foto'
-                      ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
-                      : 'border-border/70 hover:bg-muted/40 text-foreground',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="alerta_trafego"
-                    value="bloquear_foto"
-                    checked={alertaTrafego === 'bloquear_foto'}
-                    onChange={() => setAlertaTrafego('bloquear_foto')}
-                    className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
-                  />
-                  <span>Bloquear foto</span>
-                </label>
-
-                <label
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
-                    alertaTrafego === 'impossibilitado_trabalhar'
-                      ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
-                      : 'border-border/70 hover:bg-muted/40 text-foreground',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="alerta_trafego"
-                    value="impossibilitado_trabalhar"
-                    checked={alertaTrafego === 'impossibilitado_trabalhar'}
-                    onChange={() => setAlertaTrafego('impossibilitado_trabalhar')}
-                    className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
-                  />
-                  <span>Impossibilitar de Trabalhar</span>
-                </label>
-              </div>
-
-              {alertaTrafego ? (
-                <p className="text-[11px] text-amber-800 font-medium pt-0.5">
-                  Apenas informativo — não altera a Situação do processo.
-                </p>
-              ) : (
-                <p className="text-[11px] text-muted-foreground pt-0.5">
-                  Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.
-                </p>
-              )}
-            </div>
-          )}
+            )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

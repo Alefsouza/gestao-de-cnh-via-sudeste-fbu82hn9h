@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-14T13:40:09.881Z",
+  "generatedAt": "2026-09-14T14:01:48.974Z",
   "collections": [
     {
       "name": "users",
@@ -189,8 +189,8 @@
           "system": false
         },
         {
-          "name": "funcao_anterior",
-          "type": "text",
+          "name": "data_troca_funcao",
+          "type": "date",
           "required": false,
           "system": false
         }
@@ -614,6 +614,30 @@
         {
           "name": "data_troca_funcao",
           "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_desligamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_troca_funcao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_desligamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_desligamento",
+          "type": "text",
           "required": false,
           "system": false
         }

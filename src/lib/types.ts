@@ -105,6 +105,8 @@ export interface ProcessoCadastralRecord {
   funcao_antiga?: string
   funcao_atual?: string
   data_troca_funcao?: string
+  data_desligamento?: string
+  motivo_desligamento?: string
   created?: string
   updated?: string
 }
