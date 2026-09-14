@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronRight,
   CreditCard,
-  FileCheck2,
   Loader2,
   MapPin,
   RefreshCw,
@@ -197,7 +196,7 @@ export default function VisaoGeral() {
       <div className="grid grid-cols-1 items-start gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_340px]">
         {/* Coluna principal */}
         <div className="min-w-0 space-y-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard
               label="Colaboradores ativos"
               value={stats.ativos}
@@ -227,16 +226,6 @@ export default function VisaoGeral() {
               caption="Base sincronizada do Globus"
               delay={160}
               to="/cnhs"
-            />
-            <StatCard
-              label="Fiscais na base"
-              value={stats.fiscais}
-              icon={FileCheck2}
-              tone="teal"
-              trend="up"
-              caption="Base sincronizada do Globus"
-              delay={240}
-              to="/atualizacao-fiscal"
             />
           </div>
 

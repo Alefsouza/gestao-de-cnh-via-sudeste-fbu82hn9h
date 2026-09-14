@@ -10,7 +10,6 @@ import VisaoGeral from './pages/VisaoGeral'
 import Funcionarios from './pages/Funcionarios'
 import Cnhs from './pages/Cnhs'
 import Afastados from './pages/Afastados'
-import AtualizacaoFiscal from './pages/AtualizacaoFiscal'
 import ProcessosCadastrais from './pages/ProcessosCadastrais'
 import AssistenteIA from './pages/AssistenteIA'
 import PainelAcesso from './pages/PainelAcesso'
@@ -130,14 +129,6 @@ const App = () => (
                 element={
                   <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
                     <Afastados />
-                  </RoleRouteGuard>
-                }
-              />
-              <Route
-                path="/atualizacao-fiscal"
-                element={
-                  <RoleRouteGuard allowedRoles={['Admin', 'RH']}>
-                    <AtualizacaoFiscal />
                   </RoleRouteGuard>
                 }
               />

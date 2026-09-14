@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import {
   ChevronDown,
   CreditCard,
-  FileCheck2,
   FolderKanban,
   LayoutDashboard,
   LogOut,
@@ -46,7 +45,6 @@ const MENU: MenuItem[] = [
   { label: 'Matriz de funcionários', to: '/funcionarios', icon: Users },
   { label: 'CNHs de motoristas', to: '/cnhs', icon: CreditCard },
   { label: 'Afastados', to: '/afastados', icon: UserMinus },
-  { label: 'Atualização fiscal', to: '/atualizacao-fiscal', icon: FileCheck2 },
   { label: 'Processos Cadastrais', to: '/processos-cadastrais', icon: FolderKanban },
   { label: 'Assistente IA', to: '/assistente-ia', icon: Sparkles },
   { label: 'Painel de acesso', to: '/painel-acesso', icon: ShieldCheck },
