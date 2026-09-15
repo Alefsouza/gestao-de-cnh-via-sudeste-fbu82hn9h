@@ -37,7 +37,12 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/contexts/AuthContext'
-import { createCarta, listCartas, type CartaRecord } from '@/services/cartas'
+import {
+  createCarta,
+  listCartas,
+  getProximoNumeroCartaSequencial,
+  type CartaRecord,
+} from '@/services/cartas'
 import {
   uploadProcessoAnexo,
   listAnexosByCarta,
@@ -304,6 +309,8 @@ export default function CartaProcessoModal({
 
   // Inicialização quando o modal abre
   useEffect(() => {
+    let isMounted = true
+
     if (!open) {
       setExpandedMatriculas({})
       setPendingAnexos({})
@@ -319,7 +326,13 @@ export default function CartaProcessoModal({
       // Carrega anexos já existentes do backend para essa carta
       loadExistingAnexos(initialNumeroCarta)
     } else {
-      setNumeroCarta('')
+      // Se não houver número inicial pré-definido, calcula o próximo número sequencial (iniciando em 289)
+      // O campo permanece livremente editável pelo usuário
+      void getProximoNumeroCartaSequencial().then((proxNum) => {
+        if (isMounted) {
+          setNumeroCarta((prev) => (prev ? prev : proxNum))
+        }
+      })
       // Inicializa mapa vazio
       setPendingAnexos({})
       setSavedAnexos({})
@@ -332,6 +345,10 @@ export default function CartaProcessoModal({
     // Se estiver em modo edição ou se houver processos vinculados, busca anexos por processo
     if (isEditMode) {
       loadAnexosPorProcessos(colaboradores)
+    }
+
+    return () => {
+      isMounted = false
     }
   }, [open, initialNumeroCarta, tipoProcesso, colaboradores, isEditMode])
 

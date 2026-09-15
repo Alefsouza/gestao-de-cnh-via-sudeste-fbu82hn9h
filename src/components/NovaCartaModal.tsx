@@ -26,7 +26,7 @@ import {
   CAMPOS_FIXOS_ATUALIZACAO_MOTORISTA,
   CAMPOS_FIXOS_ATUALIZACAO_FISCAL_COBRADOR,
 } from '@/components/CartaProcessoModal'
-import { createCarta } from '@/services/cartas'
+import { createCarta, getProximoNumeroCartaSequencial } from '@/services/cartas'
 import { uploadProcessoAnexo } from '@/services/processoAnexos'
 import { createTimelineItem } from '@/services/processoTimeline'
 import { updateProcessoSituacao } from '@/services/processosCadastrais'
@@ -144,7 +144,6 @@ export default function NovaCartaModal({
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && employee) {
       const sit = String(processoSituacao || employee.situacao || '')
-      setNumeroCarta('')
       setTipoCarta(
         sit === 'Foto Bloqueada'
           ? 'Foto Bloqueada'
@@ -154,6 +153,11 @@ export default function NovaCartaModal({
       )
       setFuncaoCarta(String(employee.funcao || ''))
       setAnexosMap({})
+      setNumeroCarta('')
+      // Pré-preenche automaticamente com número sequencial iniciando em 289 (editável)
+      void getProximoNumeroCartaSequencial().then((proxNum) => {
+        setNumeroCarta((prev) => (prev ? prev : proxNum))
+      })
     }
     onOpenChange(nextOpen)
   }

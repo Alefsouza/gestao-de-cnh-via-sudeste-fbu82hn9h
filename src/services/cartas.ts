@@ -319,6 +319,92 @@ export async function listCartas(): Promise<CartaRecord[]> {
 }
 
 /**
+ * Extrai o número sequencial numérico de uma string de número de carta.
+ * Suporta formatos simples como "289", "290", bem como com sufixos comuns
+ * como "289/2026", "Nº 289", "Carta 289", "289/76".
+ */
+export function extrairNumeroSequencialCarta(valor?: string | null): number | null {
+  if (!valor) return null
+  const str = String(valor).trim()
+  if (!str) return null
+
+  // 1. Tenta pegar o primeiro grupo numérico que precede uma barra ou o início se for puramente número
+  // Ex: "289/2026" -> 289, "289" -> 289
+  const matchSlash = str.match(/^\s*(?:n[º°.]\s*|carta\s*)?(\d+)/i)
+  if (matchSlash && matchSlash[1]) {
+    const parsed = parseInt(matchSlash[1], 10)
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  // 2. Fallback: procura qualquer sequência numérica na string
+  const matchAny = str.match(/\d+/)
+  if (matchAny) {
+    const parsed = parseInt(matchAny[0], 10)
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
+/**
+ * Retorna o próximo número sequencial de carta com base nos registros já existentes
+ * na coleção `cartas` e, opcionalmente, em `processo_anexos`.
+ * Regra:
+ * - Inicia em 289.
+ * - Se houver cartas com número >= 289, sugere maior + 1.
+ * - Se a base estiver vazia ou com números < 289, sugere 289.
+ * - Retorna como string (ex: "289", "290").
+ */
+export async function getProximoNumeroCartaSequencial(
+  cartasExistentes?: CartaRecord[],
+): Promise<string> {
+  const NUMERO_INICIAL = 289
+  let maiorNumero = 0
+
+  try {
+    const records = cartasExistentes ?? (await listCartas())
+    for (const r of records) {
+      const num = extrairNumeroSequencialCarta(r.numero_carta)
+      if (num !== null && num > maiorNumero) {
+        maiorNumero = num
+      }
+    }
+
+    // Se ainda não encontrou ou para garantir cobertura contra números em processo_anexos
+    // caso haja algum anexo com numero_carta registrado sem registro em cartas:
+    if (!cartasExistentes) {
+      try {
+        const anexos = await pb.collection('processo_anexos').getList(1, 100, {
+          filter: "numero_carta != ''",
+          sort: '-created',
+          fields: 'numero_carta',
+        })
+        for (const a of anexos.items) {
+          const num = extrairNumeroSequencialCarta(a.numero_carta)
+          if (num !== null && num > maiorNumero) {
+            maiorNumero = num
+          }
+        }
+      } catch {
+        // Ignora silenciosamente se o usuário não tiver permissão para processo_anexos
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao calcular próximo número de carta sequencial:', err)
+  }
+
+  if (maiorNumero >= NUMERO_INICIAL) {
+    return String(maiorNumero + 1)
+  }
+
+  return String(NUMERO_INICIAL)
+}
+
+/**
  * Retorna a URL completa para visualização ou download do arquivo anexo de uma carta.
  */
 export function getCartaFileUrl(
