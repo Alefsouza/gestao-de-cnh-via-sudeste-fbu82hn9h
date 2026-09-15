@@ -75,34 +75,34 @@ export function BannerControleCartas({ className = '' }: BannerControleCartasPro
       aria-label="Controle Único de Cartas"
       className={`relative overflow-hidden rounded-2xl bg-[#064229] text-white shadow-lg border border-[#0d5939] ${className}`}
     >
-      <div className="flex flex-col gap-6 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
-        {/* Bloco Esquerda: Ícone + Título + Subtítulo */}
-        <div className="flex items-start gap-4 min-w-0 max-w-xl">
-          <div className="flex h-12 w-12 sm:h-14 sm:w-14 flex-none items-center justify-center rounded-xl border border-white/20 bg-white/10 text-[#d4af37] shadow-inner">
-            <FileText className="h-6 w-6 sm:h-7 sm:w-7 text-[#ecd58a]" strokeWidth={1.8} />
+      <div className="flex flex-col gap-6 p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
+        {/* Bloco Esquerda + Centro (Cartões): agrupados ou distribuídos */}
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between xl:justify-start xl:gap-8 flex-1 min-w-0">
+          {/* Bloco Esquerda: Ícone + Título + Subtítulo */}
+          <div className="flex items-start gap-4 min-w-0 max-w-xl">
+            <div className="flex h-12 w-12 sm:h-14 sm:w-14 flex-none items-center justify-center rounded-xl border border-white/20 bg-white/10 text-[#d4af37] shadow-inner">
+              <FileText className="h-6 w-6 sm:h-7 sm:w-7 text-[#ecd58a]" strokeWidth={1.8} />
+            </div>
+
+            <div className="min-w-0 space-y-1">
+              <p className="text-[11px] font-bold tracking-wider text-emerald-200/90 uppercase">
+                CONTROLE ÚNICO DE CARTAS · 2026
+              </p>
+              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-tight">
+                Você está na Carta SPTrans nº{' '}
+                <span className="text-white underline decoration-emerald-400/40 decoration-2 underline-offset-4">
+                  {loading ? '…' : ultimaCarta}
+                </span>
+              </h2>
+              <p className="text-xs sm:text-[13px] text-emerald-100/80 leading-relaxed font-normal">
+                A mesma sequência é utilizada para Atualização, Inclusão, Exclusão, Alteração, PRAT
+                e Retorno de Afastamento.
+              </p>
+            </div>
           </div>
 
-          <div className="min-w-0 space-y-1">
-            <p className="text-[11px] font-bold tracking-wider text-emerald-200/90 uppercase">
-              CONTROLE ÚNICO DE CARTAS · 2026
-            </p>
-            <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-tight">
-              Você está na Carta SPTrans nº{' '}
-              <span className="text-white underline decoration-emerald-400/40 decoration-2 underline-offset-4">
-                {loading ? '…' : ultimaCarta}
-              </span>
-            </h2>
-            <p className="text-xs sm:text-[13px] text-emerald-100/80 leading-relaxed font-normal">
-              A mesma sequência é utilizada para Atualização, Inclusão, Exclusão, Alteração, PRAT e
-              Retorno de Afastamento.
-            </p>
-          </div>
-        </div>
-
-        {/* Bloco Centro / Direita: Cartões de status e botão de ação */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center lg:gap-5 flex-wrap">
           {/* Cartões lado a lado com chevron separador */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap flex-shrink-0">
             {/* Cartão 1: Última carta utilizada */}
             <div className="flex-1 sm:flex-initial min-w-[150px] rounded-xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm shadow-sm transition-all hover:bg-white/[0.14]">
               <p className="text-[10px] font-bold tracking-wider text-emerald-200/90 uppercase">
@@ -130,18 +130,18 @@ export function BannerControleCartas({ className = '' }: BannerControleCartasPro
               <p className="text-[11px] text-[#543505] font-semibold">Será confirmada na emissão</p>
             </div>
           </div>
+        </div>
 
-          {/* Botão Abrir Controle de Cartas */}
-          <div className="flex sm:flex-none">
-            <Link
-              to="/processos-cadastrais?openCartas=true"
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-white/30 bg-white/15 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white hover:text-[#064229] hover:border-white shadow-sm active:scale-[0.98]"
-              title="Abrir controle de cartas emitidas e documentos anexos"
-            >
-              <span>Abrir controle de cartas</span>
-              <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
-            </Link>
-          </div>
+        {/* Bloco Direita: Botão Abrir Controle de Cartas alinhado à direita do banner */}
+        <div className="flex flex-none items-center justify-end xl:pl-4">
+          <Link
+            to="/processos-cadastrais?openCartas=true"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-white/30 bg-white/15 px-4 py-3 text-xs sm:text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white hover:text-[#064229] hover:border-white shadow-sm active:scale-[0.98] whitespace-nowrap"
+            title="Abrir controle de cartas emitidas e documentos anexos"
+          >
+            <span>Abrir controle de cartas</span>
+            <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
+          </Link>
         </div>
       </div>
     </section>
