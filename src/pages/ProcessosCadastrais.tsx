@@ -2870,8 +2870,9 @@ function ProcessoCadastralFormModal({
                                   >
                                     Motivo do Afastamento
                                   </Label>
-                                  <Input
+                                  <Textarea
                                     id={`modal-motivo-afastamento-${colab.id}`}
+                                    rows={2}
                                     placeholder="Ex: Auxílio Doença, Acidente de Trabalho..."
                                     value={colab.motivo_afastamento || ''}
                                     onChange={(e) =>
@@ -2880,7 +2881,7 @@ function ProcessoCadastralFormModal({
                                       })
                                     }
                                     autoComplete="off"
-                                    className="bg-white text-xs h-8"
+                                    className="bg-white text-xs min-h-[60px] resize-y"
                                   />
                                 </div>
                               </div>
@@ -3163,13 +3164,14 @@ function ProcessoCadastralFormModal({
                         <Label htmlFor="modal-motivo-afastamento" className="text-xs font-semibold">
                           Motivo do Afastamento
                         </Label>
-                        <Input
+                        <Textarea
                           id="modal-motivo-afastamento"
+                          rows={2}
                           placeholder="Ex: Auxílio Doença, Acidente de Trabalho..."
                           value={motivoAfastamento}
                           onChange={(event) => setMotivoAfastamento(event.target.value)}
                           autoComplete="off"
-                          className="bg-white text-xs"
+                          className="bg-white text-xs min-h-[60px] resize-y"
                         />
                       </div>
                     </div>

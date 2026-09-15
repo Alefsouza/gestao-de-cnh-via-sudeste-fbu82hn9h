@@ -363,6 +363,8 @@ routerAdd(
         // 3. Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo'
         const motivo = stripAccents(
           pick(norm, [
+            'motivoafast',
+            'motivo_afast',
             'motivofast',
             'motivo_fast',
             'motivo_afastamento',
@@ -478,6 +480,8 @@ routerAdd(
           ),
           situacao_cnh: normSituacaoCnh(norm),
           motivo_afastamento: pick(norm, [
+            'motivoafast',
+            'motivo_afast',
             'motivofast',
             'motivo_fast',
             'motivo_afastamento',
