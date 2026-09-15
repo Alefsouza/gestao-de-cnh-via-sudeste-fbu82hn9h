@@ -241,7 +241,39 @@ export default function PainelAcesso() {
       await carregar()
     } catch (erro: any) {
       console.error(erro)
-      toast.error(erro?.response?.message || erro?.message || 'Erro ao atualizar usuário.')
+      const status = erro?.status || erro?.response?.status
+
+      if (status === 404) {
+        toast.error('Este registro não existe mais. A lista será atualizada.')
+        setEditingUser(null)
+        await carregar()
+      } else {
+        const data = erro?.response?.data || erro?.data
+        const emailErr = data?.email
+
+        if (
+          emailErr?.code === 'validation_not_unique' ||
+          emailErr?.message?.toLowerCase?.()?.includes('unique') ||
+          emailErr?.message?.toLowerCase?.()?.includes('já')
+        ) {
+          toast.error('Este e-mail já está em uso por outro usuário.')
+        } else if (data && typeof data === 'object') {
+          const fieldMessages = Object.entries(data)
+            .map(([field, err]: [string, any]) => {
+              const msg = typeof err === 'string' ? err : err?.message
+              return msg ? `${field}: ${msg}` : null
+            })
+            .filter(Boolean)
+
+          if (fieldMessages.length > 0) {
+            toast.error(`Erro de validação: ${fieldMessages.join(', ')}`)
+          } else {
+            toast.error(erro?.response?.message || erro?.message || 'Erro ao atualizar usuário.')
+          }
+        } else {
+          toast.error(erro?.response?.message || erro?.message || 'Erro ao atualizar usuário.')
+        }
+      }
     } finally {
       setSalvandoEdicao(false)
     }
@@ -256,9 +288,16 @@ export default function PainelAcesso() {
       toast.success('Usuário excluído com sucesso!')
       setUsuarioExcluir(null)
       await carregar()
-    } catch (erro) {
-      toast.error('Erro ao excluir o usuário.')
+    } catch (erro: any) {
       console.error(erro)
+      const status = erro?.status || erro?.response?.status
+      if (status === 404) {
+        toast.error('Este registro não existe mais. A lista será atualizada.')
+        setUsuarioExcluir(null)
+        await carregar()
+      } else {
+        toast.error(erro?.response?.message || erro?.message || 'Erro ao excluir o usuário.')
+      }
     } finally {
       setExcluindoId(null)
     }
