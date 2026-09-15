@@ -206,9 +206,17 @@ export default function ProcessosCadastrais() {
   // Garagem do usuário (para Tráfego: 'CURSINO' ou 'SAPOPEMBA')
   const userGaragem = (user?.garagem as string) || (isTrafego ? 'CURSINO' : 'Todas')
 
+  // Se veio redirecionado com estado ou query para abrir controle de cartas
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
-  const [cartasModalOpen, setCartasModalOpen] = useState(false)
+  const [cartasModalOpen, setCartasModalOpen] = useState(() => {
+    try {
+      const search = window.location.search
+      return new URLSearchParams(search).get('openCartas') === 'true'
+    } catch {
+      return false
+    }
+  })
   // Estado para o modal de Carta do Processo pós-registro ou reabertura
   const [cartaProcessoModalOpen, setCartaProcessoModalOpen] = useState(false)
   const [cartaProcessoColaboradores, setCartaProcessoColaboradores] = useState<
@@ -309,6 +317,17 @@ export default function ProcessosCadastrais() {
   useEffect(() => {
     void carregarProcessos()
   }, [carregarProcessos])
+
+  useEffect(() => {
+    try {
+      const search = window.location.search
+      if (new URLSearchParams(search).get('openCartas') === 'true') {
+        setCartasModalOpen(true)
+      }
+    } catch {
+      // silencioso
+    }
+  }, [])
 
   useRealtime('processos_cadastrais', () => {
     void carregarProcessos()

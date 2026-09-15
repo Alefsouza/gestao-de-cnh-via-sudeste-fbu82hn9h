@@ -23,6 +23,7 @@ import { getVisaoGeralStats, listCnhsVencidasTop, type VisaoGeralStats } from '@
 import { triggerSync } from '@/lib/sync'
 import type { Employee } from '@/lib/types'
 import { normalizeEmployees } from '@/lib/normalize'
+import { BannerControleCartas } from '@/components/BannerControleCartas'
 /** Janela em que eventos de realtime são ignorados após um carregamento (evita refetch em rajada). */
 const RELOAD_THROTTLE_MS = 5_000
 
@@ -192,7 +193,10 @@ export default function VisaoGeral() {
   const totalColaboradores = stats.totalColaboradores
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-7xl space-y-6">
+      {/* Banner informativo de controle de cartas no topo da Visão Geral */}
+      <BannerControleCartas />
+
       <div className="grid grid-cols-1 items-start gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_340px]">
         {/* Coluna principal */}
         <div className="min-w-0 space-y-6">
