@@ -584,36 +584,56 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                                 <FileCheck2 className="h-4 w-4 text-primary" />
                                 <span>Documentos Anexados</span>
                               </div>
-
                               <div className="space-y-2 pt-1">
-                                {DOCUMENT_FIELDS.map(({ key, label }) => {
-                                  const filename = String(item[key] || '')
-                                  return (
-                                    <div
-                                      key={key}
-                                      className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-muted/20 p-2.5 text-xs border"
-                                    >
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <FileText className="h-4 w-4 flex-none text-muted-foreground" />
-                                        <div className="min-w-0">
-                                          <span className="font-semibold text-foreground">
-                                            {label}
-                                          </span>
-                                          {filename ? (
-                                            <p className="text-[11px] text-muted-foreground truncate max-w-xs sm:max-w-sm">
-                                              {filename}
-                                            </p>
-                                          ) : (
-                                            <p className="text-[11px] text-rose-500 italic">
-                                              Arquivo não localizado
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
+                                {(() => {
+                                  // Apenas os documentos fixos que de fato possuem arquivo anexado
+                                  const docsFixosAnexados = DOCUMENT_FIELDS.map(
+                                    ({ key, label }) => ({
+                                      key,
+                                      label,
+                                      filename: String(item[key] || '').trim(),
+                                    }),
+                                  ).filter((d) => Boolean(d.filename))
 
-                                      <div className="flex items-center gap-1.5 self-end sm:self-auto flex-none">
-                                        {filename ? (
-                                          <>
+                                  // Anexos adicionais vinculados especificamente a este colaborador
+                                  const anexosColab = anexosDinamicos.filter((ad) => {
+                                    const m = (ad.matricula || '').trim()
+                                    const c = (ad.colaborador || '').trim().toLowerCase()
+                                    const itemM = (item.matricula || '').trim()
+                                    const itemC = (item.colaborador || '').trim().toLowerCase()
+                                    return (itemM && m === itemM) || (c && c === itemC)
+                                  })
+
+                                  const totalAnexos = docsFixosAnexados.length + anexosColab.length
+
+                                  if (totalAnexos === 0) {
+                                    return (
+                                      <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+                                        Nenhum documento anexado para este colaborador.
+                                      </div>
+                                    )
+                                  }
+
+                                  return (
+                                    <>
+                                      {docsFixosAnexados.map(({ key, label, filename }) => (
+                                        <div
+                                          key={key}
+                                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-muted/20 p-2.5 text-xs border"
+                                        >
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <FileText className="h-4 w-4 flex-none text-muted-foreground" />
+                                            <div className="min-w-0">
+                                              <span className="font-semibold text-foreground">
+                                                {label}
+                                              </span>
+                                              <p className="text-[11px] text-muted-foreground truncate max-w-xs sm:max-w-sm">
+                                                {filename}
+                                              </p>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-1.5 self-end sm:self-auto flex-none">
                                             <Button
                                               type="button"
                                               size="sm"
@@ -636,106 +656,97 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                                               <Download className="h-3 w-3" />
                                               Baixar
                                             </Button>
-                                          </>
-                                        ) : (
-                                          <span className="text-[11px] text-muted-foreground italic">
-                                            —
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-
-                                {/* Anexos adicionais vinculados especificamente a este colaborador */}
-                                {anexosDinamicos
-                                  .filter((ad) => {
-                                    const m = (ad.matricula || '').trim()
-                                    const c = (ad.colaborador || '').trim().toLowerCase()
-                                    const itemM = (item.matricula || '').trim()
-                                    const itemC = (item.colaborador || '').trim().toLowerCase()
-                                    return (itemM && m === itemM) || (c && c === itemC)
-                                  })
-                                  .map((ad, adIdx) => {
-                                    const urlVis = getProcessoAnexoFileUrl(ad)
-                                    const urlDown = getProcessoAnexoFileUrl(ad, undefined, {
-                                      download: true,
-                                    })
-                                    return (
-                                      <div
-                                        key={`${ad.id}-${adIdx}`}
-                                        className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-emerald-50/40 border border-emerald-200/80 p-2.5 text-xs"
-                                      >
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <FileText className="h-4 w-4 flex-none text-emerald-600" />
-                                          <div className="min-w-0">
-                                            <span className="font-semibold text-foreground">
-                                              {ad.titulo || 'Anexo do Colaborador'}
-                                            </span>
-                                            <p className="text-[11px] text-muted-foreground truncate max-w-xs sm:max-w-sm">
-                                              {ad.arquivo}
-                                              {ad.tamanho
-                                                ? ` · ${(ad.tamanho / 1024).toFixed(0)} KB`
-                                                : ''}
-                                            </p>
                                           </div>
                                         </div>
+                                      ))}
 
-                                        <div className="flex items-center gap-1.5 self-end sm:self-auto flex-none">
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() =>
-                                              window.open(urlVis, '_blank', 'noopener,noreferrer')
-                                            }
-                                            className="h-7 gap-1 px-2 text-xs"
-                                            title="Abrir / Visualizar em nova aba"
+                                      {anexosColab.map((ad, adIdx) => {
+                                        const urlVis = getProcessoAnexoFileUrl(ad)
+                                        const urlDown = getProcessoAnexoFileUrl(ad, undefined, {
+                                          download: true,
+                                        })
+                                        return (
+                                          <div
+                                            key={`${ad.id}-${adIdx}`}
+                                            className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-emerald-50/40 border border-emerald-200/80 p-2.5 text-xs"
                                           >
-                                            <ExternalLink className="h-3 w-3" />
-                                            Visualizar
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => {
-                                              const win = window.open(urlDown, '_blank')
-                                              if (!win) window.location.href = urlDown
-                                            }}
-                                            className="h-7 gap-1 px-2 text-xs"
-                                            title="Baixar arquivo"
-                                          >
-                                            <Download className="h-3 w-3" />
-                                            Baixar
-                                          </Button>
-                                          {canDelete && (
-                                            <Button
-                                              type="button"
-                                              size="sm"
-                                              variant="ghost"
-                                              onClick={async () => {
-                                                try {
-                                                  await deleteProcessoAnexo(ad.id)
-                                                  setAnexosDinamicos((prev) =>
-                                                    prev.filter((x) => x.id !== ad.id),
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <FileText className="h-4 w-4 flex-none text-emerald-600" />
+                                              <div className="min-w-0">
+                                                <span className="font-semibold text-foreground">
+                                                  {ad.titulo || 'Anexo do Colaborador'}
+                                                </span>
+                                                <p className="text-[11px] text-muted-foreground truncate max-w-xs sm:max-w-sm">
+                                                  {ad.arquivo}
+                                                  {ad.tamanho
+                                                    ? ` · ${(ad.tamanho / 1024).toFixed(0)} KB`
+                                                    : ''}
+                                                </p>
+                                              </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 self-end sm:self-auto flex-none">
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() =>
+                                                  window.open(
+                                                    urlVis,
+                                                    '_blank',
+                                                    'noopener,noreferrer',
                                                   )
-                                                  toast.success('Anexo removido com sucesso.')
-                                                } catch (err) {
-                                                  toast.error('Erro ao remover anexo.')
                                                 }
-                                              }}
-                                              className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
-                                              title="Excluir anexo"
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                              </div>
+                                                className="h-7 gap-1 px-2 text-xs"
+                                                title="Abrir / Visualizar em nova aba"
+                                              >
+                                                <ExternalLink className="h-3 w-3" />
+                                                Visualizar
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => {
+                                                  const win = window.open(urlDown, '_blank')
+                                                  if (!win) window.location.href = urlDown
+                                                }}
+                                                className="h-7 gap-1 px-2 text-xs"
+                                                title="Baixar arquivo"
+                                              >
+                                                <Download className="h-3 w-3" />
+                                                Baixar
+                                              </Button>
+                                              {canDelete && (
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  onClick={async () => {
+                                                    try {
+                                                      await deleteProcessoAnexo(ad.id)
+                                                      setAnexosDinamicos((prev) =>
+                                                        prev.filter((x) => x.id !== ad.id),
+                                                      )
+                                                      toast.success('Anexo removido com sucesso.')
+                                                    } catch (err) {
+                                                      toast.error('Erro ao remover anexo.')
+                                                    }
+                                                  }}
+                                                  className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                                                  title="Excluir anexo"
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                    </>
+                                  )
+                                })()}
+                              </div>{' '}
                             </div>
                             {/* Botão de rodapé do card expandido para remover este colaborador */}
                             {canDelete && (
