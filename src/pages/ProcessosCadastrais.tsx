@@ -64,7 +64,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import pb from '@/lib/pocketbase/client'
 import { formatDate } from '@/lib/format'
 import { listEmployees, findEmployeeByMatriculaOrChapa } from '@/services/employees'
-import { listCartas, type CartaRecord } from '@/services/cartas'
+
 import {
   listProcessosCadastrais,
   createProcessoCadastral,
@@ -94,16 +94,6 @@ const CATEGORIAS = [
   'Atualização',
 ] as const
 type Categoria = (typeof CATEGORIAS)[number]
-
-// Tipos de carta usados no sistema para opções do filtro
-const TIPOS_CARTA_FILTRO = [
-  'Inclusão',
-  'PRAT',
-  'Retorno do Afastamento',
-  'Mudança de Função',
-  'Exclusão',
-  'Atualização',
-] as const
 
 const CARD_STYLES: Record<
   Categoria,
@@ -244,8 +234,6 @@ export default function ProcessosCadastrais() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedEtapa, setSelectedEtapa] = useState<string>('todas')
   const [selectedGaragem, setSelectedGaragem] = useState<string>('todas')
-  const [selectedTipoCarta, setSelectedTipoCarta] = useState<string>('todos')
-  const [cartas, setCartas] = useState<CartaRecord[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -326,25 +314,6 @@ export default function ProcessosCadastrais() {
     void carregarProcessos()
   })
 
-  // Carrega cartas para mapeamento de tipos de carta e filtro de processos
-  const carregarCartas = useCallback(async () => {
-    try {
-      const records = await listCartas()
-      setCartas(records)
-    } catch (err) {
-      console.warn('Erro ao carregar cartas para filtros:', err)
-      setCartas([])
-    }
-  }, [])
-
-  useEffect(() => {
-    void carregarCartas()
-  }, [carregarCartas])
-
-  useRealtime('cartas', () => {
-    void carregarCartas()
-  })
-
   // Base de colaboradores do banco para o autocomplete do formulário
   // Carrega apenas Ativos e Afastados (exclui os ~18k registros inteiros, mantendo apenas o escopo regular)
   useEffect(() => {
@@ -415,114 +384,16 @@ export default function ProcessosCadastrais() {
     return uniqueProcessos.filter((p) => p.situacao !== 'Regular')
   }, [processos, isTrafego, userGaragem, viewRegulares])
 
-  // Mapa normalizado de cartas para vincular ao processo por matrícula e/ou colaborador
-  // Uma carta é vinculada ao processo se a matrícula bate (com e sem padding de zeros) ou se o nome normalizado coincide
-  const cartasMap = useMemo(() => {
-    const byMat = new Map<string, CartaRecord[]>()
-    const byName = new Map<string, CartaRecord[]>()
-
-    for (const c of cartas) {
-      const mat = (c.matricula || '').trim()
-      if (mat) {
-        const matKey = mat.toLowerCase()
-        const unpadded = mat.replace(/^0+/, '').toLowerCase()
-        if (!byMat.has(matKey)) byMat.set(matKey, [])
-        byMat.get(matKey)!.push(c)
-        if (unpadded && unpadded !== matKey) {
-          if (!byMat.has(unpadded)) byMat.set(unpadded, [])
-          byMat.get(unpadded)!.push(c)
-        }
-      }
-
-      const nome = (c.colaborador || '').trim().toLowerCase()
-      if (nome) {
-        if (!byName.has(nome)) byName.set(nome, [])
-        byName.get(nome)!.push(c)
-      }
-    }
-
-    return { byMat, byName }
-  }, [cartas])
-
-  // Função auxiliar que verifica se um processo tem carta vinculada do tipo informado (ou de qualquer tipo)
-  const getCartasDoProcesso = useCallback(
-    (processo: ProcessoCadastral): CartaRecord[] => {
-      const mat = (processo.matricula || '').trim().toLowerCase()
-      const unpadded = mat.replace(/^0+/, '')
-      const colab = (processo.colaborador || '').trim().toLowerCase()
-
-      const seen = new Set<string>()
-      const result: CartaRecord[] = []
-
-      const addList = (list?: CartaRecord[]) => {
-        if (!list) return
-        for (const item of list) {
-          if (!seen.has(item.id)) {
-            seen.add(item.id)
-            result.push(item)
-          }
-        }
-      }
-
-      if (mat) addList(cartasMap.byMat.get(mat))
-      if (unpadded && unpadded !== mat) addList(cartasMap.byMat.get(unpadded))
-      if (colab) addList(cartasMap.byName.get(colab))
-
-      return result
-    },
-    [cartasMap],
-  )
-
-  // Lista dinâmica de tipos de carta disponíveis para o filtro:
-  // Combina a lista padrão solicitada com quaisquer tipos adicionais encontrados nas cartas cadastradas
-  const tiposCartaDisponiveis = useMemo(() => {
-    const set = new Set<string>(TIPOS_CARTA_FILTRO)
-    cartas.forEach((c) => {
-      const t = (c.tipo_carta || '').trim()
-      if (t) set.add(t)
-    })
-    return Array.from(set)
-  }, [cartas])
-
-  // Helper de comparação flexível de tipo de carta (insensível a maiúsculas/minúsculas e acentos)
-  const matchesTipoCarta = useCallback(
-    (processo: ProcessoCadastral, tipoFiltro: string): boolean => {
-      if (tipoFiltro === 'todos') return true
-      const cartasProc = getCartasDoProcesso(processo)
-      if (cartasProc.length === 0) return false
-
-      const normFiltro = tipoFiltro
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .trim()
-
-      return cartasProc.some((c) => {
-        const normCarta = (c.tipo_carta || '')
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .toLowerCase()
-          .trim()
-        return normCarta === normFiltro
-      })
-    },
-    [getCartasDoProcesso],
-  )
-
   const resumo = useMemo(() => {
     const counts = Object.fromEntries(CATEGORIAS.map((categoria) => [categoria, 0])) as Record<
       Categoria,
       number
     >
     visibleProcessos.forEach((processo) => {
-      // Quando o filtro de tipo de carta está ativo, os cards de resumo refletem os processos filtrados
-      if (selectedTipoCarta !== 'todos' && !matchesTipoCarta(processo, selectedTipoCarta)) {
-        return
-      }
       if (processo.processo in counts) counts[processo.processo] += 1
     })
     return counts
-  }, [visibleProcessos, selectedTipoCarta, matchesTipoCarta])
+  }, [visibleProcessos])
 
   const toSafeIsoString = (val?: string | null): string => {
     if (!val || typeof val !== 'string') return ''
@@ -1029,31 +900,14 @@ export default function ProcessosCadastrais() {
         }
       }
 
-      // Filtro de Tipo de Carta: somente processos que têm carta daquele tipo vinculada
-      if (selectedTipoCarta !== 'todos') {
-        if (!matchesTipoCarta(p, selectedTipoCarta)) {
-          return false
-        }
-      }
-
       return true
     })
-  }, [
-    visibleProcessos,
-    selectedCategoria,
-    searchTerm,
-    selectedEtapa,
-    selectedGaragem,
-    selectedTipoCarta,
-    matchesTipoCarta,
-    isTrafego,
-  ])
+  }, [visibleProcessos, selectedCategoria, searchTerm, selectedEtapa, selectedGaragem, isTrafego])
 
   const hasActiveFilters = Boolean(
     searchTerm.trim() ||
     selectedEtapa !== 'todas' ||
     (!isTrafego && selectedGaragem !== 'todas') ||
-    selectedTipoCarta !== 'todos' ||
     selectedCategoria,
   )
 
@@ -1061,21 +915,13 @@ export default function ProcessosCadastrais() {
     setSearchTerm('')
     setSelectedEtapa('todas')
     setSelectedGaragem('todas')
-    setSelectedTipoCarta('todos')
     setSelectedCategoria(null)
   }, [])
 
   // Resetar página atual quando filtros mudarem
   useEffect(() => {
     setCurrentPage(1)
-  }, [
-    selectedCategoria,
-    viewRegulares,
-    searchTerm,
-    selectedEtapa,
-    selectedGaragem,
-    selectedTipoCarta,
-  ])
+  }, [selectedCategoria, viewRegulares, searchTerm, selectedEtapa, selectedGaragem])
 
   // Paginação da listagem
   const totalPages = Math.max(1, Math.ceil(filteredProcessos.length / pageSize))
@@ -1359,23 +1205,6 @@ export default function ProcessosCadastrais() {
                   <option value="CURSINO">CURSINO</option>
                   <option value="SAPOPEMBA">SAPOPEMBA</option>
                   <option value="GUAIANASES">GUAIANASES</option>
-                </select>
-              )}
-
-              {/* Filtro de Tipo de Carta */}
-              {!isTrafego && (
-                <select
-                  value={selectedTipoCarta}
-                  onChange={(event) => setSelectedTipoCarta(event.target.value)}
-                  className="h-10 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="Filtro de Tipo de carta"
-                >
-                  <option value="todos">Todos os tipos de carta</option>
-                  {tiposCartaDisponiveis.map((tipo) => (
-                    <option key={tipo} value={tipo}>
-                      {tipo}
-                    </option>
-                  ))}
                 </select>
               )}
             </div>
@@ -1786,7 +1615,6 @@ export default function ProcessosCadastrais() {
         isEditMode={cartaProcessoIsEdit}
         onSuccess={() => {
           void carregarProcessos()
-          void carregarCartas()
         }}
       />
 

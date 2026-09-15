@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuth } from '@/contexts/AuthContext'
+import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
@@ -75,6 +76,15 @@ const DOCUMENT_FIELDS: { key: keyof CartaRecord; label: string }[] = [
   { key: 'doc_assinado_gestora', label: 'Doc. Assinado pela Gestora' },
 ]
 
+const TIPOS_CARTA_PADRAO = [
+  'Inclusão',
+  'PRAT',
+  'Retorno do Afastamento',
+  'Mudança de Função',
+  'Exclusão',
+  'Atualização',
+] as const
+
 export default function VisualizarCartasModal({ open, onOpenChange }: VisualizarCartasModalProps) {
   const { user } = useAuth()
   const userRole = ((user?.role as string) || 'Admin').toLowerCase()
@@ -84,6 +94,7 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
   const [cartas, setCartas] = useState<CartaRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedNumeroCarta, setSelectedNumeroCarta] = useState<string>('')
+  const [selectedTipoCarta, setSelectedTipoCarta] = useState<string>('todos')
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
 
@@ -125,6 +136,25 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
     }
   }, [open])
 
+  // Recarrega as cartas do banco
+  const refreshCartas = useCallback(async () => {
+    try {
+      const records = await listCartas()
+      setCartas(records)
+      return records
+    } catch (err) {
+      console.error('Erro ao atualizar lista de cartas:', err)
+      return []
+    }
+  }, [])
+
+  // Atualização em tempo real quando a coleção cartas for modificada
+  useRealtime('cartas', () => {
+    if (open) {
+      void refreshCartas()
+    }
+  })
+
   // Carrega anexos dinâmicos quando a carta selecionada muda
   useEffect(() => {
     if (!selectedNumeroCarta) {
@@ -144,14 +174,14 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
       })
   }, [selectedNumeroCarta])
 
-  // Lista ordenada de todos os números únicos de cartas cadastrados
-  const allNumerosCarta = useMemo(() => {
-    const set = new Set<string>()
+  // Lista ordenada de todos os tipos de carta disponíveis (padrão + existentes)
+  const tiposCartaDisponiveis = useMemo(() => {
+    const set = new Set<string>(TIPOS_CARTA_PADRAO)
     cartas.forEach((c) => {
-      const num = (c.numero_carta || '').trim()
-      if (num) set.add(num)
+      const t = (c.tipo_carta || '').trim()
+      if (t) set.add(t)
     })
-    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    return Array.from(set)
   }, [cartas])
 
   // Normalizador simples para pesquisa insensível a maiúsculas e acentos
@@ -164,11 +194,23 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
 
   const normalizedQuery = useMemo(() => normalize(searchQuery), [searchQuery])
 
-  // Filtragem combinada das cartas com base na busca por texto
-  // (número da carta, nome do colaborador ou registro/matrícula)
+  // Helper de conferência de tipo de carta
+  const matchesTipo = useCallback((tipoCarta: string | undefined, tipoFiltro: string) => {
+    if (tipoFiltro === 'todos') return true
+    return normalize(tipoCarta || '') === normalize(tipoFiltro)
+  }, [])
+
+  // Filtragem combinada das cartas com base na busca por texto e no tipo de carta
+  // (número da carta, nome do colaborador ou registro/matrícula + tipo_carta)
   const matchingCartas = useMemo(() => {
-    if (!normalizedQuery) return cartas
     return cartas.filter((c) => {
+      // Filtro de tipo de carta
+      if (selectedTipoCarta !== 'todos' && !matchesTipo(c.tipo_carta, selectedTipoCarta)) {
+        return false
+      }
+
+      // Filtro de texto de busca
+      if (!normalizedQuery) return true
       const numNorm = normalize(c.numero_carta || '')
       const colabNorm = normalize(c.colaborador || '')
       const matNorm = normalize(c.matricula || '')
@@ -180,9 +222,9 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
         (unpaddedMat && unpaddedMat.includes(normalizedQuery))
       )
     })
-  }, [cartas, normalizedQuery])
+  }, [cartas, selectedTipoCarta, matchesTipo, normalizedQuery])
 
-  // Números de carta disponíveis após aplicar o filtro de pesquisa
+  // Números de carta disponíveis após aplicar os filtros de tipo e texto
   const filteredNumerosCarta = useMemo(() => {
     const set = new Set<string>()
     matchingCartas.forEach((c) => {
@@ -210,20 +252,24 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
     setSelectedNumeroCarta(filteredNumerosCarta[0])
   }, [filteredNumerosCarta, selectedNumeroCarta])
 
-  // Colaboradores vinculados à carta selecionada
+  // Colaboradores vinculados à carta selecionada respeitando os filtros ativos (tipo de carta e texto)
   const colaboradoresDaCarta = useMemo(() => {
     if (!selectedNumeroCarta) return []
     const list = cartas.filter((c) => (c.numero_carta || '').trim() === selectedNumeroCarta)
 
-    // Se houver busca por texto ativa, destaca e prioriza quem deu match no texto
-    if (!normalizedQuery) return list
-
     return list.filter((c) => {
+      // Filtro de tipo de carta
+      if (selectedTipoCarta !== 'todos' && !matchesTipo(c.tipo_carta, selectedTipoCarta)) {
+        return false
+      }
+
+      if (!normalizedQuery) return true
+
       const numNorm = normalize(c.numero_carta || '')
       const colabNorm = normalize(c.colaborador || '')
       const matNorm = normalize(c.matricula || '')
       const unpaddedMat = normalize((c.matricula || '').replace(/^0+/, ''))
-      // Se a busca deu match no número da carta em si, exibe todos os colaboradores vinculados
+      // Se a busca deu match no número da carta em si, exibe os colaboradores que batem com o tipo
       if (numNorm.includes(normalizedQuery)) return true
       return (
         colabNorm.includes(normalizedQuery) ||
@@ -231,7 +277,7 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
         (unpaddedMat && unpaddedMat.includes(normalizedQuery))
       )
     })
-  }, [cartas, selectedNumeroCarta, normalizedQuery])
+  }, [cartas, selectedNumeroCarta, selectedTipoCarta, matchesTipo, normalizedQuery])
 
   // Reseta os itens expandidos sempre que o número da carta selecionada mudar,
   // garantindo que todos os colaboradores venham recolhidos (collapsed) por padrão
@@ -265,17 +311,12 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
     setSearchQuery('')
   }
 
-  // Recarrega as cartas do banco
-  const refreshCartas = async () => {
-    try {
-      const records = await listCartas()
-      setCartas(records)
-      return records
-    } catch (err) {
-      console.error('Erro ao atualizar lista de cartas:', err)
-      return []
-    }
+  const handleClearFilters = () => {
+    setSearchQuery('')
+    setSelectedTipoCarta('todos')
   }
+
+  const hasActiveFilters = Boolean(searchQuery.trim() || selectedTipoCarta !== 'todos')
 
   // Confirmar exclusão da carta inteira
   const handleConfirmDeleteCarta = async () => {
@@ -360,38 +401,78 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Campo de pesquisa no topo: filtra por nº da carta, colaborador ou matrícula */}
-            <div className="space-y-1.5">
-              <Label htmlFor="busca-carta" className="text-xs font-semibold">
-                Buscar Carta ou Colaborador
-              </Label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="busca-carta"
-                  type="text"
-                  placeholder="Pesquisar por número da carta, nome do colaborador ou registro (matrícula)…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-9 text-xs sm:text-sm"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={handleResetSearch}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
-                    title="Limpar pesquisa"
-                    aria-label="Limpar pesquisa"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+            {/* Controles de Filtros: Pesquisa por texto + Dropdown de Tipo de carta */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="busca-carta" className="text-xs font-semibold">
+                  Buscar Carta ou Colaborador
+                </Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="busca-carta"
+                    type="text"
+                    placeholder="Número da carta, colaborador ou matrícula…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-9 text-xs sm:text-sm"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={handleResetSearch}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                      title="Limpar pesquisa"
+                      aria-label="Limpar pesquisa"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
-              {searchQuery && (
-                <p className="text-[11px] text-muted-foreground">
-                  Encontrado(s) {filteredNumerosCarta.length} número(s) de carta com{' '}
-                  {matchingCartas.length} registro(s) correspondente(s).
-                </p>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="filtro-tipo-carta" className="text-xs font-semibold">
+                  Tipo de Carta
+                </Label>
+                <select
+                  id="filtro-tipo-carta"
+                  value={selectedTipoCarta}
+                  onChange={(e) => setSelectedTipoCarta(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-white px-3 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Filtro de Tipo de carta"
+                >
+                  <option value="todos">Todos os tipos de carta</option>
+                  {tiposCartaDisponiveis.map((tipo) => (
+                    <option key={tipo} value={tipo}>
+                      {tipo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Barra informativa de resultados e limpar filtros */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <span>
+                Total de <strong className="text-foreground">{filteredNumerosCarta.length}</strong>{' '}
+                carta(s) emitida(s) ·{' '}
+                <strong className="text-foreground">{matchingCartas.length}</strong> vínculo(s)
+                {selectedTipoCarta !== 'todos' && (
+                  <>
+                    {' '}
+                    (Tipo: <strong>{selectedTipoCarta}</strong>)
+                  </>
+                )}
+              </span>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Limpar filtros
+                </button>
               )}
             </div>
 
@@ -410,7 +491,18 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
 
               {filteredNumerosCarta.length === 0 ? (
                 <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-                  Nenhuma carta encontrada para a busca &quot;{searchQuery}&quot;.
+                  Nenhuma carta encontrada com os filtros selecionados.
+                  {hasActiveFilters && (
+                    <div className="mt-1.5">
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        className="text-xs font-medium text-primary underline"
+                      >
+                        Limpar filtros
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
