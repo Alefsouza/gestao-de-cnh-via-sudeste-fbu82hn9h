@@ -1289,30 +1289,38 @@ export default function ProcessosCadastrais() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5">
-                        <FilePlus2 className="h-3.5 w-3.5 text-muted-foreground/70" />
-                        {processo.etapa}
-                      </span>
+                      {processo.processo === 'Atualização' ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <FilePlus2 className="h-3.5 w-3.5 text-muted-foreground/70" />
+                          {processo.etapa}
+                        </span>
+                      ) : (
+                        <span>—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                        <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/70" />
-                        <span>{formatDate(processo.prazo)}</span>
-                        {processo.alerta_trafego && (
-                          <span
-                            className="inline-flex items-center justify-center text-amber-600 hover:text-amber-700 cursor-help"
-                            title={
-                              ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] ||
-                              processo.alerta_trafego
-                            }
-                            aria-label={
-                              ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] || 'Alerta Tráfego'
-                            }
-                          >
-                            <TriangleAlert className="h-4 w-4" />
-                          </span>
-                        )}
-                      </span>
+                      {processo.processo === 'Atualização' ? (
+                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                          <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/70" />
+                          <span>{formatDate(processo.prazo)}</span>
+                          {processo.alerta_trafego && (
+                            <span
+                              className="inline-flex items-center justify-center text-amber-600 hover:text-amber-700 cursor-help"
+                              title={
+                                ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] ||
+                                processo.alerta_trafego
+                              }
+                              aria-label={
+                                ALERTA_TRAFEGO_LABELS[processo.alerta_trafego] || 'Alerta Tráfego'
+                              }
+                            >
+                              <TriangleAlert className="h-4 w-4" />
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
