@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CheckCircle2, FileText, Loader2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -21,7 +21,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuth } from '@/contexts/AuthContext'
+import { cn } from '@/lib/utils'
+import {
+  CAMPOS_FIXOS_ATUALIZACAO_MOTORISTA,
+  CAMPOS_FIXOS_ATUALIZACAO_FISCAL_COBRADOR,
+} from '@/components/CartaProcessoModal'
 import { createCarta } from '@/services/cartas'
+import { uploadProcessoAnexo } from '@/services/processoAnexos'
+import { createTimelineItem } from '@/services/processoTimeline'
+import { updateProcessoSituacao } from '@/services/processosCadastrais'
 import type { Employee, UserRole } from '@/lib/types'
 
 interface NovaCartaModalProps {
@@ -29,6 +37,7 @@ interface NovaCartaModalProps {
   onOpenChange: (open: boolean) => void
   employee: Employee | null
   processoSituacao?: string
+  processoId?: string
   onSuccess?: () => void
 }
 
@@ -41,12 +50,53 @@ const TIPOS_CARTA_PADRAO = [
   'Outro',
 ]
 
-interface FileState {
-  cnh: File | null
-  prontuario: File | null
-  comprovante_residencia: File | null
-  atestado: File | null
-  doc_assinado_gestora: File | null
+// Mapeamento legado para preencher campos da tabela cartas
+function mapTituloParaLegado(
+  titulo: string,
+): 'cnh' | 'prontuario' | 'comprovante_residencia' | 'atestado' | 'doc_assinado_gestora' | null {
+  const t = (titulo || '').toLowerCase()
+  if (
+    t.includes('sabrina') ||
+    t.includes('gestora') ||
+    t.includes('assinado') ||
+    t.includes('assinada') ||
+    t.includes('diretor') ||
+    t.includes('ferraz') ||
+    t.includes('leandro') ||
+    t.includes('aptidão') ||
+    t.includes('aptidao')
+  ) {
+    return 'doc_assinado_gestora'
+  }
+  if (
+    t.includes('antecedente') ||
+    t.includes('criminais') ||
+    t.includes('atestado') ||
+    t.includes('aso') ||
+    t.includes('laudo')
+  ) {
+    return 'atestado'
+  }
+  if (
+    t.includes('residência') ||
+    t.includes('residencia') ||
+    t.includes('endereço') ||
+    t.includes('endereco')
+  ) {
+    return 'comprovante_residencia'
+  }
+  if (
+    t.includes('prontuário') ||
+    t.includes('prontuario') ||
+    t.includes('certidão') ||
+    t.includes('certidao')
+  ) {
+    return 'prontuario'
+  }
+  if (t.includes('cnh') || t.includes('rg') || t.includes('pessoal')) {
+    return 'cnh'
+  }
+  return null
 }
 
 export default function NovaCartaModal({
@@ -54,6 +104,7 @@ export default function NovaCartaModal({
   onOpenChange,
   employee,
   processoSituacao,
+  processoId,
   onSuccess,
 }: NovaCartaModalProps) {
   const { user } = useAuth()
@@ -75,14 +126,19 @@ export default function NovaCartaModal({
         : 'Regularização de CNH',
   )
   const [funcaoCarta, setFuncaoCarta] = useState(employee?.funcao || '')
-  const [files, setFiles] = useState<FileState>({
-    cnh: null,
-    prontuario: null,
-    comprovante_residencia: null,
-    atestado: null,
-    doc_assinado_gestora: null,
-  })
+  // Mapa de arquivos indexado pelo nome do campo fixo
+  const [anexosMap, setAnexosMap] = useState<Record<string, File | null>>({})
   const [saving, setSaving] = useState(false)
+
+  // Determina lista de campos fixos baseada na função (funcaoCarta ou employee.funcao)
+  const camposFixos = useMemo(() => {
+    const fn = (funcaoCarta || employee?.funcao || '').trim().toLowerCase()
+    const isMotorista = fn.includes('motorist')
+    if (isMotorista) {
+      return CAMPOS_FIXOS_ATUALIZACAO_MOTORISTA
+    }
+    return CAMPOS_FIXOS_ATUALIZACAO_FISCAL_COBRADOR
+  }, [funcaoCarta, employee?.funcao])
 
   // Quando o colaborador muda ou o modal abre, reinicia o estado
   const handleOpenChange = (nextOpen: boolean) => {
@@ -97,24 +153,25 @@ export default function NovaCartaModal({
             : 'Regularização de CNH',
       )
       setFuncaoCarta(String(employee.funcao || ''))
-      setFiles({
-        cnh: null,
-        prontuario: null,
-        comprovante_residencia: null,
-        atestado: null,
-        doc_assinado_gestora: null,
-      })
+      setAnexosMap({})
     }
     onOpenChange(nextOpen)
   }
 
-  const handleFileChange = (field: keyof FileState, fileList: FileList | null) => {
+  const handleFileChange = (campo: string, fileList: FileList | null) => {
     const file = fileList && fileList[0] ? fileList[0] : null
-    setFiles((prev) => ({ ...prev, [field]: file }))
+    if (file) {
+      const MAX_SIZE = 10 * 1024 * 1024
+      if (file.size > MAX_SIZE) {
+        toast.error(`O arquivo "${file.name}" excede o tamanho máximo permitido de 10 MB.`)
+        return
+      }
+    }
+    setAnexosMap((prev) => ({ ...prev, [campo]: file }))
   }
 
-  const removeFile = (field: keyof FileState) => {
-    setFiles((prev) => ({ ...prev, [field]: null }))
+  const removeFile = (campo: string) => {
+    setAnexosMap((prev) => ({ ...prev, [campo]: null }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -137,13 +194,13 @@ export default function NovaCartaModal({
       return
     }
 
-    // Validação estrita dos 5 anexos
+    // Validação de preenchimento dos campos fixos da função
     const missing: string[] = []
-    if (!files.cnh) missing.push('CNH')
-    if (!files.prontuario) missing.push('Prontuário')
-    if (!files.comprovante_residencia) missing.push('Comprovante de Residência')
-    if (!files.atestado) missing.push('Atestado')
-    if (!files.doc_assinado_gestora) missing.push('Doc. Assinado pela Gestora')
+    for (const campo of camposFixos) {
+      if (!anexosMap[campo]) {
+        missing.push(campo)
+      }
+    }
 
     if (missing.length > 0) {
       toast.error(`Anexo(s) obrigatório(s) ausente(s): ${missing.join(', ')}.`)
@@ -152,24 +209,92 @@ export default function NovaCartaModal({
 
     setSaving(true)
     try {
+      const numCartaTrim = numeroCarta.trim()
+      const matricula = employee.chapa || employee.registro || ''
+      const colaboradorNome = employee.name
+
+      // Monta mapeamento legado para a tabela `cartas`
+      const legacyFiles: {
+        cnh?: File
+        prontuario?: File
+        comprovante_residencia?: File
+        atestado?: File
+        doc_assinado_gestora?: File
+      } = {}
+
+      for (const campo of camposFixos) {
+        const file = anexosMap[campo]
+        if (!file) continue
+        const legField = mapTituloParaLegado(campo)
+        if (legField && !legacyFiles[legField]) {
+          legacyFiles[legField] = file
+        }
+      }
+
+      // 1. Cria a carta na coleção `cartas`
       await createCarta({
-        numero_carta: numeroCarta.trim(),
-        colaborador: employee.name,
-        matricula: employee.chapa || employee.registro || '',
+        numero_carta: numCartaTrim,
+        colaborador: colaboradorNome,
+        matricula,
         funcao_carta: funcaoCarta.trim(),
         tipo_carta: tipoCarta.trim(),
-        cnh: files.cnh!,
-        prontuario: files.prontuario!,
-        comprovante_residencia: files.comprovante_residencia!,
-        atestado: files.atestado!,
-        doc_assinado_gestora: files.doc_assinado_gestora!,
+        cnh: legacyFiles.cnh,
+        prontuario: legacyFiles.prontuario,
+        comprovante_residencia: legacyFiles.comprovante_residencia,
+        atestado: legacyFiles.atestado,
+        doc_assinado_gestora: legacyFiles.doc_assinado_gestora,
         garagem: employee.filial || 'CURSINO',
         responsavel_nome: currentUserName,
         responsavel_perfil: currentRole,
+        processoId,
       })
 
+      // 2. Salva cada arquivo na coleção `processo_anexos` vinculado a processoId, numero_carta, matricula e colaborador
+      for (const campo of camposFixos) {
+        const file = anexosMap[campo]
+        if (!file) continue
+        try {
+          const savedAnexo = await uploadProcessoAnexo({
+            processoId,
+            numero_carta: numCartaTrim,
+            matricula,
+            colaborador: colaboradorNome,
+            titulo: campo,
+            arquivo: file,
+            criado_por: user?.id,
+            criado_por_nome: currentUserName,
+          })
+
+          // 3. Registra na linha do tempo: "Documento anexado: [documento]"
+          if (processoId) {
+            try {
+              await createTimelineItem({
+                processo: processoId,
+                etapa: 'Documento anexado',
+                responsavel_nome: currentUserName,
+                responsavel_perfil: currentRole,
+                observacoes: `Documento anexado: ${campo} (${savedAnexo.arquivo || file.name})`,
+              })
+            } catch (tlErr) {
+              console.warn('Erro ao registrar anexo na timeline:', tlErr)
+            }
+          }
+        } catch (uploadErr) {
+          console.warn(`Erro ao fazer upload do anexo "${campo}":`, uploadErr)
+        }
+      }
+
+      // 4. Ao concluir anexos/emissão, atualiza a situação do processo em processos_cadastrais para 'Regular'
+      if (processoId) {
+        try {
+          await updateProcessoSituacao(processoId, 'Regular')
+        } catch (regErr) {
+          console.warn('Erro ao atualizar situação para Regular:', regErr)
+        }
+      }
+
       toast.success(
-        `Carta nº ${numeroCarta} cadastrada! O processo de ${employee.name} foi atualizado para "Regular".`,
+        `Carta nº ${numCartaTrim} cadastrada! O processo de ${colaboradorNome} foi atualizado para "Regular".`,
       )
       onOpenChange(false)
       if (onSuccess) onSuccess()
@@ -191,9 +316,10 @@ export default function NovaCartaModal({
             Emissão e Regularização de Carta
           </DialogTitle>
           <DialogDescription>
-            Cadastre os dados e anexe os 5 documentos obrigatórios para regularizar o processo do
-            colaborador. Ao salvar, a situação em <strong>Processos Cadastrais</strong> será
-            atualizada para <strong>&quot;Regular&quot;</strong>.
+            Cadastre os dados e anexe os documentos obrigatórios ({camposFixos.length} campos) para
+            regularizar o processo do colaborador. Ao salvar, a situação em{' '}
+            <strong>Processos Cadastrais</strong> será atualizada para{' '}
+            <strong>&quot;Regular&quot;</strong>.
           </DialogDescription>
         </DialogHeader>
 
@@ -290,57 +416,31 @@ export default function NovaCartaModal({
             </p>
           </div>
 
-          {/* 5 campos de anexo obrigatórios */}
+          {/* Campos de anexo específicos por função */}
           <div className="space-y-2 rounded-lg border p-3">
             <div className="flex items-center justify-between border-b pb-2">
               <span className="text-xs font-bold text-foreground">
-                Documentos Anexos (5 obrigatórios)
+                Documentos Anexos ({camposFixos.length} obrigatórios)
               </span>
               <span className="text-[11px] text-muted-foreground">
-                Formatos aceitos: PDF, JPG, PNG
+                Formatos: PDF, JPG, PNG, DOCX (máx. 10 MB)
               </span>
             </div>
 
-            <div className="space-y-3 pt-1">
-              <FileInputField
-                label="1. CNH"
-                file={files.cnh}
-                onChange={(f) => handleFileChange('cnh', f)}
-                onRemove={() => removeFile('cnh')}
-                disabled={saving}
-              />
-
-              <FileInputField
-                label="2. Prontuário"
-                file={files.prontuario}
-                onChange={(f) => handleFileChange('prontuario', f)}
-                onRemove={() => removeFile('prontuario')}
-                disabled={saving}
-              />
-
-              <FileInputField
-                label="3. Comprovante de Residência"
-                file={files.comprovante_residencia}
-                onChange={(f) => handleFileChange('comprovante_residencia', f)}
-                onRemove={() => removeFile('comprovante_residencia')}
-                disabled={saving}
-              />
-
-              <FileInputField
-                label="4. Atestado"
-                file={files.atestado}
-                onChange={(f) => handleFileChange('atestado', f)}
-                onRemove={() => removeFile('atestado')}
-                disabled={saving}
-              />
-
-              <FileInputField
-                label="5. Doc. Assinado pela Gestora"
-                file={files.doc_assinado_gestora}
-                onChange={(f) => handleFileChange('doc_assinado_gestora', f)}
-                onRemove={() => removeFile('doc_assinado_gestora')}
-                disabled={saving}
-              />
+            <div className="space-y-2 pt-1">
+              {camposFixos.map((campo, index) => {
+                const file = anexosMap[campo] || null
+                return (
+                  <FileInputField
+                    key={campo}
+                    label={`${index + 1}. ${campo}`}
+                    file={file}
+                    onChange={(fl) => handleFileChange(campo, fl)}
+                    onRemove={() => removeFile(campo)}
+                    disabled={saving}
+                  />
+                )
+              })}
             </div>
           </div>
 
@@ -387,48 +487,87 @@ function FileInputField({
   onRemove: () => void
   disabled?: boolean
 }) {
-  return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-xs rounded-md bg-muted/20 p-2 border border-dashed border-border/80">
-      <div className="flex items-center gap-2">
-        <span className="font-semibold text-foreground min-w-[180px]">{label}</span>
-        {file ? (
-          <span className="inline-flex items-center gap-1 text-emerald-700 font-medium truncate max-w-[220px]">
-            <FileText className="h-3.5 w-3.5 flex-none" />
-            <span className="truncate">{file.name}</span>
-            <span className="text-[10px] text-muted-foreground flex-none">
-              ({(file.size / 1024).toFixed(0)} KB)
-            </span>
-          </span>
-        ) : (
-          <span className="text-muted-foreground italic text-[11px]">Nenhum arquivo anexado</span>
-        )}
-      </div>
+  const inputId = `file-${label.replace(/[^a-zA-Z0-9]/g, '_')}`
+  const temArquivo = !!file
 
-      <div className="flex items-center gap-2 self-end sm:self-auto">
-        {file ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            disabled={disabled}
-            className="inline-flex items-center gap-1 text-rose-600 hover:text-rose-800 text-[11px] font-medium"
-            title="Remover arquivo"
+  return (
+    <div
+      className={cn(
+        'rounded-md border p-2.5 transition-colors',
+        temArquivo
+          ? 'bg-card border-emerald-300/60 dark:border-emerald-800/60'
+          : 'bg-background/90 border-border/80 hover:border-border',
+      )}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div
+            className={cn(
+              'flex h-6 w-6 flex-none items-center justify-center rounded-full text-xs font-semibold',
+              temArquivo
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                : 'bg-muted text-muted-foreground',
+            )}
           >
-            <X className="h-3.5 w-3.5" />
-            Remover
-          </button>
-        ) : (
-          <label className="inline-flex items-center gap-1.5 cursor-pointer rounded-md bg-white border border-input px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors">
-            <Upload className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>Anexar</span>
-            <input
-              type="file"
-              className="hidden"
-              onChange={(e) => onChange(e.target.files)}
+            {temArquivo ? (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            ) : (
+              <FileText className="h-3.5 w-3.5" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-xs text-foreground truncate">{label}</p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {temArquivo ? (
+                <span className="text-emerald-700 dark:text-emerald-300 font-medium">
+                  ✓ Anexado: {file.name} ({(file.size / 1024).toFixed(0)} KB)
+                </span>
+              ) : (
+                'Pendente — Nenhum arquivo anexado (máx. 10 MB)'
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-none self-end sm:self-auto">
+          {temArquivo ? (
+            <button
+              type="button"
+              onClick={onRemove}
               disabled={disabled}
-              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-            />
+              className="inline-flex items-center gap-1 text-[11px] text-rose-600 hover:text-rose-800 font-medium px-2 py-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              title="Remover arquivo selecionado"
+            >
+              <X className="h-3 w-3" />
+              Remover
+            </button>
+          ) : null}
+
+          <input
+            id={inputId}
+            type="file"
+            className="hidden"
+            disabled={disabled}
+            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+            onChange={(e) => {
+              onChange(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <label
+            htmlFor={inputId}
+            className={cn(
+              'inline-flex h-7 items-center justify-center gap-1.5 cursor-pointer rounded-md px-2.5 text-[11px] font-medium transition-colors',
+              temArquivo
+                ? 'border border-input bg-background hover:bg-muted text-foreground'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90',
+            )}
+            title={temArquivo ? `Substituir arquivo para ${label}` : `Anexar ${label}`}
+          >
+            <Upload className="h-3 w-3" />
+            <span>{temArquivo ? 'Substituir' : 'Anexar'}</span>
           </label>
-        )}
+        </div>
       </div>
     </div>
   )

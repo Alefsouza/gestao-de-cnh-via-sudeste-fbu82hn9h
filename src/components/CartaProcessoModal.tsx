@@ -144,6 +144,23 @@ const CAMPOS_FIXOS_MUDANCA_FISCAL_COBRADOR = [
   'CTPS constando a mudança de função',
 ]
 
+// ATUALIZAÇÃO CADASTRAL – MOTORISTA (5 campos verbatim)
+export const CAMPOS_FIXOS_ATUALIZACAO_MOTORISTA = [
+  'Carta assinada pela Sabrina',
+  'CNH atualizada',
+  'Certidão de prontuário',
+  'Comprovante de endereço',
+  'Atestado de antecedentes criminais',
+]
+
+// ATUALIZAÇÃO CADASTRAL – FISCAL OU COBRADOR (4 campos verbatim)
+export const CAMPOS_FIXOS_ATUALIZACAO_FISCAL_COBRADOR = [
+  'Carta assinada pela Sabrina',
+  'RG',
+  'Comprovante de endereço',
+  'Atestado de antecedentes criminais',
+]
+
 /**
  * Retorna os campos fixos de documentos para um colaborador específico dentro da carta,
  * respeitando o tipo de processo/carta e a função do colaborador.
@@ -183,7 +200,19 @@ export function getCamposFixosColaborador(
     return CAMPOS_FIXOS_MUDANCA_FISCAL_COBRADOR
   }
 
-  // 4. Demais processos (Inclusão, Exclusão, Atualização, etc.)
+  // 4. Processo Atualização Cadastral
+  if (tipo === 'atualização' || tipo === 'atualizacao' || tipo.includes('atualiza')) {
+    const funcaoNorm = (colab.funcao || '').trim().toLowerCase()
+    const isMotorista = funcaoNorm.includes('motorist')
+
+    if (isMotorista) {
+      return CAMPOS_FIXOS_ATUALIZACAO_MOTORISTA
+    }
+    // Fiscal, Cobrador e qualquer outra função (fallback) -> lista de 4
+    return CAMPOS_FIXOS_ATUALIZACAO_FISCAL_COBRADOR
+  }
+
+  // 5. Demais processos (Inclusão, Exclusão, etc.)
   return CAMPOS_FIXOS_PADRAO
 }
 
@@ -362,15 +391,34 @@ export default function CartaProcessoModal({
   // Mapeia título do anexo para o campo legado correspondente na coleção `cartas`
   const mapTituloParaCampoCarta = (titulo: string): string | null => {
     const t = (titulo || '').toLowerCase()
+
+    // 1. Doc assinado pela gestora / Sabrina / Leandro / etc.
     if (
-      t.includes('rg') ||
-      t.includes('cnh') ||
-      t.includes('pessoal') ||
-      t.includes('psicotécnico') ||
-      t.includes('psicotecnico')
+      t.includes('sabrina') ||
+      t.includes('gestora') ||
+      t.includes('assinado') ||
+      t.includes('assinada') ||
+      t.includes('diretor') ||
+      t.includes('ferraz') ||
+      t.includes('leandro') ||
+      t.includes('aptidão') ||
+      t.includes('aptidao')
     ) {
-      return 'cnh'
+      return 'doc_assinado_gestora'
     }
+
+    // 2. Atestados médicos ou antecedentes criminais
+    if (
+      t.includes('antecedente') ||
+      t.includes('criminais') ||
+      t.includes('atestado') ||
+      t.includes('aso') ||
+      t.includes('laudo')
+    ) {
+      return 'atestado'
+    }
+
+    // 3. Comprovante de residência / endereço
     if (
       t.includes('residência') ||
       t.includes('residencia') ||
@@ -381,31 +429,30 @@ export default function CartaProcessoModal({
     ) {
       return 'comprovante_residencia'
     }
+
+    // 4. Prontuário / Certidão de prontuário / CTPS / Cursos
     if (
       t.includes('prontuário') ||
       t.includes('prontuario') ||
-      t.includes('antecedente') ||
+      t.includes('certidão de prontuário') ||
+      t.includes('certidao de prontuario') ||
       t.includes('curso') ||
       t.includes('ctps')
     ) {
       return 'prontuario'
     }
-    if (t.includes('atestado') || t.includes('aso') || t.includes('laudo')) {
-      return 'atestado'
-    }
+
+    // 5. CNH / RG / CNH atualizada / Documento pessoal
     if (
-      t.includes('gestora') ||
-      t.includes('assinado') ||
-      t.includes('assinada') ||
-      t.includes('sabrina') ||
-      t.includes('diretor') ||
-      t.includes('ferraz') ||
-      t.includes('leandro') ||
-      t.includes('aptidão') ||
-      t.includes('aptidao')
+      t.includes('cnh') ||
+      t.includes('rg') ||
+      t.includes('pessoal') ||
+      t.includes('psicotécnico') ||
+      t.includes('psicotecnico')
     ) {
-      return 'doc_assinado_gestora'
+      return 'cnh'
     }
+
     return null
   }
 

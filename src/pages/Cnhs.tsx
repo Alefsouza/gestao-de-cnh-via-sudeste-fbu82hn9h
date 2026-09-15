@@ -715,7 +715,7 @@ export default function Cnhs() {
         )}
       </div>
 
-      {/* Pop-up de Carta com upload dos 5 documentos obrigatórios */}
+      {/* Pop-up de Carta com upload dos documentos obrigatórios (campos fixos por função) */}
       <NovaCartaModal
         open={cartaModalOpen}
         onOpenChange={setCartaModalOpen}
@@ -723,6 +723,7 @@ export default function Cnhs() {
         processoSituacao={
           cartaModalEmployee ? getProcessoForEmployee(cartaModalEmployee)?.situacao : undefined
         }
+        processoId={cartaModalEmployee ? getProcessoForEmployee(cartaModalEmployee)?.id : undefined}
         onSuccess={() => {
           void loadProcessos()
           void loadPage()
