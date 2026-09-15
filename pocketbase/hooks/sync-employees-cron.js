@@ -256,6 +256,8 @@ cronAdd('sync_employees', '0 * * * *', () => {
       'cpf',
       'data_desligamento',
       'motivo_desligamento',
+      'data_afastamento',
+      'data_retorno_afastamento',
     ]
 
     const stripAccents = (s) =>
@@ -356,7 +358,14 @@ cronAdd('sync_employees', '0 * * * *', () => {
 
       // 3. Fallback quando vazio/nulo: se houver motivo de afastamento, 'Afastado'; senão 'Ativo'
       const motivo = stripAccents(
-        pick(norm, ['motivo_afastamento', 'motivo_do_afastamento', 'motivo', 'motivoafastamento']),
+        pick(norm, [
+          'motivofast',
+          'motivo_fast',
+          'motivo_afastamento',
+          'motivo_do_afastamento',
+          'motivo',
+          'motivoafastamento',
+        ]),
       )
         .toLowerCase()
         .trim()
@@ -464,12 +473,50 @@ cronAdd('sync_employees', '0 * * * *', () => {
           ]),
         ),
         situacao_cnh: normSituacaoCnh(norm),
-        motivo_afastamento: pick(norm, ['motivo_afastamento', 'motivo_do_afastamento', 'motivo']),
+        motivo_afastamento: pick(norm, [
+          'motivofast',
+          'motivo_fast',
+          'motivo_afastamento',
+          'motivo_do_afastamento',
+          'motivo',
+          'motivoafastamento',
+        ]),
         inicio_afastamento: parseDate(
-          pick(norm, ['inicio_afastamento', 'inicio_do_afastamento', 'data_inicio_afastamento']),
+          pick(norm, [
+            'data_afastamento',
+            'dataafastamento',
+            'inicio_afastamento',
+            'inicio_do_afastamento',
+            'data_inicio_afastamento',
+          ]),
         ),
         previsao_retorno: parseDate(
-          pick(norm, ['previsao_retorno', 'previsao_de_retorno', 'data_retorno']),
+          pick(norm, [
+            'data_retorno_afastamento',
+            'dataretornoafastamento',
+            'previsao_retorno',
+            'previsao_de_retorno',
+            'data_retorno',
+          ]),
+        ),
+        data_afastamento: parseDate(
+          pick(norm, [
+            'data_afastamento',
+            'dataafastamento',
+            'dt_afastamento',
+            'dtafastamento',
+            'inicio_afastamento',
+          ]),
+        ),
+        data_retorno_afastamento: parseDate(
+          pick(norm, [
+            'data_retorno_afastamento',
+            'dataretornoafastamento',
+            'retorno_afastamento',
+            'retornoafastamento',
+            'dt_retorno_afastamento',
+            'previsao_retorno',
+          ]),
         ),
         documento_fiscal: pick(norm, ['documento_fiscal', 'doc_fiscal', 'certificado_mope']),
         validade_documento_fiscal: parseDate(

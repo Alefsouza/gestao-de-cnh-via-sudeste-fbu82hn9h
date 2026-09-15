@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-14T20:15:39.418Z",
+  "generatedAt": "2026-09-15T11:32:18.195Z",
   "collections": [
     {
       "name": "users",
@@ -203,6 +203,18 @@
         {
           "name": "motivo_desligamento",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_afastamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_retorno_afastamento",
+          "type": "date",
           "required": false,
           "system": false
         }
@@ -544,7 +556,8 @@
             "Exclusão",
             "Atualização",
             "Atualização Fiscal",
-            "PRAT"
+            "PRAT",
+            "Retorno do Afastamento"
           ]
         },
         {
@@ -638,6 +651,30 @@
         },
         {
           "name": "motivo_desligamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_afastamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_retorno_afastamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dias_afastado",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_afastamento",
           "type": "text",
           "required": false,
           "system": false

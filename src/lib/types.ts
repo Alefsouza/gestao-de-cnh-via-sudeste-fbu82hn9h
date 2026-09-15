@@ -20,6 +20,8 @@ export interface Employee {
   cpf?: string
   data_desligamento?: string
   motivo_desligamento?: string
+  data_afastamento?: string
+  data_retorno_afastamento?: string
   created: string
   updated: string
   expand?: { employee?: Employee }
@@ -76,6 +78,7 @@ export type ProcessoCategoria =
   | 'Atualização'
   | 'Atualização Fiscal'
   | 'PRAT'
+  | 'Retorno do Afastamento'
 
 export type ProcessoEtapa =
   | 'Análise'
@@ -110,6 +113,10 @@ export interface ProcessoCadastralRecord {
   data_troca_funcao?: string
   data_desligamento?: string
   motivo_desligamento?: string
+  data_afastamento?: string
+  data_retorno_afastamento?: string
+  dias_afastado?: number
+  motivo_afastamento?: string
   created?: string
   updated?: string
 }

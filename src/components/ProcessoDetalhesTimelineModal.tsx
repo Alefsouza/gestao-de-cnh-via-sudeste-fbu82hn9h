@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Truck,
   User,
+  UserCheck,
   UserMinus,
   X,
 } from 'lucide-react'
@@ -599,6 +600,62 @@ export function ProcessoDetalhesTimelineModal({
                           </span>
                           <span className="font-semibold text-rose-950 block leading-snug">
                             {processo.motivo_desligamento}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {/* Bloco exclusivo para Retorno do Afastamento (Dados do Afastamento) */}
+              {processo.processo === 'Retorno do Afastamento' &&
+                (processo.data_afastamento ||
+                  processo.data_retorno_afastamento ||
+                  processo.dias_afastado !== undefined ||
+                  processo.motivo_afastamento) && (
+                  <div className="mt-3 rounded-lg border border-indigo-200/80 bg-indigo-50/60 p-3 text-xs space-y-2">
+                    <div className="flex items-center gap-1.5 font-bold text-indigo-900">
+                      <UserCheck className="h-3.5 w-3.5 text-indigo-700" />
+                      <span>Dados do Afastamento</span>
+                    </div>
+
+                    <div className="space-y-2 rounded bg-white/80 p-2.5 border border-indigo-200">
+                      {processo.data_afastamento && (
+                        <div className="flex items-center justify-between text-[11px] border-b pb-1.5 border-indigo-100">
+                          <span className="text-indigo-900 font-medium">Data do Afastamento:</span>
+                          <span className="font-semibold text-foreground">
+                            {formatDate(processo.data_afastamento)}
+                          </span>
+                        </div>
+                      )}
+
+                      {processo.data_retorno_afastamento && (
+                        <div className="flex items-center justify-between text-[11px] border-b pb-1.5 border-indigo-100">
+                          <span className="text-indigo-900 font-medium">
+                            Retorno do Afastamento:
+                          </span>
+                          <span className="font-semibold text-foreground">
+                            {formatDate(processo.data_retorno_afastamento)}
+                          </span>
+                        </div>
+                      )}
+
+                      {processo.dias_afastado !== undefined && processo.dias_afastado !== null && (
+                        <div className="flex items-center justify-between text-[11px] border-b pb-1.5 border-indigo-100">
+                          <span className="text-indigo-900 font-medium">Dias Afastado:</span>
+                          <span className="font-semibold text-indigo-950">
+                            {processo.dias_afastado} dia(s)
+                          </span>
+                        </div>
+                      )}
+
+                      {processo.motivo_afastamento && (
+                        <div className="text-[11px]">
+                          <span className="block text-[10px] text-muted-foreground mb-0.5">
+                            Motivo do Afastamento:
+                          </span>
+                          <span className="font-semibold text-indigo-950 block leading-snug">
+                            {processo.motivo_afastamento}
                           </span>
                         </div>
                       )}

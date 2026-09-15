@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  ArrowRightLeft,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -19,6 +18,8 @@ import {
   Search,
   Trash2,
   TriangleAlert,
+  ArrowRightLeft,
+  UserCheck,
   UserMinus,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -81,7 +82,14 @@ import type {
 import { cn } from '@/lib/utils'
 
 // Categorias ativas para novos processos, formulários e cards de filtro
-const CATEGORIAS = ['Inclusão', 'PRAT', 'Mudança de Função', 'Exclusão', 'Atualização'] as const
+const CATEGORIAS = [
+  'Inclusão',
+  'PRAT',
+  'Retorno do Afastamento',
+  'Mudança de Função',
+  'Exclusão',
+  'Atualização',
+] as const
 type Categoria = (typeof CATEGORIAS)[number]
 
 const CARD_STYLES: Record<
@@ -100,6 +108,12 @@ const CARD_STYLES: Record<
     bg: 'bg-teal-50',
     text: 'text-teal-700',
   },
+  'Retorno do Afastamento': {
+    icon: UserCheck,
+    ring: 'border-indigo-200',
+    bg: 'bg-indigo-50',
+    text: 'text-indigo-700',
+  },
   'Mudança de Função': {
     icon: RefreshCcw,
     ring: 'border-amber-200',
@@ -113,6 +127,7 @@ const CARD_STYLES: Record<
 const PROCESSO_BADGE_STYLES: Record<Categoria, string> = {
   Inclusão: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   PRAT: 'bg-teal-50 text-teal-700 border-teal-200',
+  'Retorno do Afastamento': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Mudança de Função': 'bg-amber-50 text-amber-700 border-amber-200',
   Exclusão: 'bg-rose-50 text-rose-700 border-rose-200',
   Atualização: 'bg-sky-50 text-sky-700 border-sky-200',
@@ -161,6 +176,10 @@ interface ProcessoCadastral {
   data_troca_funcao?: string
   data_desligamento?: string
   motivo_desligamento?: string
+  data_afastamento?: string
+  data_retorno_afastamento?: string
+  dias_afastado?: number
+  motivo_afastamento?: string
 }
 
 const ALERTA_TRAFEGO_LABELS: Record<string, string> = {
@@ -255,6 +274,10 @@ export default function ProcessosCadastrais() {
           data_troca_funcao: r.data_troca_funcao || '',
           data_desligamento: r.data_desligamento || '',
           motivo_desligamento: r.motivo_desligamento || '',
+          data_afastamento: r.data_afastamento || '',
+          data_retorno_afastamento: r.data_retorno_afastamento || '',
+          dias_afastado: r.dias_afastado,
+          motivo_afastamento: r.motivo_afastamento || '',
         })),
       )
     } catch (err) {
@@ -371,6 +394,10 @@ export default function ProcessosCadastrais() {
             data_troca_funcao?: string
             data_desligamento?: string
             motivo_desligamento?: string
+            data_afastamento?: string
+            data_retorno_afastamento?: string
+            dias_afastado?: number
+            motivo_afastamento?: string
           }
         | Array<{
             processo: Categoria
@@ -388,6 +415,10 @@ export default function ProcessosCadastrais() {
             data_troca_funcao?: string
             data_desligamento?: string
             motivo_desligamento?: string
+            data_afastamento?: string
+            data_retorno_afastamento?: string
+            dias_afastado?: number
+            motivo_afastamento?: string
           }>,
     ) => {
       const itemsToCreate = Array.isArray(data) ? data : [data]
@@ -400,9 +431,12 @@ export default function ProcessosCadastrais() {
           const isoPrazo = toSafeIsoString(item.prazo)
           const isoDataTroca = toSafeIsoString(item.data_troca_funcao)
           const isoDataDesligamento = toSafeIsoString(item.data_desligamento)
+          const isoDataAfastamento = toSafeIsoString(item.data_afastamento)
+          const isoDataRetornoAfastamento = toSafeIsoString(item.data_retorno_afastamento)
           const isSemEtapa =
             item.processo === 'Inclusão' ||
             item.processo === 'PRAT' ||
+            item.processo === 'Retorno do Afastamento' ||
             item.processo === 'Mudança de Função' ||
             item.processo === 'Exclusão'
           const safeEtapa = isSemEtapa ? ETAPA_INICIAL : item.etapa || ETAPA_INICIAL
@@ -422,6 +456,10 @@ export default function ProcessosCadastrais() {
             data_troca_funcao: isoDataTroca || '',
             data_desligamento: isoDataDesligamento || '',
             motivo_desligamento: item.motivo_desligamento || '',
+            data_afastamento: isoDataAfastamento || '',
+            data_retorno_afastamento: isoDataRetornoAfastamento || '',
+            dias_afastado: item.dias_afastado,
+            motivo_afastamento: item.motivo_afastamento || '',
           })
 
           novosCriados.push({
@@ -441,6 +479,11 @@ export default function ProcessosCadastrais() {
             data_troca_funcao: created.data_troca_funcao || isoDataTroca || '',
             data_desligamento: created.data_desligamento || isoDataDesligamento || '',
             motivo_desligamento: created.motivo_desligamento || item.motivo_desligamento || '',
+            data_afastamento: created.data_afastamento || isoDataAfastamento || '',
+            data_retorno_afastamento:
+              created.data_retorno_afastamento || isoDataRetornoAfastamento || '',
+            dias_afastado: created.dias_afastado ?? item.dias_afastado,
+            motivo_afastamento: created.motivo_afastamento || item.motivo_afastamento || '',
           })
           // Cria automaticamente o PRIMEIRO item na linha do tempo (timeline)
           // Requisito: Etapa "Processo criado", responsável logado, sem quebrar se falhar (best-effort)
@@ -508,14 +551,21 @@ export default function ProcessosCadastrais() {
       data_troca_funcao?: string
       data_desligamento?: string
       motivo_desligamento?: string
+      data_afastamento?: string
+      data_retorno_afastamento?: string
+      dias_afastado?: number
+      motivo_afastamento?: string
     }) => {
       try {
         const isoPrazo = toSafeIsoString(data.prazo)
         const isoDataTroca = toSafeIsoString(data.data_troca_funcao)
         const isoDataDesligamento = toSafeIsoString(data.data_desligamento)
+        const isoDataAfastamento = toSafeIsoString(data.data_afastamento)
+        const isoDataRetornoAfastamento = toSafeIsoString(data.data_retorno_afastamento)
         const isSemEtapa =
           data.processo === 'Inclusão' ||
           data.processo === 'PRAT' ||
+          data.processo === 'Retorno do Afastamento' ||
           data.processo === 'Mudança de Função' ||
           data.processo === 'Exclusão'
         const safeEtapa = isSemEtapa ? ETAPA_INICIAL : data.etapa || ETAPA_INICIAL
@@ -535,6 +585,10 @@ export default function ProcessosCadastrais() {
           data_troca_funcao: isoDataTroca || '',
           data_desligamento: isoDataDesligamento || '',
           motivo_desligamento: data.motivo_desligamento ?? '',
+          data_afastamento: isoDataAfastamento || '',
+          data_retorno_afastamento: isoDataRetornoAfastamento || '',
+          dias_afastado: data.dias_afastado,
+          motivo_afastamento: data.motivo_afastamento ?? '',
         })
 
         setProcessos((prev) =>
@@ -557,6 +611,14 @@ export default function ProcessosCadastrais() {
                 data_desligamento:
                   isoDataDesligamento || data.data_desligamento || item.data_desligamento,
                 motivo_desligamento: data.motivo_desligamento ?? item.motivo_desligamento,
+                data_afastamento:
+                  isoDataAfastamento || data.data_afastamento || item.data_afastamento,
+                data_retorno_afastamento:
+                  isoDataRetornoAfastamento ||
+                  data.data_retorno_afastamento ||
+                  item.data_retorno_afastamento,
+                dias_afastado: data.dias_afastado ?? item.dias_afastado,
+                motivo_afastamento: data.motivo_afastamento ?? item.motivo_afastamento,
               }
               return updatedItem
             }
@@ -779,6 +841,13 @@ export default function ProcessosCadastrais() {
         'Data Troca Função': formatDate(item.data_troca_funcao),
         'Data Desligamento': formatDate(item.data_desligamento),
         'Motivo Desligamento': item.motivo_desligamento || '',
+        'Data do Afastamento': formatDate(item.data_afastamento),
+        'Retorno do Afastamento': formatDate(item.data_retorno_afastamento),
+        'Dias Afastado':
+          item.dias_afastado !== undefined && item.dias_afastado !== null
+            ? String(item.dias_afastado)
+            : '',
+        'Motivo do Afastamento': item.motivo_afastamento || '',
         Etapa: item.etapa,
         Prazo: formatDate(item.prazo),
         Situação: item.situacao,
@@ -801,6 +870,10 @@ export default function ProcessosCadastrais() {
         { wch: 18 }, // Data Troca Função
         { wch: 18 }, // Data Desligamento
         { wch: 28 }, // Motivo Desligamento
+        { wch: 20 }, // Data do Afastamento
+        { wch: 22 }, // Retorno do Afastamento
+        { wch: 14 }, // Dias Afastado
+        { wch: 30 }, // Motivo do Afastamento
         { wch: 26 }, // Etapa
         { wch: 14 }, // Prazo
         { wch: 14 }, // Situação
@@ -885,7 +958,7 @@ export default function ProcessosCadastrais() {
 
       {/* Cards de resumo clicáveis (ocultos quando o perfil for Tráfego) */}
       {!isTrafego && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {CATEGORIAS.map((categoria) => {
             const style = CARD_STYLES[categoria]
             const Icon = style.icon
@@ -1556,6 +1629,10 @@ interface ProcessoCadastralFormData {
   data_troca_funcao?: string
   data_desligamento?: string
   motivo_desligamento?: string
+  data_afastamento?: string
+  data_retorno_afastamento?: string
+  dias_afastado?: number
+  motivo_afastamento?: string
 }
 
 interface ProcessoCadastralFormModalProps {
@@ -1581,6 +1658,21 @@ interface ColaboradorItem {
   // Campos específicos de Exclusão (Desligamento)
   data_desligamento?: string
   motivo_desligamento?: string
+  // Campos específicos de Retorno do Afastamento
+  data_afastamento?: string
+  data_retorno_afastamento?: string
+  dias_afastado?: number
+  motivo_afastamento?: string
+}
+
+function calculateDiasAfastado(inicio?: string, fim?: string): number | undefined {
+  if (!inicio || !fim) return undefined
+  const dInicio = new Date(inicio.includes('T') ? inicio : `${inicio}T12:00:00Z`)
+  const dFim = new Date(fim.includes('T') ? fim : `${fim}T12:00:00Z`)
+  if (Number.isNaN(dInicio.getTime()) || Number.isNaN(dFim.getTime())) return undefined
+  const diffTime = dFim.getTime() - dInicio.getTime()
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays >= 0 ? diffDays : undefined
 }
 
 function createEmptyColaborador(garagem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'): ColaboradorItem {
@@ -1595,6 +1687,10 @@ function createEmptyColaborador(garagem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'): C
     data_troca_funcao: '',
     data_desligamento: '',
     motivo_desligamento: '',
+    data_afastamento: '',
+    data_retorno_afastamento: '',
+    dias_afastado: undefined,
+    motivo_afastamento: '',
   }
 }
 
@@ -1622,6 +1718,10 @@ function ProcessoCadastralFormModal({
   const [dataTrocaFuncao, setDataTrocaFuncao] = useState('')
   const [dataDesligamento, setDataDesligamento] = useState('')
   const [motivoDesligamento, setMotivoDesligamento] = useState('')
+  const [dataAfastamento, setDataAfastamento] = useState('')
+  const [dataRetornoAfastamento, setDataRetornoAfastamento] = useState('')
+  const [diasAfastado, setDiasAfastado] = useState<number | undefined>(undefined)
+  const [motivoAfastamento, setMotivoAfastamento] = useState('')
   const [singleGaragem, setSingleGaragem] = useState<'CURSINO' | 'SAPOPEMBA'>('CURSINO')
   const [singleSearching, setSingleSearching] = useState(false)
   const [singleResolvedEmpId, setSingleResolvedEmpId] = useState<string | undefined>(undefined)
@@ -1651,10 +1751,23 @@ function ProcessoCadastralFormModal({
         const rawDataDesligamento = initialData.data_desligamento || ''
         setDataDesligamento(rawDataDesligamento ? rawDataDesligamento.slice(0, 10) : '')
         setMotivoDesligamento(initialData.motivo_desligamento || '')
+        const rawDataAfast = initialData.data_afastamento || ''
+        setDataAfastamento(rawDataAfast ? rawDataAfast.slice(0, 10) : '')
+        const rawDataRetorno = initialData.data_retorno_afastamento || ''
+        setDataRetornoAfastamento(rawDataRetorno ? rawDataRetorno.slice(0, 10) : '')
+        setDiasAfastado(
+          initialData.dias_afastado ??
+            calculateDiasAfastado(
+              rawDataAfast ? rawDataAfast.slice(0, 10) : '',
+              rawDataRetorno ? rawDataRetorno.slice(0, 10) : '',
+            ),
+        )
+        setMotivoAfastamento(initialData.motivo_afastamento || '')
         setEtapa(initialData.etapa || ETAPA_INICIAL)
         const isSemPrazoAlertaInitial =
           initialData.processo === 'Inclusão' ||
           initialData.processo === 'PRAT' ||
+          initialData.processo === 'Retorno do Afastamento' ||
           initialData.processo === 'Mudança de Função' ||
           initialData.processo === 'Exclusão'
         setPrazo(isSemPrazoAlertaInitial ? '' : initialData.prazo || '')
@@ -1674,6 +1787,10 @@ function ProcessoCadastralFormModal({
         setDataTrocaFuncao('')
         setDataDesligamento('')
         setMotivoDesligamento('')
+        setDataAfastamento('')
+        setDataRetornoAfastamento('')
+        setDiasAfastado(undefined)
+        setMotivoAfastamento('')
         setEtapa(ETAPA_INICIAL)
         setPrazo('')
         setSituacao('Pendente')
@@ -1717,6 +1834,19 @@ function ProcessoCadastralFormModal({
           formattedDataDesligamento = raw.includes('T') ? raw.slice(0, 10) : raw.slice(0, 10)
         }
 
+        // Formata datas de afastamento para o input type="date" (YYYY-MM-DD)
+        let formattedDataAfastamento = ''
+        if (emp.data_afastamento || emp.inicio_afastamento) {
+          const raw = String(emp.data_afastamento || emp.inicio_afastamento).trim()
+          formattedDataAfastamento = raw.includes('T') ? raw.slice(0, 10) : raw.slice(0, 10)
+        }
+
+        let formattedDataRetornoAfastamento = ''
+        if (emp.data_retorno_afastamento || emp.previsao_retorno) {
+          const raw = String(emp.data_retorno_afastamento || emp.previsao_retorno).trim()
+          formattedDataRetornoAfastamento = raw.includes('T') ? raw.slice(0, 10) : raw.slice(0, 10)
+        }
+
         return {
           id: emp.id,
           nome: emp.name || '',
@@ -1725,6 +1855,9 @@ function ProcessoCadastralFormModal({
           garagem: matchedGaragem,
           data_desligamento: formattedDataDesligamento,
           motivo_desligamento: emp.motivo_desligamento || '',
+          data_afastamento: formattedDataAfastamento,
+          data_retorno_afastamento: formattedDataRetornoAfastamento,
+          motivo_afastamento: emp.motivo_afastamento || '',
         }
       }
 
@@ -1763,6 +1896,24 @@ function ProcessoCadastralFormModal({
           }
           if (match.motivo_desligamento) {
             setMotivoDesligamento((prev) => (prev.trim() === '' ? match.motivo_desligamento : prev))
+          }
+        }
+        if (processo === 'Retorno do Afastamento') {
+          const dtAfast = match.data_afastamento || ''
+          const dtRet = match.data_retorno_afastamento || ''
+          if (dtAfast) {
+            setDataAfastamento((prev) => (prev.trim() === '' ? dtAfast : prev))
+          }
+          if (dtRet) {
+            setDataRetornoAfastamento((prev) => (prev.trim() === '' ? dtRet : prev))
+          }
+          if (dtAfast && dtRet) {
+            setDiasAfastado((prev) =>
+              prev !== undefined ? prev : calculateDiasAfastado(dtAfast, dtRet),
+            )
+          }
+          if (match.motivo_afastamento) {
+            setMotivoAfastamento((prev) => (prev.trim() === '' ? match.motivo_afastamento : prev))
           }
         }
         setSingleGaragem(match.garagem)
@@ -1825,6 +1976,35 @@ function ProcessoCadastralFormModal({
                   (!c.motivo_desligamento || c.motivo_desligamento.trim() === '')
                     ? match.motivo_desligamento
                     : c.motivo_desligamento,
+                // Sugestões para Retorno do Afastamento
+                data_afastamento:
+                  match.data_afastamento &&
+                  (!c.data_afastamento || c.data_afastamento.trim() === '')
+                    ? match.data_afastamento
+                    : c.data_afastamento,
+                data_retorno_afastamento:
+                  match.data_retorno_afastamento &&
+                  (!c.data_retorno_afastamento || c.data_retorno_afastamento.trim() === '')
+                    ? match.data_retorno_afastamento
+                    : c.data_retorno_afastamento,
+                dias_afastado:
+                  c.dias_afastado !== undefined
+                    ? c.dias_afastado
+                    : calculateDiasAfastado(
+                        match.data_afastamento &&
+                          (!c.data_afastamento || c.data_afastamento.trim() === '')
+                          ? match.data_afastamento
+                          : c.data_afastamento,
+                        match.data_retorno_afastamento &&
+                          (!c.data_retorno_afastamento || c.data_retorno_afastamento.trim() === '')
+                          ? match.data_retorno_afastamento
+                          : c.data_retorno_afastamento,
+                      ),
+                motivo_afastamento:
+                  match.motivo_afastamento &&
+                  (!c.motivo_afastamento || c.motivo_afastamento.trim() === '')
+                    ? match.motivo_afastamento
+                    : c.motivo_afastamento,
               }
             }),
           )
@@ -1887,7 +2067,7 @@ function ProcessoCadastralFormModal({
         )
       }
 
-      // Inclusão, PRAT e Atualização: exigem registro e nome preenchidos
+      // Inclusão, PRAT, Retorno do Afastamento e Atualização: exigem registro e nome preenchidos
       return colaboradores.every((c) => c.matricula.trim() !== '' && c.nome.trim() !== '')
     }
 
@@ -1947,10 +2127,12 @@ function ProcessoCadastralFormModal({
         const isSemPrazoAlerta =
           processo === 'Inclusão' ||
           processo === 'PRAT' ||
+          processo === 'Retorno do Afastamento' ||
           processo === 'Mudança de Função' ||
           processo === 'Exclusão'
         const isMudancaFuncao = processo === 'Mudança de Função'
         const isExclusao = processo === 'Exclusão'
+        const isRetornoAfast = processo === 'Retorno do Afastamento'
 
         // Validação adicional de datas nos blocos múltiplos
         if (isMudancaFuncao) {
@@ -2019,6 +2201,13 @@ function ProcessoCadastralFormModal({
             data_troca_funcao: isMudancaFuncao ? c.data_troca_funcao || '' : '',
             data_desligamento: isExclusao ? c.data_desligamento || '' : '',
             motivo_desligamento: isExclusao ? (c.motivo_desligamento || '').trim() : '',
+            data_afastamento: isRetornoAfast ? c.data_afastamento || '' : '',
+            data_retorno_afastamento: isRetornoAfast ? c.data_retorno_afastamento || '' : '',
+            dias_afastado: isRetornoAfast
+              ? (c.dias_afastado ??
+                calculateDiasAfastado(c.data_afastamento, c.data_retorno_afastamento))
+              : undefined,
+            motivo_afastamento: isRetornoAfast ? (c.motivo_afastamento || '').trim() : '',
           }
         })
 
@@ -2027,10 +2216,12 @@ function ProcessoCadastralFormModal({
         const isSemPrazoAlerta =
           processo === 'Inclusão' ||
           processo === 'PRAT' ||
+          processo === 'Retorno do Afastamento' ||
           processo === 'Mudança de Função' ||
           processo === 'Exclusão'
         const isMudancaFuncao = processo === 'Mudança de Função'
         const isExclusao = processo === 'Exclusão'
+        const isRetornoAfast = processo === 'Retorno do Afastamento'
 
         // Validação extra amigável de campos para Mudança de Função na edição
         if (isMudancaFuncao) {
@@ -2091,6 +2282,12 @@ function ProcessoCadastralFormModal({
           data_troca_funcao: isMudancaFuncao ? dataTrocaFuncao : '',
           data_desligamento: isExclusao ? dataDesligamento : '',
           motivo_desligamento: isExclusao ? motivoDesligamento.trim() : '',
+          data_afastamento: isRetornoAfast ? dataAfastamento : '',
+          data_retorno_afastamento: isRetornoAfast ? dataRetornoAfastamento : '',
+          dias_afastado: isRetornoAfast
+            ? (diasAfastado ?? calculateDiasAfastado(dataAfastamento, dataRetornoAfastamento))
+            : undefined,
+          motivo_afastamento: isRetornoAfast ? motivoAfastamento.trim() : '',
         })
       }
       onOpenChange(false)
@@ -2132,10 +2329,11 @@ function ProcessoCadastralFormModal({
               onValueChange={(value) => {
                 const newProcesso = value as Categoria
                 setProcesso(newProcesso)
-                // Se mudar para Inclusão, PRAT, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo e marcação de ciência
+                // Se mudar para Inclusão, PRAT, Retorno do Afastamento, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo e marcação de ciência
                 if (
                   newProcesso === 'Inclusão' ||
                   newProcesso === 'PRAT' ||
+                  newProcesso === 'Retorno do Afastamento' ||
                   newProcesso === 'Mudança de Função' ||
                   newProcesso === 'Exclusão'
                 ) {
@@ -2197,6 +2395,7 @@ function ProcessoCadastralFormModal({
                   const isExpanded = expandedId === colab.id
                   const isMudanca = processo === 'Mudança de Função'
                   const isExcl = processo === 'Exclusão'
+                  const isRetorno = processo === 'Retorno do Afastamento'
 
                   const isValid = isMudanca
                     ? Boolean(
@@ -2221,9 +2420,11 @@ function ProcessoCadastralFormModal({
                       ? ` • ${colab.funcao_antiga || '—'} → ${colab.funcao_atual || '—'}`
                       : isExcl && colab.data_desligamento
                         ? ` • Desligamento: ${formatDate(colab.data_desligamento)}`
-                        : colab.funcao
-                          ? ` • ${colab.funcao}`
-                          : ''
+                        : isRetorno && (colab.data_afastamento || colab.data_retorno_afastamento)
+                          ? ` • Afast: ${formatDate(colab.data_afastamento)} → Ret: ${formatDate(colab.data_retorno_afastamento)}`
+                          : colab.funcao
+                            ? ` • ${colab.funcao}`
+                            : ''
 
                   return (
                     <div
@@ -2367,7 +2568,7 @@ function ProcessoCadastralFormModal({
                             </div>
                           </div>
 
-                          {/* Linha 2: Nome Completo (e Função para Inclusão/Atualização) */}
+                          {/* Linha 2: Nome Completo (e Função para Inclusão/Atualização/Retorno) */}
                           <div
                             className={cn(
                               'grid grid-cols-1 gap-3',
@@ -2568,6 +2769,123 @@ function ProcessoCadastralFormModal({
                               </div>
                             </>
                           )}
+
+                          {/* Bloco exclusivo por colaborador: Retorno do Afastamento */}
+                          {isRetorno && (
+                            <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 uppercase tracking-wide">
+                                <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
+                                <span>Dados do Afastamento</span>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="space-y-1.5">
+                                  <Label
+                                    htmlFor={`modal-data-afastamento-${colab.id}`}
+                                    className="text-xs font-semibold"
+                                  >
+                                    Data do Afastamento
+                                  </Label>
+                                  <Input
+                                    id={`modal-data-afastamento-${colab.id}`}
+                                    type="date"
+                                    value={colab.data_afastamento || ''}
+                                    onChange={(e) => {
+                                      const newAfast = e.target.value
+                                      const newDias = calculateDiasAfastado(
+                                        newAfast,
+                                        colab.data_retorno_afastamento,
+                                      )
+                                      updateColaborador(colab.id, {
+                                        data_afastamento: newAfast,
+                                        dias_afastado: newDias,
+                                      })
+                                    }}
+                                    className="bg-white text-xs h-8"
+                                  />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <Label
+                                    htmlFor={`modal-data-retorno-${colab.id}`}
+                                    className="text-xs font-semibold"
+                                  >
+                                    Retorno do Afastamento
+                                  </Label>
+                                  <Input
+                                    id={`modal-data-retorno-${colab.id}`}
+                                    type="date"
+                                    value={colab.data_retorno_afastamento || ''}
+                                    onChange={(e) => {
+                                      const newRetorno = e.target.value
+                                      const newDias = calculateDiasAfastado(
+                                        colab.data_afastamento,
+                                        newRetorno,
+                                      )
+                                      updateColaborador(colab.id, {
+                                        data_retorno_afastamento: newRetorno,
+                                        dias_afastado: newDias,
+                                      })
+                                    }}
+                                    className="bg-white text-xs h-8"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div className="space-y-1.5 sm:col-span-1">
+                                  <Label
+                                    htmlFor={`modal-dias-afastado-${colab.id}`}
+                                    className="text-xs font-semibold"
+                                  >
+                                    Quantos dias ficou afastado
+                                  </Label>
+                                  <Input
+                                    id={`modal-dias-afastado-${colab.id}`}
+                                    type="number"
+                                    min="0"
+                                    placeholder="Ex: 15"
+                                    value={
+                                      colab.dias_afastado !== undefined ? colab.dias_afastado : ''
+                                    }
+                                    onChange={(e) =>
+                                      updateColaborador(colab.id, {
+                                        dias_afastado:
+                                          e.target.value === ''
+                                            ? undefined
+                                            : parseInt(e.target.value, 10),
+                                      })
+                                    }
+                                    className="bg-white text-xs h-8 font-semibold"
+                                  />
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Calculado automaticamente
+                                  </span>
+                                </div>
+
+                                <div className="space-y-1.5 sm:col-span-2">
+                                  <Label
+                                    htmlFor={`modal-motivo-afastamento-${colab.id}`}
+                                    className="text-xs font-semibold"
+                                  >
+                                    Motivo do Afastamento
+                                  </Label>
+                                  <Input
+                                    id={`modal-motivo-afastamento-${colab.id}`}
+                                    placeholder="Ex: Auxílio Doença, Acidente de Trabalho..."
+                                    value={colab.motivo_afastamento || ''}
+                                    onChange={(e) =>
+                                      updateColaborador(colab.id, {
+                                        motivo_afastamento: e.target.value,
+                                      })
+                                    }
+                                    autoComplete="off"
+                                    className="bg-white text-xs h-8"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2758,6 +3076,105 @@ function ProcessoCadastralFormModal({
                     </div>
                   </div>
                 </>
+              ) : processo === 'Retorno do Afastamento' ? (
+                /* Bloco exclusivo: Retorno do Afastamento */
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="modal-funcao">Função</Label>
+                    <Input
+                      id="modal-funcao"
+                      placeholder="Função do colaborador"
+                      value={singleFuncao}
+                      onChange={(event) => setSingleFuncao(event.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 uppercase tracking-wide">
+                      <UserCheck className="h-4 w-4 text-indigo-600" />
+                      <span>Dados do Afastamento</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="modal-data-afastamento" className="text-xs font-semibold">
+                          Data do Afastamento
+                        </Label>
+                        <Input
+                          id="modal-data-afastamento"
+                          type="date"
+                          value={dataAfastamento}
+                          onChange={(event) => {
+                            const newAfast = event.target.value
+                            setDataAfastamento(newAfast)
+                            const newDias = calculateDiasAfastado(newAfast, dataRetornoAfastamento)
+                            if (newDias !== undefined) setDiasAfastado(newDias)
+                          }}
+                          className="bg-white text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="modal-data-retorno" className="text-xs font-semibold">
+                          Retorno do Afastamento
+                        </Label>
+                        <Input
+                          id="modal-data-retorno"
+                          type="date"
+                          value={dataRetornoAfastamento}
+                          onChange={(event) => {
+                            const newRetorno = event.target.value
+                            setDataRetornoAfastamento(newRetorno)
+                            const newDias = calculateDiasAfastado(dataAfastamento, newRetorno)
+                            if (newDias !== undefined) setDiasAfastado(newDias)
+                          }}
+                          className="bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="space-y-1.5 sm:col-span-1">
+                        <Label htmlFor="modal-dias-afastado" className="text-xs font-semibold">
+                          Quantos dias ficou afastado
+                        </Label>
+                        <Input
+                          id="modal-dias-afastado"
+                          type="number"
+                          min="0"
+                          placeholder="Ex: 15"
+                          value={diasAfastado !== undefined ? diasAfastado : ''}
+                          onChange={(event) =>
+                            setDiasAfastado(
+                              event.target.value === ''
+                                ? undefined
+                                : parseInt(event.target.value, 10),
+                            )
+                          }
+                          className="bg-white text-xs font-semibold"
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          Calculado automaticamente
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label htmlFor="modal-motivo-afastamento" className="text-xs font-semibold">
+                          Motivo do Afastamento
+                        </Label>
+                        <Input
+                          id="modal-motivo-afastamento"
+                          placeholder="Ex: Auxílio Doença, Acidente de Trabalho..."
+                          value={motivoAfastamento}
+                          onChange={(event) => setMotivoAfastamento(event.target.value)}
+                          autoComplete="off"
+                          className="bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="space-y-2">
                   <Label htmlFor="modal-funcao">Função</Label>
@@ -2773,9 +3190,10 @@ function ProcessoCadastralFormModal({
             </>
           )}
 
-          {/* Etapa: Oculto quando o processo for "Inclusão", "PRAT", "Mudança de Função" ou "Exclusão"; Visível APENAS para "Atualização" */}
+          {/* Etapa: Oculto quando o processo for "Inclusão", "PRAT", "Retorno do Afastamento", "Mudança de Função" ou "Exclusão"; Visível APENAS para "Atualização" */}
           {processo !== 'Inclusão' &&
             processo !== 'PRAT' &&
+            processo !== 'Retorno do Afastamento' &&
             processo !== 'Mudança de Função' &&
             processo !== 'Exclusão' && (
               <div className="space-y-2">
@@ -2795,9 +3213,10 @@ function ProcessoCadastralFormModal({
               </div>
             )}
 
-          {/* Prazo: Oculto quando o processo for "Inclusão", "PRAT", "Mudança de Função" ou "Exclusão"; Mantido para "Atualização" e demais tipos */}
+          {/* Prazo: Oculto quando o processo for "Inclusão", "PRAT", "Retorno do Afastamento", "Mudança de Função" ou "Exclusão"; Mantido para "Atualização" e demais tipos */}
           {processo !== 'Inclusão' &&
             processo !== 'PRAT' &&
+            processo !== 'Retorno do Afastamento' &&
             processo !== 'Mudança de Função' &&
             processo !== 'Exclusão' && (
               <div className="space-y-2">
@@ -2811,9 +3230,10 @@ function ProcessoCadastralFormModal({
               </div>
             )}
 
-          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão, PRAT, Mudança de Função e Exclusão; mantido para Atualização e outros tipos */}
+          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão, PRAT, Retorno do Afastamento, Mudança de Função e Exclusão; mantido para Atualização e outros tipos */}
           {processo !== 'Inclusão' &&
             processo !== 'PRAT' &&
+            processo !== 'Retorno do Afastamento' &&
             processo !== 'Mudança de Função' &&
             processo !== 'Exclusão' && (
               <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
