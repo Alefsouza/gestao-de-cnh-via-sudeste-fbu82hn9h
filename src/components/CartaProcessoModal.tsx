@@ -132,11 +132,7 @@ export function getCamposFixosColaborador(
   colab: CartaColaboradorInfo,
   tipoProcessoOuCarta?: string,
 ): string[] {
-  const tipo = (
-    colab.processoTipo ||
-    tipoProcessoOuCarta ||
-    ''
-  ).trim().toLowerCase()
+  const tipo = (colab.processoTipo || tipoProcessoOuCarta || '').trim().toLowerCase()
 
   // 1. Processo PRAT
   if (tipo === 'prat' || tipo.includes('prat')) {
@@ -146,9 +142,7 @@ export function getCamposFixosColaborador(
   // 2. Processo Retorno do Afastamento
   if (tipo === 'retorno do afastamento' || tipo.includes('retorno')) {
     const funcaoNorm = (colab.funcao || '').trim().toLowerCase()
-    const isCobrador =
-      funcaoNorm.includes('cobrador') ||
-      funcaoNorm.includes('cobr')
+    const isCobrador = funcaoNorm.includes('cobrador') || funcaoNorm.includes('cobr')
 
     if (isCobrador) {
       return CAMPOS_FIXOS_RETORNO_COBRADOR
@@ -162,7 +156,7 @@ export function getCamposFixosColaborador(
 }
 
 // Mantido para compatibilidade com outros arquivos ou fallbacks gerais
-const TIPOS_ANEXO_SUGERIDOS = CAMPOS_FIXOS_PADRAO
+export const TIPOS_ANEXO_SUGERIDOS = CAMPOS_FIXOS_PADRAO
 
 export default function CartaProcessoModal({
   open,
@@ -336,10 +330,23 @@ export default function CartaProcessoModal({
   // Mapeia título do anexo para o campo legado correspondente na coleção `cartas`
   const mapTituloParaCampoCarta = (titulo: string): string | null => {
     const t = (titulo || '').toLowerCase()
-    if (t.includes('rg') || t.includes('cnh') || t.includes('pessoal') || t.includes('psicotécnico') || t.includes('psicotecnico')) {
+    if (
+      t.includes('rg') ||
+      t.includes('cnh') ||
+      t.includes('pessoal') ||
+      t.includes('psicotécnico') ||
+      t.includes('psicotecnico')
+    ) {
       return 'cnh'
     }
-    if (t.includes('residência') || t.includes('residencia') || t.includes('endereço') || t.includes('endereco') || t.includes('direção defensiva') || t.includes('direcao defensiva')) {
+    if (
+      t.includes('residência') ||
+      t.includes('residencia') ||
+      t.includes('endereço') ||
+      t.includes('endereco') ||
+      t.includes('direção defensiva') ||
+      t.includes('direcao defensiva')
+    ) {
       return 'comprovante_residencia'
     }
     if (t.includes('prontuário') || t.includes('prontuario') || t.includes('antecedente')) {
@@ -348,7 +355,12 @@ export default function CartaProcessoModal({
     if (t.includes('atestado') || t.includes('aso') || t.includes('laudo')) {
       return 'atestado'
     }
-    if (t.includes('gestora') || t.includes('assinado') || t.includes('diretor') || t.includes('ferraz')) {
+    if (
+      t.includes('gestora') ||
+      t.includes('assinado') ||
+      t.includes('diretor') ||
+      t.includes('ferraz')
+    ) {
       return 'doc_assinado_gestora'
     }
     return null
@@ -1013,6 +1025,21 @@ export default function CartaProcessoModal({
                             colab,
                             tipoProcesso || tipoCarta,
                           )
+                          const outrosSalvos = salvos.filter(
+                            (s) =>
+                              !camposFixosColab.some(
+                                (tipo) =>
+                                  (s.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
+                              ),
+                          )
+                          const outrosPendentes = pendentes.filter(
+                            (p) =>
+                              !camposFixosColab.some(
+                                (tipo) =>
+                                  (p.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
+                              ),
+                          )
+
                           return (
                             <div className="space-y-2">
                               <div className="text-[11px] font-semibold text-muted-foreground flex items-center justify-between">
@@ -1026,12 +1053,14 @@ export default function CartaProcessoModal({
                                   // Verifica se já existe anexo salvo para este tipo de documento
                                   const anexosSalvosDoTipo = salvos.filter(
                                     (s) =>
-                                      (s.titulo || '').trim().toLowerCase() === tipoDoc.toLowerCase(),
+                                      (s.titulo || '').trim().toLowerCase() ===
+                                      tipoDoc.toLowerCase(),
                                   )
                                   // Verifica se há anexo pendente para este tipo
                                   const anexoPendenteDoTipo = pendentes.find(
                                     (p) =>
-                                      (p.titulo || '').trim().toLowerCase() === tipoDoc.toLowerCase(),
+                                      (p.titulo || '').trim().toLowerCase() ===
+                                      tipoDoc.toLowerCase(),
                                   )
 
                                   const inputId = `file-${key}-${tipoDoc.replace(/[^a-zA-Z0-9]/g, '_')}`
@@ -1086,7 +1115,12 @@ export default function CartaProcessoModal({
                                             disabled={saving}
                                             accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
                                             onChange={(e) => {
-                                              handleAddPendingAnexo(key, e.target.files, colab, tipoDoc)
+                                              handleAddPendingAnexo(
+                                                key,
+                                                e.target.files,
+                                                colab,
+                                                tipoDoc,
+                                              )
                                               e.target.value = ''
                                             }}
                                           />
@@ -1124,8 +1158,8 @@ export default function CartaProcessoModal({
                                                 {anexoPendenteDoTipo.file.name}
                                               </p>
                                               <p className="text-[10px] text-muted-foreground truncate">
-                                                {(anexoPendenteDoTipo.file.size / 1024).toFixed(0)} KB ·
-                                                Pronto para salvar
+                                                {(anexoPendenteDoTipo.file.size / 1024).toFixed(0)}{' '}
+                                                KB · Pronto para salvar
                                               </p>
                                             </div>
                                           </div>
@@ -1194,7 +1228,9 @@ export default function CartaProcessoModal({
                                                     title="Visualizar anexo"
                                                   >
                                                     <ExternalLink className="h-3 w-3" />
-                                                    <span className="hidden sm:inline">Visualizar</span>
+                                                    <span className="hidden sm:inline">
+                                                      Visualizar
+                                                    </span>
                                                   </Button>
                                                   <Button
                                                     type="button"
@@ -1233,112 +1269,95 @@ export default function CartaProcessoModal({
                               </div>
 
                               {/* Se houver algum anexo salvo com título personalizado fora da lista fixa deste colaborador, exibe como 'Outros anexos' */}
-                              {(() => {
-                                const outrosSalvos = salvos.filter(
-                                  (s) =>
-                                    !camposFixosColab.some(
-                                      (tipo) =>
-                                        (s.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
-                                    ),
-                                )
-                                const outrosPendentes = pendentes.filter(
-                                  (p) =>
-                                    !camposFixosColab.some(
-                                      (tipo) =>
-                                        (p.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
-                                    ),
-                                )
-                                if (outrosSalvos.length === 0 && outrosPendentes.length === 0)
-                                  return null
-
-                            return (
-                              <div className="mt-3 space-y-1.5 rounded-md border border-dashed p-2 bg-muted/20">
-                                <span className="text-[11px] font-semibold text-muted-foreground">
-                                  Outros documentos anexados:
-                                </span>
-                                {outrosSalvos.map((anexo) => {
-                                  const urlVisualizar = getProcessoAnexoFileUrl(anexo)
-                                  const urlBaixar = getProcessoAnexoFileUrl(anexo, undefined, {
-                                    download: true,
-                                  })
-                                  return (
+                              {(outrosSalvos.length > 0 || outrosPendentes.length > 0) && (
+                                <div className="mt-3 space-y-1.5 rounded-md border border-dashed p-2 bg-muted/20">
+                                  <span className="text-[11px] font-semibold text-muted-foreground">
+                                    Outros documentos anexados:
+                                  </span>
+                                  {outrosSalvos.map((anexo) => {
+                                    const urlVisualizar = getProcessoAnexoFileUrl(anexo)
+                                    const urlBaixar = getProcessoAnexoFileUrl(anexo, undefined, {
+                                      download: true,
+                                    })
+                                    return (
+                                      <div
+                                        key={anexo.id}
+                                        className="flex items-center justify-between gap-2 rounded bg-white dark:bg-muted/40 p-1.5 text-xs border border-border/80"
+                                      >
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <FileText className="h-3.5 w-3.5 flex-none text-emerald-600" />
+                                          <span className="font-medium truncate text-[11px]">
+                                            {anexo.titulo || anexo.arquivo}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-none">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-6 px-1.5 text-[10px] gap-1"
+                                            onClick={() =>
+                                              window.open(
+                                                urlVisualizar,
+                                                '_blank',
+                                                'noopener,noreferrer',
+                                              )
+                                            }
+                                          >
+                                            <ExternalLink className="h-3 w-3" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-6 px-1.5 text-[10px] gap-1"
+                                            onClick={() => {
+                                              const win = window.open(urlBaixar, '_blank')
+                                              if (!win) window.location.href = urlBaixar
+                                            }}
+                                          >
+                                            <Download className="h-3 w-3" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
+                                            onClick={() =>
+                                              handleDeleteSavedAnexo(key, anexo.id, colab)
+                                            }
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                  {outrosPendentes.map((anexo) => (
                                     <div
                                       key={anexo.id}
-                                      className="flex items-center justify-between gap-2 rounded bg-white dark:bg-muted/40 p-1.5 text-xs border border-border/80"
+                                      className="flex items-center justify-between gap-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 p-1.5 text-xs"
                                     >
                                       <div className="flex items-center gap-1.5 min-w-0">
-                                        <FileText className="h-3.5 w-3.5 flex-none text-emerald-600" />
+                                        <FileText className="h-3.5 w-3.5 flex-none text-amber-600" />
                                         <span className="font-medium truncate text-[11px]">
-                                          {anexo.titulo || anexo.arquivo}
+                                          {anexo.titulo} ({anexo.file.name})
                                         </span>
                                       </div>
-                                      <div className="flex items-center gap-1 flex-none">
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-6 px-1.5 text-[10px] gap-1"
-                                          onClick={() =>
-                                            window.open(
-                                              urlVisualizar,
-                                              '_blank',
-                                              'noopener,noreferrer',
-                                            )
-                                          }
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-6 px-1.5 text-[10px] gap-1"
-                                          onClick={() => {
-                                            const win = window.open(urlBaixar, '_blank')
-                                            if (!win) window.location.href = urlBaixar
-                                          }}
-                                        >
-                                          <Download className="h-3 w-3" />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
-                                          onClick={() =>
-                                            handleDeleteSavedAnexo(key, anexo.id, colab)
-                                          }
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemovePendingAnexo(key, anexo.id)}
+                                        className="text-rose-600 hover:text-rose-800 text-[10px] font-medium px-1 py-0.5"
+                                      >
+                                        Remover
+                                      </button>
                                     </div>
-                                  )
-                                })}
-                                {outrosPendentes.map((anexo) => (
-                                  <div
-                                    key={anexo.id}
-                                    className="flex items-center justify-between gap-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 p-1.5 text-xs"
-                                  >
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <FileText className="h-3.5 w-3.5 flex-none text-amber-600" />
-                                      <span className="font-medium truncate text-[11px]">
-                                        {anexo.titulo} ({anexo.file.name})
-                                      </span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemovePendingAnexo(key, anexo.id)}
-                                      className="text-rose-600 hover:text-rose-800 text-[10px] font-medium px-1 py-0.5"
-                                    >
-                                      Remover
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )
-                          })()}
-                        </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     )}
                   </div>
