@@ -267,8 +267,13 @@ export default function ProcessosCadastrais() {
         filter: backendFilter,
         sort: '-created',
       })
-      setProcessos(
-        records.map((r) => ({
+      // Garante deduplicação por id ao mapear os registros do banco
+      const seenIds = new Set<string>()
+      const list: ProcessoCadastral[] = []
+      for (const r of records) {
+        if (!r.id || seenIds.has(r.id)) continue
+        seenIds.add(r.id)
+        list.push({
           id: r.id,
           matricula: r.matricula,
           colaborador: r.colaborador,
@@ -289,8 +294,9 @@ export default function ProcessosCadastrais() {
           data_retorno_afastamento: r.data_retorno_afastamento || '',
           dias_afastado: r.dias_afastado,
           motivo_afastamento: r.motivo_afastamento || '',
-        })),
-      )
+        })
+      }
+      setProcessos(list)
     } catch (err) {
       console.error('Erro ao carregar processos:', err)
       setProcessos([])
@@ -341,6 +347,7 @@ export default function ProcessosCadastrais() {
   })
 
   // Processos visíveis para o usuário:
+  // Salvaguarda: deduplica sempre por id para garantir que um processo nunca apareça repetido em tela
   // Se for perfil Tráfego:
   // 1. Somente processos do tipo "Atualização"
   // 2. Filtrar exclusivamente pela garagem do usuário (CURSINO ou SAPOPEMBA).
@@ -349,9 +356,19 @@ export default function ProcessosCadastrais() {
   // Se viewRegulares === true: somente "Regular"
   // Se viewRegulares === false (listagem principal): NÃO contém "Regular"
   const visibleProcessos = useMemo(() => {
+    // Deduplica lista base por id antes de aplicar os filtros de visualização
+    const seenIds = new Set<string>()
+    const uniqueProcessos: ProcessoCadastral[] = []
+    for (const p of processos) {
+      if (p.id && !seenIds.has(p.id)) {
+        seenIds.add(p.id)
+        uniqueProcessos.push(p)
+      }
+    }
+
     if (isTrafego) {
       const userGaragemUpper = userGaragem.toUpperCase()
-      return processos.filter((p) => {
+      return uniqueProcessos.filter((p) => {
         const isAtualizacao = p.processo === 'Atualização'
         const g = (p.garagem || '').toUpperCase()
         const isSameGaragem = g === userGaragemUpper
@@ -361,9 +378,9 @@ export default function ProcessosCadastrais() {
     }
     // Admin / RH:
     if (viewRegulares) {
-      return processos.filter((p) => p.situacao === 'Regular')
+      return uniqueProcessos.filter((p) => p.situacao === 'Regular')
     }
-    return processos.filter((p) => p.situacao !== 'Regular')
+    return uniqueProcessos.filter((p) => p.situacao !== 'Regular')
   }, [processos, isTrafego, userGaragem, viewRegulares])
 
   const resumo = useMemo(() => {
@@ -569,7 +586,24 @@ export default function ProcessosCadastrais() {
           }
         }
 
-        setProcessos((prev) => [...novosCriados, ...prev])
+        // Recarrega do banco para obter os dados normalizados atualizados,
+        // ou funde eliminando duplicatas por ID para evitar duplicidade visual
+        try {
+          await carregarProcessos()
+        } catch {
+          setProcessos((prev) => {
+            const map = new Map<string, ProcessoCadastral>()
+            for (const item of novosCriados) {
+              map.set(item.id, item)
+            }
+            for (const item of prev) {
+              if (!map.has(item.id)) {
+                map.set(item.id, item)
+              }
+            }
+            return Array.from(map.values())
+          })
+        }
 
         const cat = itemsToCreate[0]?.processo || 'Processos'
         if (novosCriados.length > 1) {
@@ -603,7 +637,7 @@ export default function ProcessosCadastrais() {
         toast.error('Erro ao salvar processo no backend')
       }
     },
-    [currentUserName, currentRole, isTrafego, processos],
+    [currentUserName, currentRole, isTrafego, processos, carregarProcessos],
   )
 
   const handleUpdate = useCallback(
@@ -1217,7 +1251,7 @@ export default function ProcessosCadastrais() {
               <tbody>
                 {paginatedProcessos.map((processo, index) => (
                   <tr
-                    key={`${processo.id}-${index}`}
+                    key={processo.id || `processo-${index}`}
                     onClick={() => setSelectedProcessoDetalhes(processo)}
                     className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
                     title="Clique para ver os detalhes e a linha do tempo do processo"
