@@ -7,6 +7,8 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Download,
+  ExternalLink,
   FileCheck2,
   FileText,
   History,
@@ -15,6 +17,7 @@ import {
   Mail,
   PlusCircle,
   ShieldAlert,
+  Trash2,
   Truck,
   User,
   UserCheck,
@@ -55,6 +58,12 @@ import {
 } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { createTimelineItem, listTimelineByProcesso } from '@/services/processoTimeline'
+import {
+  listAnexosByProcesso,
+  getProcessoAnexoFileUrl,
+  deleteProcessoAnexo,
+  type ProcessoAnexoRecord,
+} from '@/services/processoAnexos'
 
 interface ProcessoDetalhesTimelineModalProps {
   open: boolean
@@ -104,10 +113,15 @@ export function ProcessoDetalhesTimelineModal({
   >([])
   const [submitting, setSubmitting] = useState(false)
 
-  // Carregar timeline ao abrir o modal
+  // Anexos vinculados a este colaborador/processo
+  const [processoAnexos, setProcessoAnexos] = useState<ProcessoAnexoRecord[]>([])
+  const [loadingAnexos, setLoadingAnexos] = useState(false)
+
+  // Carregar timeline e anexos ao abrir o modal
   useEffect(() => {
     if (!open || !processo) {
       setTimeline([])
+      setProcessoAnexos([])
       setEtapaSelecionada('')
       setObservacoes('')
       setMotivo('')
@@ -118,6 +132,19 @@ export function ProcessoDetalhesTimelineModal({
 
     let active = true
     setLoadingTimeline(true)
+    setLoadingAnexos(true)
+
+    listAnexosByProcesso(processo.id)
+      .then((anexos) => {
+        if (!active) return
+        setProcessoAnexos(anexos)
+      })
+      .catch((err) => {
+        console.warn('Erro ao carregar anexos do processo:', err)
+      })
+      .finally(() => {
+        if (active) setLoadingAnexos(false)
+      })
 
     listTimelineByProcesso(processo.id)
       .then((records) => {
@@ -662,6 +689,98 @@ export function ProcessoDetalhesTimelineModal({
                     </div>
                   </div>
                 )}
+
+              {/* Bloco de Anexos do Colaborador (Documentos pessoais, comprovantes da carta) */}
+              {(processoAnexos.length > 0 || loadingAnexos) && (
+                <div className="mt-3 rounded-lg border border-emerald-200/80 bg-emerald-50/50 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between font-bold text-emerald-950">
+                    <span className="flex items-center gap-1.5">
+                      <FileCheck2 className="h-3.5 w-3.5 text-emerald-700" />
+                      Documentos Anexados ({processoAnexos.length})
+                    </span>
+                    {loadingAnexos && (
+                      <span className="text-[10px] text-muted-foreground">Carregando…</span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {processoAnexos.map((anexo) => {
+                      const urlVis = getProcessoAnexoFileUrl(anexo)
+                      const urlDown = getProcessoAnexoFileUrl(anexo, undefined, { download: true })
+                      const canDeleteAnexo = isAdmin || isRH || anexo.criado_por === user?.id
+
+                      return (
+                        <div
+                          key={anexo.id}
+                          className="flex items-center justify-between gap-2 rounded bg-white p-2 border border-emerald-100 text-xs"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <FileText className="h-3.5 w-3.5 flex-none text-emerald-700" />
+                            <div className="min-w-0">
+                              <p className="font-semibold text-foreground truncate">
+                                {anexo.titulo || anexo.arquivo}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground truncate">
+                                {anexo.arquivo}
+                                {anexo.tamanho ? ` · ${(anexo.tamanho / 1024).toFixed(0)} KB` : ''}
+                                {anexo.numero_carta ? ` · Carta ${anexo.numero_carta}` : ''}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 flex-none">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => window.open(urlVis, '_blank', 'noopener,noreferrer')}
+                              className="h-6 px-1.5 text-[11px]"
+                              title="Visualizar anexo"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const win = window.open(urlDown, '_blank')
+                                if (!win) window.location.href = urlDown
+                              }}
+                              className="h-6 px-1.5 text-[11px]"
+                              title="Baixar anexo"
+                            >
+                              <Download className="h-3 w-3" />
+                            </Button>
+                            {canDeleteAnexo && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={async () => {
+                                  try {
+                                    await deleteProcessoAnexo(anexo.id)
+                                    setProcessoAnexos((prev) =>
+                                      prev.filter((x) => x.id !== anexo.id),
+                                    )
+                                    toast.success('Anexo excluído com sucesso.')
+                                  } catch (err) {
+                                    toast.error('Erro ao excluir anexo.')
+                                  }
+                                }}
+                                className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
+                                title="Excluir anexo"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Formulário: Registrar nova etapa / ação na timeline */}

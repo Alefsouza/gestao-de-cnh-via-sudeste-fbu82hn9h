@@ -25,14 +25,15 @@ export interface CreateCartaInput {
   matricula: string
   funcao_carta: string
   tipo_carta: string
-  cnh: File
-  prontuario: File
-  comprovante_residencia: File
-  atestado: File
-  doc_assinado_gestora: File
+  cnh?: File
+  prontuario?: File
+  comprovante_residencia?: File
+  atestado?: File
+  doc_assinado_gestora?: File
   garagem?: string
   responsavel_nome?: string
   responsavel_perfil?: UserRole
+  processoId?: string
 }
 
 /**
@@ -48,11 +49,13 @@ export async function createCarta(input: CreateCartaInput): Promise<CartaRecord>
   formData.append('funcao_carta', input.funcao_carta.trim())
   formData.append('tipo_carta', input.tipo_carta.trim())
 
-  formData.append('cnh', input.cnh)
-  formData.append('prontuario', input.prontuario)
-  formData.append('comprovante_residencia', input.comprovante_residencia)
-  formData.append('atestado', input.atestado)
-  formData.append('doc_assinado_gestora', input.doc_assinado_gestora)
+  if (input.cnh) formData.append('cnh', input.cnh)
+  if (input.prontuario) formData.append('prontuario', input.prontuario)
+  if (input.comprovante_residencia)
+    formData.append('comprovante_residencia', input.comprovante_residencia)
+  if (input.atestado) formData.append('atestado', input.atestado)
+  if (input.doc_assinado_gestora)
+    formData.append('doc_assinado_gestora', input.doc_assinado_gestora)
 
   const createdRecord = await pb.collection('cartas').create<CartaRecord>(formData)
 

@@ -27,6 +27,7 @@ import * as XLSX from 'xlsx'
 
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import VisualizarCartasModal from '@/components/VisualizarCartasModal'
+import CartaProcessoModal, { type CartaColaboradorInfo } from '@/components/CartaProcessoModal'
 import { ProcessoDetalhesTimelineModal } from '@/components/ProcessoDetalhesTimelineModal'
 import {
   AlertDialog,
@@ -206,6 +207,15 @@ export default function ProcessosCadastrais() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [cartasModalOpen, setCartasModalOpen] = useState(false)
+  // Estado para o modal de Carta do Processo pós-registro ou reabertura
+  const [cartaProcessoModalOpen, setCartaProcessoModalOpen] = useState(false)
+  const [cartaProcessoColaboradores, setCartaProcessoColaboradores] = useState<
+    CartaColaboradorInfo[]
+  >([])
+  const [cartaProcessoTipo, setCartaProcessoTipo] = useState<string>('')
+  const [cartaProcessoNumeroInicial, setCartaProcessoNumeroInicial] = useState<string>('')
+  const [cartaProcessoIsEdit, setCartaProcessoIsEdit] = useState<boolean>(false)
+
   const [editingProcesso, setEditingProcesso] = useState<ProcessoCadastral | null>(null)
   const [deletingProcesso, setDeletingProcesso] = useState<ProcessoCadastral | null>(null)
   const [processoAlterarSituacao, setProcessoAlterarSituacao] = useState<ProcessoCadastral | null>(
@@ -519,18 +529,39 @@ export default function ProcessosCadastrais() {
 
         setProcessos((prev) => [...novosCriados, ...prev])
 
+        const cat = itemsToCreate[0]?.processo || 'Processos'
         if (novosCriados.length > 1) {
-          const cat = itemsToCreate[0]?.processo || 'Processos'
           toast.success(`${novosCriados.length} processos de ${cat} cadastrados com sucesso`)
         } else {
           toast.success('Processo cadastrado com sucesso')
+        }
+
+        // Fluxo solicitado: Para tipos DIFERENTES de Atualização (Inclusão, PRAT, Mudança de Função, Exclusão, Retorno do Afastamento),
+        // abre AUTOMATICAMENTE o pop-up de CRIAÇÃO DA CARTA com a lista minimizada dos colaboradores recém-incluídos.
+        // O tipo "Atualização" permanece exatamente do jeito que está, sem abrir a carta automaticamente.
+        if (cat !== 'Atualização' && novosCriados.length > 0 && !isTrafego) {
+          const listaColabsCarta: CartaColaboradorInfo[] = novosCriados.map((nc) => ({
+            processoId: nc.id,
+            matricula: nc.matricula,
+            nome: nc.colaborador,
+            funcao: nc.funcao,
+            garagem: nc.garagem,
+            processoTipo: nc.processo,
+          }))
+
+          setCartaProcessoColaboradores(listaColabsCarta)
+          setCartaProcessoTipo(cat)
+          setCartaProcessoNumeroInicial('')
+          setCartaProcessoIsEdit(false)
+          // Abre o pop-up da carta imediatamente
+          setCartaProcessoModalOpen(true)
         }
       } catch (err) {
         console.error(err)
         toast.error('Erro ao salvar processo no backend')
       }
     },
-    [currentUserName, currentRole],
+    [currentUserName, currentRole, isTrafego],
   )
 
   const handleUpdate = useCallback(
@@ -1256,6 +1287,34 @@ export default function ProcessosCadastrais() {
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Botão Carta / Anexos para processos não-Atualização */}
+                          {processo.processo !== 'Atualização' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCartaProcessoColaboradores([
+                                  {
+                                    processoId: processo.id,
+                                    matricula: processo.matricula,
+                                    nome: processo.colaborador,
+                                    funcao: processo.funcao,
+                                    garagem: processo.garagem,
+                                    processoTipo: processo.processo,
+                                  },
+                                ])
+                                setCartaProcessoTipo(processo.processo)
+                                setCartaProcessoNumeroInicial('')
+                                setCartaProcessoIsEdit(true)
+                                setCartaProcessoModalOpen(true)
+                              }}
+                              className="inline-flex h-8 px-2.5 items-center justify-center rounded-md border border-emerald-600/30 text-xs font-medium text-emerald-700 hover:bg-emerald-50 transition-colors gap-1"
+                              title={`Abrir carta e gerenciar anexos de ${processo.colaborador}`}
+                              aria-label={`Abrir carta e anexos de ${processo.colaborador}`}
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                              <span>Carta</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSelectedProcessoDetalhes(processo)}
@@ -1428,6 +1487,19 @@ export default function ProcessosCadastrais() {
 
       {/* Modal Visualizar Cartas (Admin e RH) */}
       <VisualizarCartasModal open={cartasModalOpen} onOpenChange={setCartasModalOpen} />
+
+      {/* Modal de Criação / Edição de Carta com lista de colaboradores minimizada e anexos expansíveis */}
+      <CartaProcessoModal
+        open={cartaProcessoModalOpen}
+        onOpenChange={setCartaProcessoModalOpen}
+        colaboradores={cartaProcessoColaboradores}
+        tipoProcesso={cartaProcessoTipo}
+        initialNumeroCarta={cartaProcessoNumeroInicial}
+        isEditMode={cartaProcessoIsEdit}
+        onSuccess={() => {
+          void carregarProcessos()
+        }}
+      />
 
       {/* Modal Detalhes com Linha do Tempo (Timeline) */}
       <ProcessoDetalhesTimelineModal

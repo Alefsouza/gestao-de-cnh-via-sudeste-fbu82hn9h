@@ -55,6 +55,12 @@ import {
   listCartas,
   type CartaRecord,
 } from '@/services/cartas'
+import {
+  listAnexosByCarta,
+  deleteProcessoAnexo,
+  getProcessoAnexoFileUrl,
+  type ProcessoAnexoRecord,
+} from '@/services/processoAnexos'
 
 interface VisualizarCartasModalProps {
   open: boolean
@@ -86,10 +92,15 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
   const [deletingColaborador, setDeletingColaborador] = useState<CartaRecord | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Carrega as cartas sempre que o modal abrir e reseta estados ao abrir/fechar
+  // Anexos extras da nova coleção processo_anexos vinculados à carta selecionada
+  const [anexosDinamicos, setAnexosDinamicos] = useState<ProcessoAnexoRecord[]>([])
+  const [loadingAnexosDinamicos, setLoadingAnexosDinamicos] = useState(false)
+
+  // Carrega as cartas e anexos dinâmicos sempre que o modal abrir e reseta estados ao abrir/fechar
   useEffect(() => {
     if (!open) {
       setExpandedIds({})
+      setAnexosDinamicos([])
       return
     }
     // Ao abrir, limpa expansões anteriores para que todos venham recolhidos por padrão
@@ -113,6 +124,25 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
       active = false
     }
   }, [open])
+
+  // Carrega anexos dinâmicos quando a carta selecionada muda
+  useEffect(() => {
+    if (!selectedNumeroCarta) {
+      setAnexosDinamicos([])
+      return
+    }
+    setLoadingAnexosDinamicos(true)
+    listAnexosByCarta(selectedNumeroCarta)
+      .then((recs) => {
+        setAnexosDinamicos(recs)
+      })
+      .catch((err) => {
+        console.warn('Erro ao carregar anexos dinâmicos da carta:', err)
+      })
+      .finally(() => {
+        setLoadingAnexosDinamicos(false)
+      })
+  }, [selectedNumeroCarta])
 
   // Lista ordenada de todos os números únicos de cartas cadastrados
   const allNumerosCarta = useMemo(() => {
@@ -616,6 +646,95 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                                     </div>
                                   )
                                 })}
+
+                                {/* Anexos adicionais vinculados especificamente a este colaborador */}
+                                {anexosDinamicos
+                                  .filter((ad) => {
+                                    const m = (ad.matricula || '').trim()
+                                    const c = (ad.colaborador || '').trim().toLowerCase()
+                                    const itemM = (item.matricula || '').trim()
+                                    const itemC = (item.colaborador || '').trim().toLowerCase()
+                                    return (itemM && m === itemM) || (c && c === itemC)
+                                  })
+                                  .map((ad) => {
+                                    const urlVis = getProcessoAnexoFileUrl(ad)
+                                    const urlDown = getProcessoAnexoFileUrl(ad, undefined, {
+                                      download: true,
+                                    })
+                                    return (
+                                      <div
+                                        key={ad.id}
+                                        className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-emerald-50/40 border border-emerald-200/80 p-2.5 text-xs"
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <FileText className="h-4 w-4 flex-none text-emerald-600" />
+                                          <div className="min-w-0">
+                                            <span className="font-semibold text-foreground">
+                                              {ad.titulo || 'Anexo do Colaborador'}
+                                            </span>
+                                            <p className="text-[11px] text-muted-foreground truncate max-w-xs sm:max-w-sm">
+                                              {ad.arquivo}
+                                              {ad.tamanho
+                                                ? ` · ${(ad.tamanho / 1024).toFixed(0)} KB`
+                                                : ''}
+                                            </p>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 self-end sm:self-auto flex-none">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() =>
+                                              window.open(urlVis, '_blank', 'noopener,noreferrer')
+                                            }
+                                            className="h-7 gap-1 px-2 text-xs"
+                                            title="Abrir / Visualizar em nova aba"
+                                          >
+                                            <ExternalLink className="h-3 w-3" />
+                                            Visualizar
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                              const win = window.open(urlDown, '_blank')
+                                              if (!win) window.location.href = urlDown
+                                            }}
+                                            className="h-7 gap-1 px-2 text-xs"
+                                            title="Baixar arquivo"
+                                          >
+                                            <Download className="h-3 w-3" />
+                                            Baixar
+                                          </Button>
+                                          {canDelete && (
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="ghost"
+                                              onClick={async () => {
+                                                try {
+                                                  await deleteProcessoAnexo(ad.id)
+                                                  setAnexosDinamicos((prev) =>
+                                                    prev.filter((x) => x.id !== ad.id),
+                                                  )
+                                                  toast.success('Anexo removido com sucesso.')
+                                                } catch (err) {
+                                                  toast.error('Erro ao remover anexo.')
+                                                }
+                                              }}
+                                              className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                                              title="Excluir anexo"
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
                               </div>
                             </div>
                             {/* Botão de rodapé do card expandido para remover este colaborador */}
