@@ -124,6 +124,26 @@ const CAMPOS_FIXOS_RETORNO_COBRADOR = [
   'Antecedente Criminal',
 ]
 
+// Carta Mudança de Função — Para Motorista (7 documentos)
+const CAMPOS_FIXOS_MUDANCA_MOTORISTA = [
+  'Carta assinada pela Sabrina',
+  'Carta de Aptidão assinada pelo Leandro',
+  'CTPS constando a mudança de função',
+  'Certificado de curso',
+  'Certidão de prontuário',
+  'Comprovante de endereço',
+  'Atestado de antecedentes criminais',
+]
+
+// Carta Mudança de Função — Para Fiscal ou Cobrador (5 documentos)
+const CAMPOS_FIXOS_MUDANCA_FISCAL_COBRADOR = [
+  'Carta assinada pela Sabrina',
+  'RG',
+  'Comprovante de endereço',
+  'Atestado de antecedentes criminais',
+  'CTPS constando a mudança de função',
+]
+
 /**
  * Retorna os campos fixos de documentos para um colaborador específico dentro da carta,
  * respeitando o tipo de processo/carta e a função do colaborador.
@@ -151,7 +171,19 @@ export function getCamposFixosColaborador(
     return CAMPOS_FIXOS_RETORNO_MOTORISTA
   }
 
-  // 3. Demais processos (Inclusão, Mudança de Função, Exclusão, Atualização, etc.)
+  // 3. Processo Mudança de Função
+  if (tipo === 'mudança de função' || tipo === 'mudanca de funcao' || tipo.includes('mudan')) {
+    const funcaoNorm = (colab.funcao || '').trim().toLowerCase()
+    const isMotorista = funcaoNorm.includes('motorist')
+
+    if (isMotorista) {
+      return CAMPOS_FIXOS_MUDANCA_MOTORISTA
+    }
+    // Se for Fiscal ou Cobrador (ou outras funções de fallback), usa a lista de Fiscal/Cobrador
+    return CAMPOS_FIXOS_MUDANCA_FISCAL_COBRADOR
+  }
+
+  // 4. Demais processos (Inclusão, Exclusão, Atualização, etc.)
   return CAMPOS_FIXOS_PADRAO
 }
 
@@ -349,7 +381,13 @@ export default function CartaProcessoModal({
     ) {
       return 'comprovante_residencia'
     }
-    if (t.includes('prontuário') || t.includes('prontuario') || t.includes('antecedente')) {
+    if (
+      t.includes('prontuário') ||
+      t.includes('prontuario') ||
+      t.includes('antecedente') ||
+      t.includes('curso') ||
+      t.includes('ctps')
+    ) {
       return 'prontuario'
     }
     if (t.includes('atestado') || t.includes('aso') || t.includes('laudo')) {
@@ -358,8 +396,13 @@ export default function CartaProcessoModal({
     if (
       t.includes('gestora') ||
       t.includes('assinado') ||
+      t.includes('assinada') ||
+      t.includes('sabrina') ||
       t.includes('diretor') ||
-      t.includes('ferraz')
+      t.includes('ferraz') ||
+      t.includes('leandro') ||
+      t.includes('aptidão') ||
+      t.includes('aptidao')
     ) {
       return 'doc_assinado_gestora'
     }
