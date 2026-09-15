@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-15T15:58:31.328Z",
+  "generatedAt": "2026-09-15T18:25:45.111Z",
   "collections": [
     {
       "name": "users",
@@ -214,6 +214,12 @@
         },
         {
           "name": "data_retorno_afastamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "termino_afastamento",
           "type": "date",
           "required": false,
           "system": false

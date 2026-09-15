@@ -95,10 +95,26 @@ export function normalizeEmployees(employees: Employee[]): Employee[] {
       (employee.situacao_cnh ?? '') as Employee['situacao_cnh']
     ).trim() as Employee['situacao_cnh'],
     motivo_afastamento: (employee.motivo_afastamento ?? '').trim(),
-    inicio_afastamento: parseFlexibleDate(employee.inicio_afastamento),
-    previsao_retorno: parseFlexibleDate(employee.previsao_retorno),
+    inicio_afastamento: parseFlexibleDate(employee.inicio_afastamento || employee.data_afastamento),
+    previsao_retorno: parseFlexibleDate(
+      employee.previsao_retorno ||
+        employee.termino_afastamento ||
+        employee.data_retorno_afastamento,
+    ),
+    termino_afastamento: parseFlexibleDate(
+      employee.termino_afastamento ||
+        employee.data_retorno_afastamento ||
+        employee.previsao_retorno,
+    ),
+    data_afastamento: parseFlexibleDate(employee.data_afastamento || employee.inicio_afastamento),
+    data_retorno_afastamento: parseFlexibleDate(
+      employee.data_retorno_afastamento ||
+        employee.termino_afastamento ||
+        employee.previsao_retorno,
+    ),
     documento_fiscal: (employee.documento_fiscal ?? '').trim(),
     validade_documento_fiscal: parseFlexibleDate(employee.validade_documento_fiscal),
+    funcao_anterior: (employee.funcao_anterior ?? '').trim(),
     registro: (employee.registro ?? '').trim(),
     cpf: (employee.cpf ?? '').trim(),
   }))

@@ -84,7 +84,7 @@ export function buildFilter(filters: EmployeeFilters): string {
   if (search) {
     const escaped = search.replace(/"/g, '\\"')
     parts.push(
-      `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}")`,
+      `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}" || motivo_afastamento ~ "${escaped}")`,
     )
   }
   if (filters.empresa) parts.push(`company = "${filters.empresa}"`)
@@ -193,7 +193,7 @@ export async function getAfastadosSummary(
       if (search) {
         const escaped = search.replace(/"/g, '\\"')
         parts.push(
-          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}")`,
+          `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}" || motivo_afastamento ~ "${escaped}")`,
         )
       }
       if (baseFilters.empresa) {

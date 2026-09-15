@@ -339,13 +339,24 @@ export default function Afastados() {
 
       const rows = normalized.map((employee) => {
         const status = cnhStatus(employee)
+        const inicio = formatDate(employee.inicio_afastamento || employee.data_afastamento)
+        const termino = formatDate(
+          employee.termino_afastamento ||
+            employee.previsao_retorno ||
+            employee.data_retorno_afastamento,
+        )
         return {
           Chapa: employee.chapa,
+          Registro: employee.registro || employee.chapa,
           Nome: employee.name,
           Empresa: employee.company || 'VIA SUDESTE',
           'Filial/Garagem': employee.filial || '',
-          Função: employee.funcao || '',
+          'Função Atual': employee.funcao || '',
+          'Função Anterior': employee.funcao_anterior || '',
           Situação: employee.situacao || '',
+          'Início Afastamento': inicio,
+          'Término Afastamento': termino,
+          'Motivo do Afastamento': employee.motivo_afastamento || '',
           CNH: status.label,
           'Validade CNH': status.date ?? '',
         }
@@ -354,11 +365,16 @@ export default function Afastados() {
       const worksheet = XLSX.utils.json_to_sheet(rows)
       worksheet['!cols'] = [
         { wch: 12 }, // Chapa
+        { wch: 12 }, // Registro
         { wch: 32 }, // Nome
         { wch: 20 }, // Empresa
         { wch: 18 }, // Filial/Garagem
-        { wch: 24 }, // Função
+        { wch: 22 }, // Função Atual
+        { wch: 22 }, // Função Anterior
         { wch: 16 }, // Situação
+        { wch: 18 }, // Início Afastamento
+        { wch: 18 }, // Término Afastamento
+        { wch: 28 }, // Motivo do Afastamento
         { wch: 14 }, // CNH
         { wch: 16 }, // Validade CNH
       ]
@@ -509,51 +525,85 @@ export default function Afastados() {
               Carregando…
             </div>
           ) : (
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">Chapa</th>
                   <th className="px-4 py-3 font-semibold">Nome</th>
-                  <th className="px-4 py-3 font-semibold">Empresa</th>
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
-                  <th className="px-4 py-3 font-semibold">Função</th>
-                  <th className="px-4 py-3 font-semibold">Situação</th>
+                  <th className="px-4 py-3 font-semibold">Função Atual</th>
+                  <th className="px-4 py-3 font-semibold">Função Anterior</th>
+                  <th className="px-4 py-3 font-semibold">Início Afastamento</th>
+                  <th className="px-4 py-3 font-semibold">Término Afastamento</th>
+                  <th className="px-4 py-3 font-semibold">Motivo</th>
                   <th className="px-4 py-3 font-semibold">CNH</th>
                 </tr>
               </thead>
               <tbody>
-                {employees.map((employee) => (
-                  <tr
-                    key={employee.id}
-                    className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
-                  >
-                    <td className="tabular-nums px-4 py-3 font-medium">{employee.chapa}</td>
-                    <td className="px-4 py-3">
-                      <span className="block font-medium">{employee.name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {employee.cnh_numero?.trim()
-                          ? `CNH: ${formatCnh(employee.cnh_categoria, employee.cnh_numero)}`
-                          : 'CNH: Sem CNH'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {employee.company || 'VIA SUDESTE'}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col items-start gap-1">
-                        <StatusBadge value={employee.situacao} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <CnhBadge status={cnhStatus(employee)} />
-                    </td>
-                  </tr>
-                ))}
+                {employees.map((employee) => {
+                  const inicio = formatDate(
+                    employee.inicio_afastamento || employee.data_afastamento,
+                  )
+                  const termino = formatDate(
+                    employee.termino_afastamento ||
+                      employee.previsao_retorno ||
+                      employee.data_retorno_afastamento,
+                  )
+                  return (
+                    <tr
+                      key={employee.id}
+                      className="border-b transition-colors last:border-b-0 hover:bg-muted/40"
+                    >
+                      <td className="tabular-nums px-4 py-3 font-medium">{employee.chapa}</td>
+                      <td className="px-4 py-3">
+                        <span className="block font-medium">{employee.name}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {employee.company || 'VIA SUDESTE'}
+                          {employee.cnh_numero?.trim()
+                            ? ` • CNH: ${formatCnh(employee.cnh_categoria, employee.cnh_numero)}`
+                            : ''}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
+                      <td className="px-4 py-3 font-medium text-foreground">
+                        {employee.funcao || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {employee.funcao_anterior ? (
+                          <span className="inline-block rounded bg-muted/60 px-2 py-0.5 text-xs font-medium text-foreground">
+                            {employee.funcao_anterior}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="tabular-nums px-4 py-3 text-muted-foreground">
+                        {inicio || '—'}
+                      </td>
+                      <td className="tabular-nums px-4 py-3 text-muted-foreground">
+                        {termino || '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {employee.motivo_afastamento ? (
+                          <span
+                            className="inline-block max-w-[200px] truncate rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 border border-amber-200"
+                            title={employee.motivo_afastamento}
+                          >
+                            {employee.motivo_afastamento}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <CnhBadge status={cnhStatus(employee)} />
+                      </td>
+                    </tr>
+                  )
+                })}
                 {employees.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
                       Nenhum colaborador afastado encontrado.
                     </td>
                   </tr>

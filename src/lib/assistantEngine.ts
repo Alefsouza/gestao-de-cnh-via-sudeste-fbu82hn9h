@@ -749,7 +749,10 @@ export function formatEmployeeDetails(emp: Employee): string {
   if (comparable(emp.situacao) === 'afastado') {
     linhas.push(
       `• Motivo afastamento: ${emp.motivo_afastamento || 'Não informado'}`,
-      `• Retorno previsto: ${formatDate(emp.previsao_retorno)}`,
+      ...(emp.inicio_afastamento
+        ? [`• Início do afastamento: ${formatDate(emp.inicio_afastamento)}`]
+        : []),
+      `• Retorno previsto: ${formatDate(emp.termino_afastamento || emp.previsao_retorno || emp.data_retorno_afastamento)}`,
     )
   }
 
@@ -782,6 +785,13 @@ export function exportEmployeesToXlsx(
       Validade: formatDate(employee.validade_cnh),
       'Dias para vencer': diasLabel,
       Situação: employee.situacao || 'Ativo',
+      'Início Afastamento': formatDate(employee.inicio_afastamento || employee.data_afastamento),
+      'Término Afastamento': formatDate(
+        employee.termino_afastamento ||
+          employee.previsao_retorno ||
+          employee.data_retorno_afastamento,
+      ),
+      'Motivo Afastamento': employee.motivo_afastamento || '',
       'Data Desligamento': employee.data_desligamento ? formatDate(employee.data_desligamento) : '',
       'Motivo Desligamento': employee.motivo_desligamento || '',
       'Situação CNH': employee.situacao_cnh || '',

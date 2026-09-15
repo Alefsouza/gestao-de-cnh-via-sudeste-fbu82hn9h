@@ -14,6 +14,7 @@ export interface Employee {
   motivo_afastamento: string
   inicio_afastamento: string
   previsao_retorno: string
+  termino_afastamento?: string
   documento_fiscal: string
   validade_documento_fiscal: string
   registro?: string
