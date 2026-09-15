@@ -946,6 +946,19 @@ export default function CartaProcessoModal({
                 const pendentes = pendingAnexos[key] || []
                 const salvos = savedAnexos[key] || []
                 const totalAnexos = pendentes.length + salvos.length
+                const camposFixosColab = getCamposFixosColaborador(colab, tipoProcesso || tipoCarta)
+                const outrosSalvos = salvos.filter(
+                  (s) =>
+                    !camposFixosColab.some(
+                      (tipo) => (s.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
+                    ),
+                )
+                const outrosPendentes = pendentes.filter(
+                  (p) =>
+                    !camposFixosColab.some(
+                      (tipo) => (p.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
+                    ),
+                )
 
                 return (
                   <div
@@ -1021,25 +1034,6 @@ export default function CartaProcessoModal({
 
                         {/* Campos FIXOS de anexo por tipo de documento específicos deste colaborador */}
                         {(() => {
-                          const camposFixosColab = getCamposFixosColaborador(
-                            colab,
-                            tipoProcesso || tipoCarta,
-                          )
-                          const outrosSalvos = salvos.filter(
-                            (s) =>
-                              !camposFixosColab.some(
-                                (tipo) =>
-                                  (s.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
-                              ),
-                          )
-                          const outrosPendentes = pendentes.filter(
-                            (p) =>
-                              !camposFixosColab.some(
-                                (tipo) =>
-                                  (p.titulo || '').trim().toLowerCase() === tipo.toLowerCase(),
-                              ),
-                          )
-
                           return (
                             <div className="space-y-2">
                               <div className="text-[11px] font-semibold text-muted-foreground flex items-center justify-between">
