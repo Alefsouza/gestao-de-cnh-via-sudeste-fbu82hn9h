@@ -73,9 +73,19 @@ export function BannerControleCartas({ className = '' }: BannerControleCartasPro
   return (
     <section
       aria-label="Controle Único de Cartas"
-      className={`relative overflow-hidden rounded-2xl bg-[#064229] text-white shadow-lg border border-[#0d5939] ${className}`}
+      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#042f1d] via-[#064229] to-[#0e5c3b] text-white shadow-lg border border-[#0e5c3b]/60 ${className}`}
     >
-      <div className="flex flex-col gap-6 p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
+      {/* Detalhes sutis de iluminação do gradiente Via Sudeste */}
+      <div
+        className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -left-12 -bottom-12 h-48 w-48 rounded-full bg-emerald-500/10 blur-2xl"
+        aria-hidden="true"
+      />
+
+      <div className="relative flex flex-col gap-6 p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
         {/* Bloco Esquerda + Centro (Cartões): agrupados ou distribuídos */}
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between xl:justify-start xl:gap-8 flex-1 min-w-0">
           {/* Bloco Esquerda: Ícone + Título + Subtítulo */}
