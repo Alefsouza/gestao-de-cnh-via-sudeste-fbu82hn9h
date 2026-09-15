@@ -70,16 +70,18 @@ interface CartaProcessoModalProps {
 }
 
 const TIPOS_CARTA_PADRAO = [
+  'Inclusão',
+  'PRAT',
+  'Mudança de Função',
+  'Exclusão',
+  'Retorno do Afastamento',
   'Regularização de CNH',
   'Foto Bloqueada',
   'Impossibilitado de Trabalhar',
   'Notificação Cadastral',
   'Encaminhamento SPTrans',
   'Admissão / Inclusão',
-  'Mudança de Função',
   'Exclusão / Desligamento',
-  'Retorno do Afastamento',
-  'PRAT',
   'Outro',
 ]
 
@@ -131,13 +133,10 @@ export default function CartaProcessoModal({
 
   // Define tipo padrão de carta baseado no tipo de processo
   const getDefaultTipoCarta = (tipo?: string) => {
-    if (!tipo) return 'Regularização de CNH'
-    if (tipo === 'Inclusão') return 'Admissão / Inclusão'
-    if (tipo === 'Mudança de Função') return 'Mudança de Função'
-    if (tipo === 'Exclusão') return 'Exclusão / Desligamento'
-    if (tipo === 'Retorno do Afastamento') return 'Retorno do Afastamento'
-    if (tipo === 'PRAT') return 'PRAT'
-    return 'Regularização de CNH'
+    const trimmed = tipo?.trim()
+    if (!trimmed) return 'Inclusão'
+    // Prioriza o tipo exato do processo cadastral registrado (ex: 'Inclusão', 'PRAT', 'Mudança de Função', 'Exclusão', 'Retorno do Afastamento')
+    return trimmed
   }
 
   // Inicialização quando o modal abre
@@ -639,6 +638,12 @@ export default function CartaProcessoModal({
                   <SelectValue placeholder="Selecione o tipo da carta" />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* Se o tipo atual não estiver na lista padrão, exibe ele também no topo */}
+                  {tipoCarta && !TIPOS_CARTA_PADRAO.includes(tipoCarta) && (
+                    <SelectItem key={tipoCarta} value={tipoCarta}>
+                      {tipoCarta}
+                    </SelectItem>
+                  )}
                   {TIPOS_CARTA_PADRAO.map((tipo) => (
                     <SelectItem key={tipo} value={tipo}>
                       {tipo}
