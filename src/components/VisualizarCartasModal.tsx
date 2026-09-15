@@ -486,11 +486,18 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                         )}
                       >
                         {/* Cabeçalho do item clicável para colapsar/expandir */}
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
                           onClick={() => toggleExpand(item.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              toggleExpand(item.id)
+                            }
+                          }}
                           aria-expanded={isExpanded}
-                          className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors cursor-pointer"
+                          className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors cursor-pointer select-none"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -532,7 +539,7 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                               <ChevronRight className="h-4 w-4 text-muted-foreground" />
                             )}
                           </div>
-                        </button>
+                        </div>
 
                         {/* Conteúdo expandido: dados da carta + 5 documentos anexados */}
                         {isExpanded && (
