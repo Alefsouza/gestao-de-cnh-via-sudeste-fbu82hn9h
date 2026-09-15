@@ -1375,20 +1375,52 @@ export default function ProcessosCadastrais() {
                           {processo.processo !== 'Atualização' && (
                             <button
                               type="button"
-                              onClick={() => {
-                                setCartaProcessoColaboradores([
-                                  {
-                                    processoId: processo.id,
-                                    matricula: processo.matricula,
-                                    nome: processo.colaborador,
-                                    funcao: processo.funcao,
-                                    garagem: processo.garagem,
-                                    processoTipo: processo.processo,
-                                  },
-                                ])
+                              onClick={async () => {
+                                const singleColab: CartaColaboradorInfo = {
+                                  processoId: processo.id,
+                                  matricula: processo.matricula,
+                                  nome: processo.colaborador,
+                                  funcao: processo.funcao,
+                                  garagem: processo.garagem,
+                                  processoTipo: processo.processo,
+                                }
+                                setCartaProcessoColaboradores([singleColab])
                                 setCartaProcessoTipo(processo.processo)
-                                setCartaProcessoNumeroInicial('')
                                 setCartaProcessoIsEdit(true)
+
+                                // Busca carta já existente no backend para pré-preencher o número
+                                let numExistente = ''
+                                try {
+                                  const mat = (processo.matricula || '').trim()
+                                  const colab = (processo.colaborador || '').trim()
+                                  if (mat) {
+                                    const safeMat = mat.replace(/"/g, '\\"')
+                                    const res = await pb.collection('cartas').getList(1, 1, {
+                                      filter: `matricula = "${safeMat}"`,
+                                      sort: '-created',
+                                    })
+                                    if (res.items.length > 0 && res.items[0].numero_carta) {
+                                      numExistente = res.items[0].numero_carta
+                                    }
+                                  }
+                                  if (!numExistente && colab) {
+                                    const safeColab = colab.replace(/"/g, '\\"')
+                                    const res = await pb.collection('cartas').getList(1, 1, {
+                                      filter: `colaborador ~ "${safeColab}"`,
+                                      sort: '-created',
+                                    })
+                                    if (res.items.length > 0 && res.items[0].numero_carta) {
+                                      numExistente = res.items[0].numero_carta
+                                    }
+                                  }
+                                } catch (errBuscaCarta) {
+                                  console.warn(
+                                    'Erro ao buscar carta existente do processo:',
+                                    errBuscaCarta,
+                                  )
+                                }
+
+                                setCartaProcessoNumeroInicial(numExistente)
                                 setCartaProcessoModalOpen(true)
                               }}
                               className="inline-flex h-8 px-2.5 items-center justify-center rounded-md border border-emerald-600/30 text-xs font-medium text-emerald-700 hover:bg-emerald-50 transition-colors gap-1"

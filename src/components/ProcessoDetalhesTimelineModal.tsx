@@ -763,6 +763,19 @@ export function ProcessoDetalhesTimelineModal({
                                     setProcessoAnexos((prev) =>
                                       prev.filter((x) => x.id !== anexo.id),
                                     )
+                                    // Registra evento de exclusão na timeline do processo
+                                    try {
+                                      const novoItem = await createTimelineItem({
+                                        processo: processo.id,
+                                        etapa: 'Documento removido',
+                                        responsavel_nome: currentUserName,
+                                        responsavel_perfil: currentRole,
+                                        observacoes: `Documento removido: ${anexo.titulo || anexo.arquivo}`,
+                                      })
+                                      setTimeline((prev) => [...prev, novoItem])
+                                    } catch (tlErr) {
+                                      console.warn('Erro ao registrar exclusão na timeline:', tlErr)
+                                    }
                                     toast.success('Anexo excluído com sucesso.')
                                   } catch (err) {
                                     toast.error('Erro ao excluir anexo.')

@@ -46,6 +46,9 @@ import {
   getProcessoAnexoFileUrl,
   type ProcessoAnexoRecord,
 } from '@/services/processoAnexos'
+import { createTimelineItem } from '@/services/processoTimeline'
+import { updateProcessoSituacao } from '@/services/processosCadastrais'
+import pb from '@/lib/pocketbase/client'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/lib/types'
@@ -121,13 +124,13 @@ export default function CartaProcessoModal({
   const [saving, setSaving] = useState(false)
   const [expandedMatriculas, setExpandedMatriculas] = useState<Record<string, boolean>>({})
 
-  // Anexos locais pendentes de envio (por matrícula/chave do colaborador)
+  // Anexos locais pendentes de envio (estritamente por processoId)
   // Cada item: { file: File, titulo: string, id: string }
   const [pendingAnexos, setPendingAnexos] = useState<
     Record<string, Array<{ id: string; file: File; titulo: string }>>
   >({})
 
-  // Anexos já persistidos no backend (por matrícula)
+  // Anexos já persistidos no backend (estritamente por processoId)
   const [savedAnexos, setSavedAnexos] = useState<Record<string, ProcessoAnexoRecord[]>>({})
   const [loadingSavedAnexos, setLoadingSavedAnexos] = useState(false)
 
@@ -172,6 +175,10 @@ export default function CartaProcessoModal({
     }
   }, [open, initialNumeroCarta, tipoProcesso, colaboradores, isEditMode])
 
+  const getColabKey = (colab: CartaColaboradorInfo): string => {
+    return colab.processoId || colab.matricula || colab.nome
+  }
+
   const loadExistingAnexos = async (numCarta: string) => {
     if (!numCarta) return
     setLoadingSavedAnexos(true)
@@ -179,11 +186,12 @@ export default function CartaProcessoModal({
       const records = await listAnexosByCarta(numCarta)
       const grouped: Record<string, ProcessoAnexoRecord[]> = {}
       for (const rec of records) {
-        const mat = (rec.matricula || '').trim() || (rec.colaborador || '').trim()
-        if (!grouped[mat]) grouped[mat] = []
-        grouped[mat].push(rec)
+        // Chave estrita por processo se existir
+        const key = rec.processo || (rec.matricula || '').trim() || (rec.colaborador || '').trim()
+        if (!grouped[key]) grouped[key] = []
+        grouped[key].push(rec)
       }
-      setSavedAnexos(grouped)
+      setSavedAnexos((prev) => ({ ...prev, ...grouped }))
     } catch (err) {
       console.warn('Erro ao carregar anexos salvos da carta:', err)
     } finally {
@@ -200,7 +208,7 @@ export default function CartaProcessoModal({
       for (const colab of colabs) {
         if (!colab.processoId) continue
         const recs = await listAnexosByProcesso(colab.processoId)
-        const key = colab.matricula || colab.nome
+        const key = getColabKey(colab)
         all[key] = recs
       }
       setSavedAnexos((prev) => ({ ...prev, ...all }))
@@ -260,6 +268,62 @@ export default function CartaProcessoModal({
     toast.success(`"${tituloFinal}" selecionado para ${colab.nome}.`)
   }
 
+  // Mapeia título do anexo para o campo legado correspondente na coleção `cartas`
+  const mapTituloParaCampoCarta = (titulo: string): string | null => {
+    const t = (titulo || '').toLowerCase()
+    if (t.includes('rg') || t.includes('cnh') || t.includes('pessoal')) {
+      return 'cnh'
+    }
+    if (t.includes('residência') || t.includes('residencia')) {
+      return 'comprovante_residencia'
+    }
+    if (t.includes('prontuário') || t.includes('prontuario')) {
+      return 'prontuario'
+    }
+    if (t.includes('atestado') || t.includes('aso')) {
+      return 'atestado'
+    }
+    if (t.includes('gestora') || t.includes('assinado')) {
+      return 'doc_assinado_gestora'
+    }
+    return null
+  }
+
+  // Atualiza os campos legados da coleção cartas com os nomes de arquivos salvos
+  const syncCamposLegadosCarta = async (
+    numCarta: string,
+    colab: CartaColaboradorInfo,
+    anexosDoColab: Array<{ titulo?: string; arquivo?: string }>,
+  ) => {
+    if (!numCarta) return
+    try {
+      const mat = (colab.matricula || '').trim()
+      const nome = (colab.nome || '').trim()
+      let filter = `numero_carta = "${numCarta.replace(/"/g, '\\"')}"`
+      if (mat) {
+        filter += ` && matricula = "${mat.replace(/"/g, '\\"')}"`
+      } else if (nome) {
+        filter += ` && colaborador ~ "${nome.replace(/"/g, '\\"')}"`
+      }
+      const res = await pb.collection('cartas').getList(1, 1, { filter })
+      if (res.items.length === 0) return
+
+      const cartaId = res.items[0].id
+      const patchData: Record<string, string> = {}
+      for (const item of anexosDoColab) {
+        const campo = mapTituloParaCampoCarta(item.titulo || '')
+        if (campo && item.arquivo) {
+          patchData[campo] = item.arquivo
+        }
+      }
+      if (Object.keys(patchData).length > 0) {
+        await pb.collection('cartas').update(cartaId, patchData)
+      }
+    } catch (errSync) {
+      console.warn('Erro ao sincronizar campos legados em cartas:', errSync)
+    }
+  }
+
   const uploadSingleAnexoNow = async (
     key: string,
     file: File,
@@ -267,16 +331,18 @@ export default function CartaProcessoModal({
     colab: CartaColaboradorInfo,
   ) => {
     try {
+      const tituloFinal = titulo || file.name
       const saved = await uploadProcessoAnexo({
         processoId: colab.processoId,
         numero_carta: numeroCarta.trim(),
         matricula: colab.matricula,
         colaborador: colab.nome,
-        titulo: titulo || file.name,
+        titulo: tituloFinal,
         arquivo: file,
         criado_por: user?.id,
         criado_por_nome: currentUserName,
       })
+      const novosSalvos = [saved, ...(savedAnexos[key] || [])]
       setSavedAnexos((prev) => ({
         ...prev,
         [key]: [saved, ...(prev[key] || [])],
@@ -286,6 +352,38 @@ export default function CartaProcessoModal({
         ...prev,
         [key]: (prev[key] || []).filter((p) => p.file !== file),
       }))
+
+      // Cria item na timeline do processo: "Documento anexado"
+      if (colab.processoId) {
+        try {
+          await createTimelineItem({
+            processo: colab.processoId,
+            etapa: 'Documento anexado',
+            responsavel_nome: currentUserName,
+            responsavel_perfil: currentRole,
+            observacoes: `Documento anexado: ${tituloFinal} (${file.name})`,
+          })
+        } catch (tlErr) {
+          console.warn('Erro ao registrar upload na timeline:', tlErr)
+        }
+
+        // Sincroniza campos legados da carta se já existir
+        if (numeroCarta.trim()) {
+          void syncCamposLegadosCarta(numeroCarta.trim(), colab, [
+            { titulo: tituloFinal, arquivo: saved.arquivo },
+          ])
+        }
+
+        // Regra "Regular": ao completar os anexos do colaborador (>= 5 documentos), atualiza situação para Regular
+        if (novosSalvos.length >= 5) {
+          try {
+            await updateProcessoSituacao(colab.processoId, 'Regular')
+          } catch (regErr) {
+            console.warn('Erro ao atualizar situação para Regular:', regErr)
+          }
+        }
+      }
+
       toast.success(`Anexo "${file.name}" salvo com sucesso no servidor.`)
     } catch (err: any) {
       console.error('Erro ao enviar anexo:', err)
@@ -300,13 +398,35 @@ export default function CartaProcessoModal({
     }))
   }
 
-  const handleDeleteSavedAnexo = async (key: string, anexoId: string) => {
+  const handleDeleteSavedAnexo = async (
+    key: string,
+    anexoId: string,
+    colab?: CartaColaboradorInfo,
+  ) => {
     try {
+      const anexoObj = (savedAnexos[key] || []).find((a) => a.id === anexoId)
       await deleteProcessoAnexo(anexoId)
       setSavedAnexos((prev) => ({
         ...prev,
         [key]: (prev[key] || []).filter((a) => a.id !== anexoId),
       }))
+
+      // Timeline de exclusão (Remoção de anexo NÃO reverte situação do processo)
+      const procId = colab?.processoId || anexoObj?.processo
+      if (procId) {
+        try {
+          await createTimelineItem({
+            processo: procId,
+            etapa: 'Documento removido',
+            responsavel_nome: currentUserName,
+            responsavel_perfil: currentRole,
+            observacoes: `Documento removido: ${anexoObj?.titulo || anexoObj?.arquivo || 'Documento'}`,
+          })
+        } catch (tlErr) {
+          console.warn('Erro ao registrar remoção na timeline:', tlErr)
+        }
+      }
+
       toast.success('Anexo removido com sucesso.')
     } catch (err: any) {
       console.error('Erro ao excluir anexo:', err)
@@ -340,21 +460,22 @@ export default function CartaProcessoModal({
       // Cria ou atualiza os registros de carta na coleção `cartas` para cada colaborador
       // e faz o upload dos anexos vinculados a cada um
       for (const colab of colaboradores) {
-        const key = colab.matricula || colab.nome
+        const key = getColabKey(colab)
         const anexosDoColab = pendingAnexos[key] || []
+        const anexosJaSalvos = savedAnexos[key] || []
 
         // Verifica se a carta já existe para esse colaborador
         const cartasExistentes = await listCartas()
-        const jaCadastrado = cartasExistentes.find(
+        let cartaRegistro = cartasExistentes.find(
           (c) =>
             (c.numero_carta || '').trim() === numCartaTrim &&
             ((c.matricula && c.matricula.trim() === colab.matricula.trim()) ||
               c.colaborador.trim().toLowerCase() === colab.nome.trim().toLowerCase()),
         )
 
-        if (!jaCadastrado) {
+        if (!cartaRegistro) {
           // Cria o registro na coleção cartas
-          await createCarta({
+          cartaRegistro = await createCarta({
             numero_carta: numCartaTrim,
             colaborador: colab.nome,
             matricula: colab.matricula,
@@ -367,10 +488,12 @@ export default function CartaProcessoModal({
           })
         }
 
+        const novosSalvosNestaRodada: ProcessoAnexoRecord[] = []
+
         // Faz upload de cada anexo pendente vinculado a este colaborador
         for (const anexoItem of anexosDoColab) {
           try {
-            await uploadProcessoAnexo({
+            const saved = await uploadProcessoAnexo({
               processoId: colab.processoId,
               numero_carta: numCartaTrim,
               matricula: colab.matricula,
@@ -380,11 +503,56 @@ export default function CartaProcessoModal({
               criado_por: user?.id,
               criado_por_nome: currentUserName,
             })
+            novosSalvosNestaRodada.push(saved)
+
+            // Timeline do processo para cada upload
+            if (colab.processoId) {
+              try {
+                await createTimelineItem({
+                  processo: colab.processoId,
+                  etapa: 'Documento anexado',
+                  responsavel_nome: currentUserName,
+                  responsavel_perfil: currentRole,
+                  observacoes: `Documento anexado: ${saved.titulo} (${saved.arquivo})`,
+                })
+              } catch (tlErr) {
+                console.warn('Erro ao registrar upload na timeline:', tlErr)
+              }
+            }
           } catch (anexoErr) {
             console.warn(
               `Erro ao fazer upload do anexo ${anexoItem.file.name} para ${colab.nome}:`,
               anexoErr,
             )
+          }
+        }
+
+        // Preenche também os campos legados da coleção cartas com todos os anexos deste colaborador
+        const todosAnexos = [
+          ...anexosJaSalvos.map((a) => ({ titulo: a.titulo, arquivo: a.arquivo })),
+          ...novosSalvosNestaRodada.map((a) => ({ titulo: a.titulo, arquivo: a.arquivo })),
+        ]
+        await syncCamposLegadosCarta(numCartaTrim, colab, todosAnexos)
+
+        // Se houver anexos já existentes que estavam sem numero_carta ou com numero desatualizado, atualiza
+        for (const sal of anexosJaSalvos) {
+          if (!sal.numero_carta || sal.numero_carta !== numCartaTrim) {
+            try {
+              await pb.collection('processo_anexos').update(sal.id, {
+                numero_carta: numCartaTrim,
+              })
+            } catch {
+              /* intentionally ignored */
+            }
+          }
+        }
+
+        // Regra "Regular": ao salvar a carta, atualiza a situação do processo para "Regular"
+        if (colab.processoId) {
+          try {
+            await updateProcessoSituacao(colab.processoId, 'Regular')
+          } catch (regErr) {
+            console.warn('Erro ao atualizar processo para Regular ao salvar carta:', regErr)
           }
         }
       }
@@ -403,10 +571,21 @@ export default function CartaProcessoModal({
   }
 
   // Ação de Impressão da Carta (Gera visualização de impressão nativa)
-  const handleImprimirCarta = () => {
+  const handleImprimirCarta = async () => {
     if (!numeroCarta.trim()) {
       toast.error('Informe o Número da carta antes de imprimir.')
       return
+    }
+
+    // Mantém a regularização existente ao "Gerar/Imprimir Carta"
+    for (const colab of colaboradores) {
+      if (colab.processoId) {
+        try {
+          await updateProcessoSituacao(colab.processoId, 'Regular')
+        } catch (errReg) {
+          console.warn('Erro ao manter regularização ao imprimir carta:', errReg)
+        }
+      }
     }
 
     const printWindow = window.open('', '_blank')
@@ -423,7 +602,7 @@ export default function CartaProcessoModal({
 
     const rowsHtml = colaboradores
       .map((colab, idx) => {
-        const key = colab.matricula || colab.nome
+        const key = getColabKey(colab)
         const anexosSalvos = savedAnexos[key] || []
         const anexosPend = pendingAnexos[key] || []
         const totalAnexos = anexosSalvos.length + anexosPend.length
@@ -677,7 +856,7 @@ export default function CartaProcessoModal({
 
             <div className="space-y-2 pt-1">
               {colaboradores.map((colab, idx) => {
-                const key = colab.matricula || colab.nome
+                const key = getColabKey(colab)
                 const uniqueKey = colab.processoId
                   ? `${colab.processoId}-${idx}`
                   : colab.matricula
@@ -959,7 +1138,7 @@ export default function CartaProcessoModal({
                                                 variant="ghost"
                                                 className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
                                                 onClick={() =>
-                                                  handleDeleteSavedAnexo(key, anexo.id)
+                                                  handleDeleteSavedAnexo(key, anexo.id, colab)
                                                 }
                                                 title="Excluir anexo salvo"
                                               >
@@ -1049,7 +1228,9 @@ export default function CartaProcessoModal({
                                           size="sm"
                                           variant="ghost"
                                           className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
-                                          onClick={() => handleDeleteSavedAnexo(key, anexo.id)}
+                                          onClick={() =>
+                                            handleDeleteSavedAnexo(key, anexo.id, colab)
+                                          }
                                         >
                                           <Trash2 className="h-3 w-3" />
                                         </Button>
