@@ -144,6 +144,26 @@ const CAMPOS_FIXOS_MUDANCA_FISCAL_COBRADOR = [
   'CTPS constando a mudança de função',
 ]
 
+// INCLUSÃO – MOTORISTA (7 documentos verbatim)
+export const CAMPOS_FIXOS_INCLUSAO_MOTORISTA = [
+  'Carta assinada pela Sabrina',
+  'Carta de Aptidão assinada pelo Leandro',
+  'CNH',
+  'Certificado de curso',
+  'Certidão de prontuário',
+  'Comprovante de endereço',
+  'Atestado de antecedentes criminais',
+]
+
+// INCLUSÃO – COBRADOR E FISCAL (5 documentos verbatim)
+export const CAMPOS_FIXOS_INCLUSAO_COBRADOR_FISCAL = [
+  'Carta assinada pela Sabrina',
+  'RG',
+  'Comprovante de endereço',
+  'Atestado de Antecedentes Criminais',
+  'CTPS - com o vínculo ativo',
+]
+
 // ATUALIZAÇÃO CADASTRAL – MOTORISTA (5 campos verbatim)
 export const CAMPOS_FIXOS_ATUALIZACAO_MOTORISTA = [
   'Carta assinada pela Sabrina',
@@ -220,7 +240,19 @@ export function getCamposFixosColaborador(
     return CAMPOS_FIXOS_EXCLUSAO
   }
 
-  // 6. Demais processos (Inclusão, etc.)
+  // 6. Processo Inclusão (Motorista = 7 documentos; Cobrador/Fiscal/outros = 5 documentos)
+  if (tipo === 'inclusão' || tipo === 'inclusao' || tipo.includes('inclus')) {
+    const funcaoNorm = (colab.funcao || '').trim().toLowerCase()
+    const isMotorista = funcaoNorm.includes('motorist')
+
+    if (isMotorista) {
+      return CAMPOS_FIXOS_INCLUSAO_MOTORISTA
+    }
+    // Cobrador, Fiscal e qualquer outra função recebem a lista de 5 como fallback
+    return CAMPOS_FIXOS_INCLUSAO_COBRADOR_FISCAL
+  }
+
+  // 7. Demais processos (fallbacks genéricos)
   return CAMPOS_FIXOS_PADRAO
 }
 
