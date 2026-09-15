@@ -96,7 +96,7 @@ export function BannerControleCartas({ className = '' }: BannerControleCartasPro
 
             <div className="min-w-0 space-y-1">
               <p className="text-[11px] font-bold tracking-wider text-emerald-200/90 uppercase">
-                CONTROLE ÚNICO DE CARTAS · 2026
+                CONTROLE ÚNICO DE CARTAS
               </p>
               <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-tight">
                 Você está na Carta SPTrans nº{' '}
