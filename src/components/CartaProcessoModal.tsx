@@ -161,6 +161,9 @@ export const CAMPOS_FIXOS_ATUALIZACAO_FISCAL_COBRADOR = [
   'Atestado de antecedentes criminais',
 ]
 
+// EXCLUSÃO – SOMENTE um documento fixo (para todas as funções)
+export const CAMPOS_FIXOS_EXCLUSAO = ['Carta assinada pela Sabrina']
+
 /**
  * Retorna os campos fixos de documentos para um colaborador específico dentro da carta,
  * respeitando o tipo de processo/carta e a função do colaborador.
@@ -212,7 +215,12 @@ export function getCamposFixosColaborador(
     return CAMPOS_FIXOS_ATUALIZACAO_FISCAL_COBRADOR
   }
 
-  // 5. Demais processos (Inclusão, Exclusão, etc.)
+  // 5. Processo Exclusão (Somente a carta assinada pela Sabrina)
+  if (tipo === 'exclusão' || tipo === 'exclusao' || tipo.includes('exclus')) {
+    return CAMPOS_FIXOS_EXCLUSAO
+  }
+
+  // 6. Demais processos (Inclusão, etc.)
   return CAMPOS_FIXOS_PADRAO
 }
 
