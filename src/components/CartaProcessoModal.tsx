@@ -673,6 +673,11 @@ export default function CartaProcessoModal({
             <div className="space-y-2 pt-1">
               {colaboradores.map((colab, idx) => {
                 const key = colab.matricula || colab.nome
+                const uniqueKey = colab.processoId
+                  ? `${colab.processoId}-${idx}`
+                  : colab.matricula
+                    ? `${colab.matricula}-${idx}`
+                    : `colab-${idx}`
                 const isExpanded = !!expandedMatriculas[key]
                 const pendentes = pendingAnexos[key] || []
                 const salvos = savedAnexos[key] || []
@@ -680,7 +685,7 @@ export default function CartaProcessoModal({
 
                 return (
                   <div
-                    key={key || idx}
+                    key={uniqueKey}
                     className={cn(
                       'rounded-lg border transition-all duration-150',
                       isExpanded

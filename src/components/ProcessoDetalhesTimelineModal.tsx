@@ -704,16 +704,17 @@ export function ProcessoDetalhesTimelineModal({
                   </div>
 
                   <div className="space-y-1.5">
-                    {processoAnexos.map((anexo) => {
+                    {processoAnexos.map((anexo, aIdx) => {
                       const urlVis = getProcessoAnexoFileUrl(anexo)
                       const urlDown = getProcessoAnexoFileUrl(anexo, undefined, { download: true })
                       const canDeleteAnexo = isAdmin || isRH || anexo.criado_por === user?.id
 
                       return (
                         <div
-                          key={anexo.id}
-                          className="flex items-center justify-between gap-2 rounded bg-white p-2 border border-emerald-100 text-xs"
+                          key={`${anexo.id}-${aIdx}`}
+                          className="flex items-center justify-between gap-2 rounded-md border bg-card p-2 text-xs"
                         >
+                          {' '}
                           <div className="flex items-center gap-1.5 min-w-0">
                             <FileText className="h-3.5 w-3.5 flex-none text-emerald-700" />
                             <div className="min-w-0">
@@ -727,7 +728,6 @@ export function ProcessoDetalhesTimelineModal({
                               </p>
                             </div>
                           </div>
-
                           <div className="flex items-center gap-1 flex-none">
                             <Button
                               type="button"
@@ -1055,7 +1055,7 @@ export function ProcessoDetalhesTimelineModal({
                         item.status_documentacao === 'Documentação incompleta'
 
                       return (
-                        <div key={item.id || index} className="relative group">
+                        <div key={`${item.id || 'tl'}-${index}`} className="relative group">
                           {/* Marcador na linha */}
                           <div
                             className={cn(

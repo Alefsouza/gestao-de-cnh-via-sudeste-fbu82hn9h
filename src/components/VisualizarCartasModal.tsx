@@ -470,14 +470,14 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                 </div>
 
                 <div className="space-y-2">
-                  {colaboradoresDaCarta.map((item) => {
+                  {colaboradoresDaCarta.map((item, idx) => {
                     const isExpanded = !!expandedIds[item.id]
                     const registroTexto = item.matricula || 'Sem registro'
                     const labelPrincipal = `${registroTexto} - ${item.colaborador}`
 
                     return (
                       <div
-                        key={item.id}
+                        key={`${item.id}-${idx}`}
                         className={cn(
                           'rounded-lg border transition-all duration-150',
                           isExpanded
@@ -656,14 +656,14 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
                                     const itemC = (item.colaborador || '').trim().toLowerCase()
                                     return (itemM && m === itemM) || (c && c === itemC)
                                   })
-                                  .map((ad) => {
+                                  .map((ad, adIdx) => {
                                     const urlVis = getProcessoAnexoFileUrl(ad)
                                     const urlDown = getProcessoAnexoFileUrl(ad, undefined, {
                                       download: true,
                                     })
                                     return (
                                       <div
-                                        key={ad.id}
+                                        key={`${ad.id}-${adIdx}`}
                                         className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-emerald-50/40 border border-emerald-200/80 p-2.5 text-xs"
                                       >
                                         <div className="flex items-center gap-2 min-w-0">

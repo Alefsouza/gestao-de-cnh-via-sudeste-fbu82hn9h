@@ -76,6 +76,7 @@ import { createMovement } from '@/services/movements'
 import type {
   AlertaTrafego,
   Employee,
+  MovementType,
   ProcessoCategoria,
   ProcessoSituacao,
   UserRole,
@@ -438,6 +439,22 @@ export default function ProcessosCadastrais() {
         const novosCriados: ProcessoCadastral[] = []
 
         for (const item of itemsToCreate) {
+          const matTrim = (item.matricula || '').trim()
+          // Evita gravar processo idêntico (mesma matrícula + mesmo tipo) caso já exista em aberto/recente
+          // Verifica no estado local processos
+          const jaExisteIdenticoLocal = processos.some(
+            (p) =>
+              (p.matricula || '').trim() === matTrim &&
+              p.processo === item.processo &&
+              p.situacao !== 'Regular',
+          )
+          if (jaExisteIdenticoLocal) {
+            toast.warning(
+              `Já existe um processo em aberto de ${item.processo} para a matrícula ${matTrim}. Registro ignorado para evitar duplicidade.`,
+            )
+            continue
+          }
+
           const isoPrazo = toSafeIsoString(item.prazo)
           const isoDataTroca = toSafeIsoString(item.data_troca_funcao)
           const isoDataDesligamento = toSafeIsoString(item.data_desligamento)
@@ -512,17 +529,42 @@ export default function ProcessosCadastrais() {
           }
 
           // Persiste também como movimentação no banco se houver colaborador vinculado
+          // O schema da coleção 'movements' aceita apenas:
+          // 'Admissão' | 'Afastamento' | 'Retorno' | 'Desligamento' | 'Atualização fiscal'
           if (item.employeeId) {
             try {
               const movementDate = isoPrazo || new Date().toISOString()
-              await createMovement({
-                employee: item.employeeId,
-                type: item.processo as never,
-                date: movementDate,
-                notes: `Processo cadastral ${item.processo} — matrícula ${item.matricula}`,
-              })
-            } catch {
-              // silencioso
+              const mapCategoriaToMovementType = (cat: ProcessoCategoria): MovementType | null => {
+                switch (cat) {
+                  case 'Inclusão':
+                  case 'PRAT':
+                    return 'Admissão'
+                  case 'Exclusão':
+                    return 'Desligamento'
+                  case 'Retorno do Afastamento':
+                    return 'Retorno'
+                  case 'Atualização':
+                  case 'Atualização Fiscal':
+                    return 'Atualização fiscal'
+                  case 'Mudança de Função':
+                    return 'Atualização fiscal'
+                  default:
+                    return null
+                }
+              }
+
+              const validMovementType = mapCategoriaToMovementType(item.processo)
+              if (validMovementType) {
+                await createMovement({
+                  employee: item.employeeId,
+                  type: validMovementType,
+                  date: movementDate,
+                  notes: `Processo cadastral ${item.processo} — matrícula ${item.matricula}`,
+                })
+              }
+            } catch (movementErr) {
+              // Tolerante: erro na movimentação não bloqueia o registro do processo
+              console.warn('Não foi possível gravar movimentação associada:', movementErr)
             }
           }
         }
@@ -561,7 +603,7 @@ export default function ProcessosCadastrais() {
         toast.error('Erro ao salvar processo no backend')
       }
     },
-    [currentUserName, currentRole, isTrafego],
+    [currentUserName, currentRole, isTrafego, processos],
   )
 
   const handleUpdate = useCallback(
@@ -1173,9 +1215,9 @@ export default function ProcessosCadastrais() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedProcessos.map((processo) => (
+                {paginatedProcessos.map((processo, index) => (
                   <tr
-                    key={processo.id}
+                    key={`${processo.id}-${index}`}
                     onClick={() => setSelectedProcessoDetalhes(processo)}
                     className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
                     title="Clique para ver os detalhes e a linha do tempo do processo"
@@ -2193,6 +2235,21 @@ function ProcessoCadastralFormModal({
       }
     }
 
+    // Evita duplicidade de colaboradores no mesmo lote (mesma matrícula)
+    if (isMultiMode && colaboradores.length > 1) {
+      const matriculasVistas = new Set<string>()
+      for (const colab of colaboradores) {
+        const mat = colab.matricula.trim()
+        if (mat) {
+          if (matriculasVistas.has(mat)) {
+            toast.error(`A matrícula ${mat} foi adicionada mais de uma vez no formulário.`)
+            return
+          }
+          matriculasVistas.add(mat)
+        }
+      }
+    }
+
     setSaving(true)
     try {
       if (isMultiMode) {
@@ -2500,7 +2557,7 @@ function ProcessoCadastralFormModal({
 
                   return (
                     <div
-                      key={colab.id}
+                      key={`${colab.id}-${idx}`}
                       className={cn(
                         'rounded-lg border transition-all',
                         isExpanded
@@ -3382,14 +3439,19 @@ function ProcessoCadastralFormModal({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-              {saving
-                ? 'Salvando…'
-                : isEditing
-                  ? 'Salvar alterações'
-                  : isMultiMode && colaboradores.length > 1
-                    ? `Registrar ${colaboradores.length} processos`
-                    : 'Registrar processo'}
+            <Button type="button" onClick={handleSubmit} disabled={!canSubmit || saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : isEditing ? (
+                'Salvar alterações'
+              ) : isMultiMode && colaboradores.length > 1 ? (
+                `Registrar ${colaboradores.length} processos`
+              ) : (
+                'Registrar processo'
+              )}
             </Button>
           </DialogFooter>
         </div>
