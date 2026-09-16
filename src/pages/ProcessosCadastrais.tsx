@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays,
   CheckCircle2,
@@ -2075,6 +2075,17 @@ function ProcessoCadastralFormModal({
     [isProcessoExclusao],
   )
 
+  // Ref para cancelar timers de busca pendentes por colaborador no modo criação
+  const multiSearchTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  // Limpa timers ao desmontar modal ou fechar
+  useEffect(() => {
+    if (!open) {
+      Object.values(multiSearchTimersRef.current).forEach(clearTimeout)
+      multiSearchTimersRef.current = {}
+    }
+  }, [open])
+
   // Auto-busca para formulário simples (apenas no modo de Edição)
   useEffect(() => {
     if (!open || isMultiMode) return
@@ -2086,47 +2097,48 @@ function ProcessoCadastralFormModal({
       setSingleSearching(true)
       try {
         const match = await searchEmployeeData(term)
-        if (!isMounted || !match) return
-        if (match.nome) setSingleNome(match.nome)
-        if (match.funcao) {
-          setSingleFuncao(match.funcao)
-          // Se for Mudança de Função, auto-sugere no campo "Função atual" a função atual do colaborador
-          setFuncaoAtual((prev) => (prev.trim() === '' ? match.funcao : prev))
+        if (!isMounted) return
+        if (match) {
+          if (match.nome) setSingleNome(match.nome)
+          if (match.funcao) {
+            setSingleFuncao(match.funcao)
+            // Se for Mudança de Função, auto-sugere no campo "Função atual" a função atual do colaborador
+            setFuncaoAtual((prev) => (prev.trim() === '' ? match.funcao : prev))
+          }
+          // Se for Mudança de Função e a Função antiga ainda não foi digitada:
+          // sugere a função anterior real (campo funcao_anterior) se preenchida; senão, cai para a função atual
+          const suggestedAntiga = (match.funcao_anterior || match.funcao || '').trim()
+          if (suggestedAntiga) {
+            setFuncaoAntiga((prev) => (prev.trim() === '' ? suggestedAntiga : prev))
+          }
+          if (processo === 'Exclusão') {
+            // Ao alterar o registro no processo de Exclusão, substitui os dados de desligamento
+            // pelos dados do novo colaborador; se ele não tiver motivo/data cadastrados, limpa os campos.
+            setDataDesligamento(match.data_desligamento || '')
+            setMotivoDesligamento(match.motivo_desligamento || '')
+          }
+          if (processo === 'Retorno do Afastamento') {
+            const dtAfast = match.data_afastamento || ''
+            const dtRet = match.data_retorno_afastamento || ''
+            setDataAfastamento(dtAfast)
+            setDataRetornoAfastamento(dtRet)
+            setDiasAfastado(dtAfast && dtRet ? calculateDiasAfastado(dtAfast, dtRet) : undefined)
+            setMotivoAfastamento(match.motivo_afastamento || '')
+          }
+          setSingleGaragem(match.garagem)
+          setSingleResolvedEmpId(match.id)
+        } else {
+          // Colaborador não encontrado para a matrícula digitada
+          if (processo === 'Exclusão') {
+            setDataDesligamento('')
+            setMotivoDesligamento('')
+          } else if (processo === 'Retorno do Afastamento') {
+            setDataAfastamento('')
+            setDataRetornoAfastamento('')
+            setDiasAfastado(undefined)
+            setMotivoAfastamento('')
+          }
         }
-        // Se for Mudança de Função e a Função antiga ainda não foi digitada:
-        // sugere a função anterior real (campo funcao_anterior) se preenchida; senão, cai para a função atual
-        const suggestedAntiga = (match.funcao_anterior || match.funcao || '').trim()
-        if (suggestedAntiga) {
-          setFuncaoAntiga((prev) => (prev.trim() === '' ? suggestedAntiga : prev))
-        }
-        if (processo === 'Exclusão') {
-          if (match.data_desligamento) {
-            setDataDesligamento((prev) => (prev.trim() === '' ? match.data_desligamento : prev))
-          }
-          if (match.motivo_desligamento) {
-            setMotivoDesligamento((prev) => (prev.trim() === '' ? match.motivo_desligamento : prev))
-          }
-        }
-        if (processo === 'Retorno do Afastamento') {
-          const dtAfast = match.data_afastamento || ''
-          const dtRet = match.data_retorno_afastamento || ''
-          if (dtAfast) {
-            setDataAfastamento((prev) => (prev.trim() === '' ? dtAfast : prev))
-          }
-          if (dtRet) {
-            setDataRetornoAfastamento((prev) => (prev.trim() === '' ? dtRet : prev))
-          }
-          if (dtAfast && dtRet) {
-            setDiasAfastado((prev) =>
-              prev !== undefined ? prev : calculateDiasAfastado(dtAfast, dtRet),
-            )
-          }
-          if (match.motivo_afastamento) {
-            setMotivoAfastamento((prev) => (prev.trim() === '' ? match.motivo_afastamento : prev))
-          }
-        }
-        setSingleGaragem(match.garagem)
-        setSingleResolvedEmpId(match.id)
       } finally {
         if (isMounted) setSingleSearching(false)
       }
@@ -2145,11 +2157,34 @@ function ProcessoCadastralFormModal({
 
   // Manipulador de matrícula com auto-busca para colaborador na criação (todos os tipos)
   const handleColaboradorMatriculaChange = (id: string, val: string) => {
+    // Cancela busca anterior pendente para este colaborador
+    if (multiSearchTimersRef.current[id]) {
+      clearTimeout(multiSearchTimersRef.current[id])
+      delete multiSearchTimersRef.current[id]
+    }
+
     updateColaborador(id, { matricula: val })
     const term = val.trim()
-    if (!term) return
+    if (!term) {
+      if (processo === 'Exclusão') {
+        updateColaborador(id, {
+          searching: false,
+          data_desligamento: '',
+          motivo_desligamento: '',
+        })
+      } else if (processo === 'Retorno do Afastamento') {
+        updateColaborador(id, {
+          searching: false,
+          data_afastamento: '',
+          data_retorno_afastamento: '',
+          dias_afastado: undefined,
+          motivo_afastamento: '',
+        })
+      }
+      return
+    }
 
-    const timer = setTimeout(async () => {
+    multiSearchTimersRef.current[id] = setTimeout(async () => {
       updateColaborador(id, { searching: true })
       try {
         const match = await searchEmployeeData(term)
@@ -2174,58 +2209,53 @@ function ProcessoCadastralFormModal({
                   c.funcao_atual && c.funcao_atual.trim() !== ''
                     ? c.funcao_atual
                     : match.funcao || '',
-                // Sugestões para Exclusão (preenche data_desligamento e motivo_desligamento se existirem no colaborador)
-                data_desligamento:
-                  match.data_desligamento &&
-                  (!c.data_desligamento || c.data_desligamento.trim() === '')
-                    ? match.data_desligamento
-                    : c.data_desligamento,
-                motivo_desligamento:
-                  match.motivo_desligamento &&
-                  (!c.motivo_desligamento || c.motivo_desligamento.trim() === '')
-                    ? match.motivo_desligamento
-                    : c.motivo_desligamento,
-                // Sugestões para Retorno do Afastamento
-                data_afastamento:
-                  match.data_afastamento &&
-                  (!c.data_afastamento || c.data_afastamento.trim() === '')
-                    ? match.data_afastamento
-                    : c.data_afastamento,
-                data_retorno_afastamento:
-                  match.data_retorno_afastamento &&
-                  (!c.data_retorno_afastamento || c.data_retorno_afastamento.trim() === '')
-                    ? match.data_retorno_afastamento
-                    : c.data_retorno_afastamento,
+                // Sugestões para Exclusão: substitui SEMPRE pelos dados do novo colaborador pesquisado;
+                // se o novo colaborador não tiver dados de desligamento, limpa os campos.
+                data_desligamento: match.data_desligamento || '',
+                motivo_desligamento: match.motivo_desligamento || '',
+                // Sugestões para Retorno do Afastamento: substitui pelos dados do colaborador
+                data_afastamento: match.data_afastamento || '',
+                data_retorno_afastamento: match.data_retorno_afastamento || '',
                 dias_afastado:
-                  c.dias_afastado !== undefined
-                    ? c.dias_afastado
-                    : calculateDiasAfastado(
-                        match.data_afastamento &&
-                          (!c.data_afastamento || c.data_afastamento.trim() === '')
-                          ? match.data_afastamento
-                          : c.data_afastamento,
-                        match.data_retorno_afastamento &&
-                          (!c.data_retorno_afastamento || c.data_retorno_afastamento.trim() === '')
-                          ? match.data_retorno_afastamento
-                          : c.data_retorno_afastamento,
-                      ),
-                motivo_afastamento:
-                  match.motivo_afastamento &&
-                  (!c.motivo_afastamento || c.motivo_afastamento.trim() === '')
-                    ? match.motivo_afastamento
-                    : c.motivo_afastamento,
+                  match.data_afastamento && match.data_retorno_afastamento
+                    ? calculateDiasAfastado(match.data_afastamento, match.data_retorno_afastamento)
+                    : undefined,
+                motivo_afastamento: match.motivo_afastamento || '',
               }
             }),
           )
         } else {
-          updateColaborador(id, { searching: false })
+          // Colaborador não encontrado: limpa campos preenchidos automaticamente para Exclusão
+          setColaboradores((prev) =>
+            prev.map((c) => {
+              if (c.id !== id) return c
+              return {
+                ...c,
+                searching: false,
+                ...(processo === 'Exclusão'
+                  ? {
+                      data_desligamento: '',
+                      motivo_desligamento: '',
+                    }
+                  : {}),
+                ...(processo === 'Retorno do Afastamento'
+                  ? {
+                      data_afastamento: '',
+                      data_retorno_afastamento: '',
+                      dias_afastado: undefined,
+                      motivo_afastamento: '',
+                    }
+                  : {}),
+              }
+            }),
+          )
         }
       } catch {
         updateColaborador(id, { searching: false })
+      } finally {
+        delete multiSearchTimersRef.current[id]
       }
     }, 300)
-
-    return () => clearTimeout(timer)
   }
 
   const handleAddColaborador = () => {
