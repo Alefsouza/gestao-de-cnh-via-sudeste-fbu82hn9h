@@ -625,7 +625,7 @@ export function ProcessoDetalhesTimelineModal({
                           <span className="block text-[10px] text-muted-foreground mb-0.5">
                             Motivo Desligamento:
                           </span>
-                          <span className="font-semibold text-rose-950 block leading-snug">
+                          <span className="font-semibold text-rose-950 block leading-snug break-words whitespace-pre-wrap">
                             {processo.motivo_desligamento}
                           </span>
                         </div>

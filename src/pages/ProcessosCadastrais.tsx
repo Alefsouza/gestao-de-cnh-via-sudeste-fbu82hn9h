@@ -58,6 +58,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/contexts/AuthContext'
@@ -2972,9 +2973,9 @@ function ProcessoCadastralFormModal({
                                     >
                                       Motivo Desligamento *
                                     </Label>
-                                    <Input
+                                    <AutoResizeTextarea
                                       id={`modal-motivo-desligamento-${colab.id}`}
-                                      placeholder="Ex: Pedido de demissão, Sem justa causa..."
+                                      placeholder="Ex: Pedido de demissão, Demissão sem justa causa..."
                                       value={colab.motivo_desligamento || ''}
                                       onChange={(e) =>
                                         updateColaborador(colab.id, {
@@ -2982,9 +2983,10 @@ function ProcessoCadastralFormModal({
                                         })
                                       }
                                       autoComplete="off"
-                                      className="bg-white text-xs h-8"
+                                      minRows={1}
+                                      className="bg-white text-xs leading-normal py-1.5 min-h-[32px] break-words"
                                     />
-                                    <span className="text-[10px] text-muted-foreground">
+                                    <span className="text-[10px] text-muted-foreground block">
                                       Motivo ou justificativa do desligamento
                                     </span>
                                   </div>
@@ -3285,15 +3287,16 @@ function ProcessoCadastralFormModal({
                         >
                           Motivo Desligamento *
                         </Label>
-                        <Input
+                        <AutoResizeTextarea
                           id="modal-motivo-desligamento"
                           placeholder="Ex: Pedido de demissão, Demissão sem justa causa..."
                           value={motivoDesligamento}
                           onChange={(event) => setMotivoDesligamento(event.target.value)}
                           autoComplete="off"
-                          className="bg-white text-xs"
+                          minRows={1}
+                          className="bg-white text-xs leading-normal py-1.5 min-h-[32px] break-words"
                         />
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[10px] text-muted-foreground block">
                           Motivo ou justificativa do desligamento
                         </span>
                       </div>
