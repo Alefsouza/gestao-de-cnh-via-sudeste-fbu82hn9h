@@ -16,7 +16,7 @@ import StatusBadge from '@/components/StatusBadge'
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import { Button } from '@/components/ui/button'
 import { useRealtime } from '@/hooks/use-realtime'
-import { formatDate, formatCnh } from '@/lib/format'
+import { formatDate, formatCnh, formatCpf } from '@/lib/format'
 import {
   CNH_VENCIDA_FILTER,
   getFuncionariosSummary,
@@ -373,8 +373,8 @@ export default function Funcionarios() {
         return {
           Chapa: employee.chapa,
           Nome: employee.name,
+          CPF: formatCpf(employee.cpf, '—'),
           'Registro CNH': employee.cnh_numero || '',
-          Empresa: employee.company || 'VIA SUDESTE',
           'Filial/Garagem': employee.filial || '',
           Função: employee.funcao || '',
           'Função Anterior': employee.funcao_anterior || '',
@@ -392,7 +392,7 @@ export default function Funcionarios() {
       worksheet['!cols'] = [
         { wch: 14 },
         { wch: 32 },
-        { wch: 18 },
+        { wch: 18 }, // CPF
         { wch: 18 },
         { wch: 18 },
         { wch: 24 },
@@ -589,7 +589,7 @@ export default function Funcionarios() {
                 <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">REGISTRO</th>
                   <th className="px-4 py-3 font-semibold">Nome</th>
-                  <th className="px-4 py-3 font-semibold">Empresa</th>
+                  <th className="px-4 py-3 font-semibold">CPF</th>
                   <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
                   <th className="px-4 py-3 font-semibold">Função</th>
                   <th className="px-4 py-3 font-semibold">Situação</th>
@@ -612,8 +612,8 @@ export default function Funcionarios() {
                           : 'Sem CNH'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {employee.company || 'VIA SUDESTE'}
+                    <td className="tabular-nums px-4 py-3 text-muted-foreground">
+                      {formatCpf(employee.cpf, '—')}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.filial || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{employee.funcao || '—'}</td>
@@ -699,6 +699,12 @@ export default function Funcionarios() {
               <section>
                 <h3 className="mb-2 text-sm font-semibold text-foreground">Dados pessoais</h3>
                 <dl className="space-y-1.5 rounded-lg border bg-muted/20 p-4 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">CPF</dt>
+                    <dd className="tabular-nums text-right font-medium">
+                      {formatCpf(selected.cpf, '—')}
+                    </dd>
+                  </div>
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Empresa</dt>
                     <dd className="text-right font-medium">{selected.company || 'VIA SUDESTE'}</dd>

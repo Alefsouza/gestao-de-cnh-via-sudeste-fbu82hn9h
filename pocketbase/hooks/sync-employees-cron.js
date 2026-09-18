@@ -580,7 +580,15 @@ cronAdd('sync_employees', '0 * * * *', () => {
             'validade_do_documento_fiscal',
           ]),
         ),
-        cpf: pick(norm, ['cpf', 'cpf_do_colaborador']),
+        cpf: pick(norm, [
+          'cpf',
+          'cpf_do_colaborador',
+          'cpfcolaborador',
+          'cpf_colaborador',
+          'num_cpf',
+          'numero_cpf',
+          'documento_cpf',
+        ]),
       }
     }
 

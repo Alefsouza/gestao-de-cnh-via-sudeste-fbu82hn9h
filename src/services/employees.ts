@@ -83,8 +83,11 @@ export function buildFilter(filters: EmployeeFilters): string {
   const search = (filters.search ?? '').trim()
   if (search) {
     const escaped = search.replace(/"/g, '\\"')
+    const digitsOnly = search.replace(/\D/g, '')
+    const cpfClause =
+      digitsOnly.length >= 3 ? ` || cpf ~ "${digitsOnly}"` : ` || cpf ~ "${escaped}"`
     parts.push(
-      `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}" || motivo_afastamento ~ "${escaped}")`,
+      `(name ~ "${escaped}" || chapa ~ "${escaped}" || cnh_numero ~ "${escaped}" || registro ~ "${escaped}" || funcao ~ "${escaped}" || funcao_anterior ~ "${escaped}" || motivo_afastamento ~ "${escaped}"${cpfClause})`,
     )
   }
   if (filters.empresa) parts.push(`company = "${filters.empresa}"`)

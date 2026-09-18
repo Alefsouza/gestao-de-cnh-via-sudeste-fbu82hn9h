@@ -104,3 +104,22 @@ export function formatCnh(
   }
   return fallback
 }
+
+/**
+ * Formata um CPF para o padrão brasileiro (000.000.000-00).
+ * Se tiver 11 dígitos numéricos, aplica a máscara.
+ * Se tiver quantidade diferente de dígitos ou estiver vazio, retorna fallback ("—" por padrão).
+ */
+export function formatCpf(value?: string | null, fallback = '—'): string {
+  if (!value) return fallback
+  const cleaned = String(value).trim().replace(/\D/g, '')
+  if (cleaned.length === 11) {
+    return cleaned.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+  }
+  if (cleaned.length > 0 && cleaned.length < 11) {
+    // Se vier sem zeros à esquerda, preenche com zeros à esquerda até 11 dígitos
+    const padded = cleaned.padStart(11, '0')
+    return padded.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+  }
+  return String(value).trim() || fallback
+}
