@@ -58,7 +58,11 @@ import {
   type UserRole,
 } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { createTimelineItem, listTimelineByProcesso } from '@/services/processoTimeline'
+import {
+  createTimelineItem,
+  listTimelineByProcesso,
+  updateTimelineItem,
+} from '@/services/processoTimeline'
 import {
   listAnexosByProcesso,
   getProcessoAnexoFileUrl,
@@ -120,6 +124,16 @@ export function ProcessoDetalhesTimelineModal({
   const [processoAnexos, setProcessoAnexos] = useState<ProcessoAnexoRecord[]>([])
   const [loadingAnexos, setLoadingAnexos] = useState(false)
 
+  // Estado para Edição de Evento Individual da Timeline
+  const [eventoEmEdicao, setEventoEmEdicao] = useState<ProcessoTimelineRecord | null>(null)
+  const [editEtapa, setEditEtapa] = useState('')
+  const [editDataHora, setEditDataHora] = useState('')
+  const [editObservacoes, setEditObservacoes] = useState('')
+  const [editMotivo, setEditMotivo] = useState('')
+  const [editResponsavelNome, setEditResponsavelNome] = useState('')
+  const [editResponsavelPerfil, setEditResponsavelPerfil] = useState<UserRole>('RH')
+  const [savingEdit, setSavingEdit] = useState(false)
+
   // Carregar timeline e anexos ao abrir o modal
   useEffect(() => {
     if (!open || !processo) {
@@ -130,6 +144,7 @@ export function ProcessoDetalhesTimelineModal({
       setMotivo('')
       setDocumentosRecebidos([])
       setDocumentosAdicionadosNestaEntrega([])
+      setEventoEmEdicao(null)
       return
     }
 
@@ -415,6 +430,88 @@ export function ProcessoDetalhesTimelineModal({
       return { data: dataStr, hora: horaStr }
     } catch (_) {
       return { data: isoString, hora: '' }
+    }
+  }
+
+  // Permissão para editar eventos individuais: Admin e RH
+  const canEditTimelineEvents = isAdmin || isRH
+
+  // Converte data ISO ou string da timeline para formato datetime-local (YYYY-MM-DDTHH:mm)
+  const toInputDateTimeValue = (isoString?: string) => {
+    if (!isoString) return ''
+    try {
+      const d = new Date(isoString)
+      if (isNaN(d.getTime())) return ''
+      // Formata como YYYY-MM-DDTHH:mm no fuso local
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const year = d.getFullYear()
+      const month = pad(d.getMonth() + 1)
+      const day = pad(d.getDate())
+      const hours = pad(d.getHours())
+      const minutes = pad(d.getMinutes())
+      return `${year}-${month}-${day}T${hours}:${minutes}`
+    } catch (_) {
+      return ''
+    }
+  }
+
+  const handleOpenEditModal = (item: ProcessoTimelineRecord) => {
+    setEventoEmEdicao(item)
+    setEditEtapa(item.etapa || '')
+    setEditDataHora(toInputDateTimeValue(item.data_hora || item.created))
+    setEditObservacoes(item.observacoes || '')
+    setEditMotivo(item.motivo || '')
+    setEditResponsavelNome(item.responsavel_nome || '')
+    setEditResponsavelPerfil(item.responsavel_perfil || 'RH')
+  }
+
+  const handleSaveEventoEdicao = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!eventoEmEdicao) return
+
+    if (!editEtapa.trim()) {
+      toast.error('A etapa/título do evento não pode ficar vazia.')
+      return
+    }
+
+    if (editEtapa === 'Impossibilitado de trabalhar' && !editMotivo.trim()) {
+      toast.error('O motivo é obrigatório para a situação "Impossibilitado de trabalhar".')
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      let dataHoraIso: string | undefined = undefined
+      if (editDataHora) {
+        const parsed = new Date(editDataHora)
+        if (!isNaN(parsed.getTime())) {
+          dataHoraIso = parsed.toISOString()
+        }
+      }
+
+      const updatedRecord = await updateTimelineItem(eventoEmEdicao.id, {
+        etapa: editEtapa.trim(),
+        data_hora: dataHoraIso,
+        observacoes: editObservacoes.trim(),
+        motivo: editMotivo.trim(),
+        responsavel_nome: editResponsavelNome.trim() || undefined,
+        responsavel_perfil: editResponsavelPerfil,
+        alterado_por: currentUserName,
+        alterado_em: new Date().toISOString(),
+      })
+
+      // Atualiza a lista da timeline local
+      setTimeline((prev) =>
+        prev.map((item) => (item.id === updatedRecord.id ? updatedRecord : item)),
+      )
+
+      toast.success('Evento da linha do tempo atualizado com sucesso!')
+      setEventoEmEdicao(null)
+    } catch (err) {
+      console.error('Erro ao atualizar evento da timeline:', err)
+      toast.error('Erro ao salvar edição do evento. Tente novamente.')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -1117,7 +1214,7 @@ export function ProcessoDetalhesTimelineModal({
                                 : 'border-border bg-white',
                             )}
                           >
-                            {/* Cabeçalho do item: Etapa, Perfil, Data/Hora */}
+                            {/* Cabeçalho do item: Etapa, Perfil, Data/Hora e Botão de Editar */}
                             <div className="flex flex-wrap items-center justify-between gap-1.5">
                               <div className="flex items-center gap-2">
                                 <span
@@ -1137,26 +1234,68 @@ export function ProcessoDetalhesTimelineModal({
                                 {getPerfilBadge(item.responsavel_perfil)}
                               </div>
 
-                              <div
-                                className={cn(
-                                  'flex items-center gap-2 text-[11px]',
-                                  item.etapa === 'Processo editado'
-                                    ? 'text-rose-700'
-                                    : 'text-muted-foreground',
-                                )}
-                              >
-                                <span className="inline-flex items-center gap-1 font-medium">
-                                  <Calendar className="h-3 w-3" />
-                                  {data}
-                                </span>
-                                {hora && (
-                                  <span className="inline-flex items-center gap-1 font-mono">
-                                    <Clock className="h-3 w-3" />
-                                    {hora}
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={cn(
+                                    'flex items-center gap-2 text-[11px]',
+                                    item.etapa === 'Processo editado'
+                                      ? 'text-rose-700'
+                                      : 'text-muted-foreground',
+                                  )}
+                                >
+                                  <span className="inline-flex items-center gap-1 font-medium">
+                                    <Calendar className="h-3 w-3" />
+                                    {data}
                                   </span>
+                                  {hora && (
+                                    <span className="inline-flex items-center gap-1 font-mono">
+                                      <Clock className="h-3 w-3" />
+                                      {hora}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Botão de editar evento individual (Admin / RH) */}
+                                {canEditTimelineEvents && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenEditModal(item)}
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-primary hover:bg-muted"
+                                    title={`Editar evento "${item.etapa}"`}
+                                    aria-label={`Editar evento "${item.etapa}"`}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
                                 )}
                               </div>
                             </div>
+
+                            {/* Aviso de Edição do Evento em FONTE VERMELHA permanente para controle do RH */}
+                            {item.alterado_por && (
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 border-l-2 border-rose-500 pl-2 py-0.5 bg-rose-50/60 rounded-r">
+                                <AlertCircle className="h-3.5 w-3.5 flex-none text-rose-600" />
+                                <span>
+                                  Alterado por {item.alterado_por}
+                                  {item.alterado_em ? (
+                                    <>
+                                      , em{' '}
+                                      {new Date(item.alterado_em).toLocaleDateString('pt-BR', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        year: 'numeric',
+                                      })}{' '}
+                                      às{' '}
+                                      {new Date(item.alterado_em).toLocaleTimeString('pt-BR', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </>
+                                  ) : null}
+                                </span>
+                              </div>
+                            )}
 
                             {/* Destaque em vermelho para "Processo editado" */}
                             {item.etapa === 'Processo editado' && (
@@ -1305,6 +1444,192 @@ export function ProcessoDetalhesTimelineModal({
           </div>
         </div>
       </DialogContent>
+
+      {/* Modal secundário de Edição do Evento Individual da Timeline */}
+      <Dialog
+        open={Boolean(eventoEmEdicao)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !savingEdit) setEventoEmEdicao(null)
+        }}
+      >
+        <DialogContent className="max-w-lg p-5">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Pencil className="h-4 w-4 text-primary" />
+              Editar Evento da Linha do Tempo
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Atualize as informações deste evento. Ao salvar, será registrado permanentemente um
+              aviso em vermelho informando quem alterou e a data/hora para controle do RH.
+            </DialogDescription>
+          </DialogHeader>
+
+          {eventoEmEdicao && (
+            <form onSubmit={handleSaveEventoEdicao} className="space-y-3.5 pt-2">
+              {/* Etapa / Nome do evento */}
+              <div className="space-y-1">
+                <Label htmlFor="edit-evento-etapa" className="text-xs font-semibold">
+                  Etapa / Título do Evento *
+                </Label>
+                <Input
+                  id="edit-evento-etapa"
+                  value={editEtapa}
+                  onChange={(e) => setEditEtapa(e.target.value)}
+                  placeholder="Ex: Entrega dos documentos, Processo criado..."
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              {/* Data e Hora do evento */}
+              <div className="space-y-1">
+                <Label htmlFor="edit-evento-datahora" className="text-xs font-semibold">
+                  Data e Hora do Evento
+                </Label>
+                <Input
+                  id="edit-evento-datahora"
+                  type="datetime-local"
+                  value={editDataHora}
+                  onChange={(e) => setEditDataHora(e.target.value)}
+                  className="h-8 text-xs bg-white"
+                />
+                <span className="text-[10px] text-muted-foreground">
+                  Deixe no formato desejado ou mantenha o horário original.
+                </span>
+              </div>
+
+              {/* Responsável e Perfil */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="edit-evento-resp-nome" className="text-xs font-semibold">
+                    Registrado por (Nome)
+                  </Label>
+                  <Input
+                    id="edit-evento-resp-nome"
+                    value={editResponsavelNome}
+                    onChange={(e) => setEditResponsavelNome(e.target.value)}
+                    placeholder="Nome do responsável"
+                    className="h-8 text-xs bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit-evento-resp-perfil" className="text-xs font-semibold">
+                    Perfil
+                  </Label>
+                  <Select
+                    value={editResponsavelPerfil}
+                    onValueChange={(val) => setEditResponsavelPerfil(val as UserRole)}
+                  >
+                    <SelectTrigger id="edit-evento-resp-perfil" className="h-8 text-xs bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="RH" className="text-xs">
+                        RH
+                      </SelectItem>
+                      <SelectItem value="Admin" className="text-xs">
+                        Admin
+                      </SelectItem>
+                      <SelectItem value="Tráfego" className="text-xs">
+                        Tráfego
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Motivo (se for etapa de bloqueio/impossibilitado) */}
+              {(editEtapa === 'Impossibilitado de trabalhar' ||
+                editEtapa === 'Foto Bloqueada' ||
+                eventoEmEdicao.motivo) && (
+                <div className="space-y-1">
+                  <Label htmlFor="edit-evento-motivo" className="text-xs font-semibold">
+                    Motivo {editEtapa === 'Impossibilitado de trabalhar' ? '*' : ''}
+                  </Label>
+                  <Input
+                    id="edit-evento-motivo"
+                    value={editMotivo}
+                    onChange={(e) => setEditMotivo(e.target.value)}
+                    placeholder="Descreva o motivo..."
+                    className="h-8 text-xs bg-white"
+                    required={editEtapa === 'Impossibilitado de trabalhar'}
+                  />
+                </div>
+              )}
+
+              {/* Observações */}
+              <div className="space-y-1">
+                <Label htmlFor="edit-evento-obs" className="text-xs font-semibold">
+                  Observações
+                </Label>
+                <Textarea
+                  id="edit-evento-obs"
+                  value={editObservacoes}
+                  onChange={(e) => setEditObservacoes(e.target.value)}
+                  placeholder="Observações do evento..."
+                  rows={3}
+                  className="text-xs bg-white resize-none"
+                />
+              </div>
+
+              {/* Aviso da auditoria que será gravada */}
+              <div className="rounded-md border border-rose-200 bg-rose-50/70 p-2.5 text-[11px] text-rose-800 space-y-1">
+                <div className="flex items-center gap-1 font-bold text-rose-900">
+                  <AlertCircle className="h-3.5 w-3.5 text-rose-600 flex-none" />
+                  <span>Aviso de Auditoria do RH</span>
+                </div>
+                <p>
+                  Ao salvar, este item exibirá em fonte vermelha permanente:{' '}
+                  <strong>
+                    &quot;Alterado por {currentUserName}, em{' '}
+                    {new Date().toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                    })}{' '}
+                    às{' '}
+                    {new Date().toLocaleTimeString('pt-BR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    &quot;
+                  </strong>
+                  .
+                </p>
+              </div>
+
+              {/* Ações do Modal */}
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEventoEmEdicao(null)}
+                  disabled={savingEdit}
+                  className="h-8 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={savingEdit}
+                  className="h-8 text-xs font-semibold gap-1.5"
+                >
+                  {savingEdit ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    'Salvar Alterações'
+                  )}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

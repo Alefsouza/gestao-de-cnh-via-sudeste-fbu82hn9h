@@ -158,6 +158,8 @@ export interface ProcessoTimelineRecord {
   documentos_recebidos?: string[]
   documentos_pendentes?: string[]
   status_documentacao?: string
+  alterado_por?: string
+  alterado_em?: string
   created?: string
   updated?: string
 }

@@ -14,6 +14,20 @@ export interface CreateTimelineInput {
   data_hora?: string
 }
 
+export interface UpdateTimelineItemInput {
+  etapa?: string
+  data_hora?: string
+  responsavel_nome?: string
+  responsavel_perfil?: UserRole
+  observacoes?: string
+  motivo?: string
+  documentos_recebidos?: string[]
+  documentos_pendentes?: string[]
+  status_documentacao?: string
+  alterado_por: string
+  alterado_em?: string
+}
+
 export async function listTimelineByProcesso(
   processoId: string,
 ): Promise<ProcessoTimelineRecord[]> {
@@ -52,5 +66,34 @@ export async function createTimelineItem(
 
   const record = await pb.collection('processo_timeline').create<ProcessoTimelineRecord>(payload)
 
+  return record
+}
+
+export async function updateTimelineItem(
+  id: string,
+  input: UpdateTimelineItemInput,
+): Promise<ProcessoTimelineRecord> {
+  const alteradoEm = input.alterado_em || new Date().toISOString()
+  const payload: Record<string, unknown> = {
+    alterado_por: input.alterado_por,
+    alterado_em: alteradoEm,
+  }
+
+  if (input.etapa !== undefined) payload.etapa = input.etapa
+  if (input.data_hora !== undefined) payload.data_hora = input.data_hora
+  if (input.responsavel_nome !== undefined) payload.responsavel_nome = input.responsavel_nome
+  if (input.responsavel_perfil !== undefined) payload.responsavel_perfil = input.responsavel_perfil
+  if (input.observacoes !== undefined) payload.observacoes = input.observacoes
+  if (input.motivo !== undefined) payload.motivo = input.motivo
+  if (input.documentos_recebidos !== undefined)
+    payload.documentos_recebidos = input.documentos_recebidos
+  if (input.documentos_pendentes !== undefined)
+    payload.documentos_pendentes = input.documentos_pendentes
+  if (input.status_documentacao !== undefined)
+    payload.status_documentacao = input.status_documentacao
+
+  const record = await pb
+    .collection('processo_timeline')
+    .update<ProcessoTimelineRecord>(id, payload)
   return record
 }
