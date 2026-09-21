@@ -15,6 +15,7 @@ import {
   Info,
   Loader2,
   Mail,
+  Pencil,
   PlusCircle,
   ShieldAlert,
   Trash2,
@@ -70,6 +71,7 @@ interface ProcessoDetalhesTimelineModalProps {
   onOpenChange: (open: boolean) => void
   processo: ProcessoCadastralRecord | null
   onProcessoUpdated?: (updated: ProcessoCadastralRecord) => void
+  onEditProcesso?: (processo: ProcessoCadastralRecord) => void
   onUpdateSituacaoTrafego?: (
     id: string,
     situacao: ProcessoSituacao,
@@ -82,6 +84,7 @@ export function ProcessoDetalhesTimelineModal({
   onOpenChange,
   processo,
   onProcessoUpdated,
+  onEditProcesso,
   onUpdateSituacaoTrafego,
 }: ProcessoDetalhesTimelineModalProps) {
   const { user } = useAuth()
@@ -421,6 +424,8 @@ export function ProcessoDetalhesTimelineModal({
         return 'bg-slate-50 text-slate-800 border-slate-200'
       case 'Carta criada':
         return 'bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-200'
+      case 'Processo editado':
+        return 'bg-rose-50 text-rose-700 border-rose-300 ring-1 ring-rose-200'
       case 'Tráfego informado':
         return 'bg-blue-50 text-blue-700 border-blue-200'
       case 'Operador notificado':
@@ -502,10 +507,25 @@ export function ProcessoDetalhesTimelineModal({
           <div className="space-y-5 lg:col-span-5">
             {/* Card com os dados do processo */}
             <div className="rounded-xl border bg-card p-4 shadow-sm">
-              <h3 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                <Info className="h-4 w-4 text-primary" />
-                Dados Cadastrais
-              </h3>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <Info className="h-4 w-4 text-primary" />
+                  Dados Cadastrais
+                </h3>
+                {!isTrafego && onEditProcesso && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onEditProcesso(processo)}
+                    className="h-7 px-2 text-xs font-medium gap-1.5"
+                    title="Editar processo cadastral"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    Editar processo
+                  </Button>
+                )}
+              </div>
 
               <div className="space-y-2.5 text-xs">
                 <div className="flex justify-between border-b pb-1.5">
@@ -1073,21 +1093,30 @@ export function ProcessoDetalhesTimelineModal({
                           <div
                             className={cn(
                               'absolute -left-[23px] top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white transition-all',
-                              item.etapa === 'Carta criada'
-                                ? 'bg-emerald-600 ring-2 ring-emerald-300'
-                                : item.etapa === 'Conclusão'
-                                  ? 'bg-emerald-600 ring-2 ring-emerald-200'
-                                  : item.etapa === 'Foto Bloqueada' ||
-                                      item.etapa === 'Impossibilitado de trabalhar'
-                                    ? 'bg-rose-600 ring-2 ring-rose-200'
-                                    : 'bg-primary ring-2 ring-primary/20',
+                              item.etapa === 'Processo editado'
+                                ? 'bg-rose-600 ring-2 ring-rose-300'
+                                : item.etapa === 'Carta criada'
+                                  ? 'bg-emerald-600 ring-2 ring-emerald-300'
+                                  : item.etapa === 'Conclusão'
+                                    ? 'bg-emerald-600 ring-2 ring-emerald-200'
+                                    : item.etapa === 'Foto Bloqueada' ||
+                                        item.etapa === 'Impossibilitado de trabalhar'
+                                      ? 'bg-rose-600 ring-2 ring-rose-200'
+                                      : 'bg-primary ring-2 ring-primary/20',
                             )}
                           >
                             <div className="h-1.5 w-1.5 rounded-full bg-white" />
                           </div>
 
                           {/* Card do evento */}
-                          <div className="rounded-lg border bg-white p-3 shadow-xs hover:shadow-sm transition-shadow space-y-2">
+                          <div
+                            className={cn(
+                              'rounded-lg border p-3 shadow-xs hover:shadow-sm transition-shadow space-y-2',
+                              item.etapa === 'Processo editado'
+                                ? 'border-rose-300 bg-rose-50/70'
+                                : 'border-border bg-white',
+                            )}
+                          >
                             {/* Cabeçalho do item: Etapa, Perfil, Data/Hora */}
                             <div className="flex flex-wrap items-center justify-between gap-1.5">
                               <div className="flex items-center gap-2">
@@ -1100,12 +1129,22 @@ export function ProcessoDetalhesTimelineModal({
                                   {item.etapa === 'Carta criada' && (
                                     <Mail className="h-3.5 w-3.5 text-emerald-700 flex-none" />
                                   )}
+                                  {item.etapa === 'Processo editado' && (
+                                    <Pencil className="h-3.5 w-3.5 text-rose-700 flex-none" />
+                                  )}
                                   {item.etapa}
                                 </span>
                                 {getPerfilBadge(item.responsavel_perfil)}
                               </div>
 
-                              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                              <div
+                                className={cn(
+                                  'flex items-center gap-2 text-[11px]',
+                                  item.etapa === 'Processo editado'
+                                    ? 'text-rose-700'
+                                    : 'text-muted-foreground',
+                                )}
+                              >
                                 <span className="inline-flex items-center gap-1 font-medium">
                                   <Calendar className="h-3 w-3" />
                                   {data}
@@ -1119,11 +1158,39 @@ export function ProcessoDetalhesTimelineModal({
                               </div>
                             </div>
 
+                            {/* Destaque em vermelho para "Processo editado" */}
+                            {item.etapa === 'Processo editado' && (
+                              <div className="text-xs font-semibold text-rose-600">
+                                Processo editado por {item.responsavel_nome} em {data} às {hora}
+                              </div>
+                            )}
+
                             {/* Responsável que registrou */}
-                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                              <User className="h-3 w-3 text-muted-foreground/80" />
+                            <div
+                              className={cn(
+                                'flex items-center gap-1 text-[11px]',
+                                item.etapa === 'Processo editado'
+                                  ? 'text-rose-800'
+                                  : 'text-muted-foreground',
+                              )}
+                            >
+                              <User
+                                className={cn(
+                                  'h-3 w-3',
+                                  item.etapa === 'Processo editado'
+                                    ? 'text-rose-600'
+                                    : 'text-muted-foreground/80',
+                                )}
+                              />
                               <span>Registrado por:</span>
-                              <strong className="text-foreground font-medium">
+                              <strong
+                                className={cn(
+                                  'font-medium',
+                                  item.etapa === 'Processo editado'
+                                    ? 'text-rose-950'
+                                    : 'text-foreground',
+                                )}
+                              >
                                 {item.responsavel_nome}
                               </strong>
                             </div>

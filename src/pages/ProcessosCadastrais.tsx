@@ -63,7 +63,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/contexts/AuthContext'
 import pb from '@/lib/pocketbase/client'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatDateTime } from '@/lib/format'
 import { listEmployees, findEmployeeByMatriculaOrChapa } from '@/services/employees'
 
 import {
@@ -719,39 +719,54 @@ export default function ProcessosCadastrais() {
           motivo_afastamento: data.motivo_afastamento ?? '',
         })
 
+        // Log de auditoria na timeline: etapa "Processo editado"
+        const agoraIso = new Date().toISOString()
+        const agoraFormatada = formatDateTime(agoraIso)
+        try {
+          await createTimelineItem({
+            processo: data.id,
+            etapa: 'Processo editado',
+            responsavel_nome: currentUserName,
+            responsavel_perfil: currentRole,
+            observacoes: `Processo editado por ${currentUserName} em ${agoraFormatada}`,
+            data_hora: agoraIso,
+          })
+        } catch (timelineErr) {
+          console.warn('Erro ao registrar log de auditoria na timeline:', timelineErr)
+        }
+
+        const buildUpdatedRecord = (base: ProcessoCadastral): ProcessoCadastral => ({
+          ...base,
+          matricula: data.matricula,
+          colaborador: data.nome,
+          funcao: data.funcao,
+          processo: data.processo,
+          etapa: safeEtapa,
+          prazo: isoPrazo || data.prazo,
+          situacao: data.situacao,
+          garagem: data.garagem || base.garagem,
+          alerta_trafego: data.alerta_trafego ?? base.alerta_trafego,
+          funcao_antiga: data.funcao_antiga ?? base.funcao_antiga,
+          funcao_atual: data.funcao_atual ?? base.funcao_atual,
+          data_troca_funcao: isoDataTroca || data.data_troca_funcao || base.data_troca_funcao,
+          data_desligamento:
+            isoDataDesligamento || data.data_desligamento || base.data_desligamento,
+          motivo_desligamento: data.motivo_desligamento ?? base.motivo_desligamento,
+          data_afastamento: isoDataAfastamento || data.data_afastamento || base.data_afastamento,
+          data_retorno_afastamento:
+            isoDataRetornoAfastamento ||
+            data.data_retorno_afastamento ||
+            base.data_retorno_afastamento,
+          dias_afastado: data.dias_afastado ?? base.dias_afastado,
+          motivo_afastamento: data.motivo_afastamento ?? base.motivo_afastamento,
+        })
+
         setProcessos((prev) =>
-          prev.map((item) => {
-            if (item.id === data.id) {
-              const updatedItem: ProcessoCadastral = {
-                ...item,
-                matricula: data.matricula,
-                colaborador: data.nome,
-                funcao: data.funcao,
-                processo: data.processo,
-                etapa: safeEtapa,
-                prazo: isoPrazo || data.prazo,
-                situacao: data.situacao,
-                garagem: data.garagem || item.garagem,
-                alerta_trafego: data.alerta_trafego ?? item.alerta_trafego,
-                funcao_antiga: data.funcao_antiga ?? item.funcao_antiga,
-                funcao_atual: data.funcao_atual ?? item.funcao_atual,
-                data_troca_funcao: isoDataTroca || data.data_troca_funcao || item.data_troca_funcao,
-                data_desligamento:
-                  isoDataDesligamento || data.data_desligamento || item.data_desligamento,
-                motivo_desligamento: data.motivo_desligamento ?? item.motivo_desligamento,
-                data_afastamento:
-                  isoDataAfastamento || data.data_afastamento || item.data_afastamento,
-                data_retorno_afastamento:
-                  isoDataRetornoAfastamento ||
-                  data.data_retorno_afastamento ||
-                  item.data_retorno_afastamento,
-                dias_afastado: data.dias_afastado ?? item.dias_afastado,
-                motivo_afastamento: data.motivo_afastamento ?? item.motivo_afastamento,
-              }
-              return updatedItem
-            }
-            return item
-          }),
+          prev.map((item) => (item.id === data.id ? buildUpdatedRecord(item) : item)),
+        )
+
+        setSelectedProcessoDetalhes((prev) =>
+          prev && prev.id === data.id ? buildUpdatedRecord(prev) : prev,
         )
 
         toast.success('Processo atualizado com sucesso')
@@ -760,7 +775,7 @@ export default function ProcessosCadastrais() {
         toast.error('Erro ao atualizar processo no servidor')
       }
     },
-    [],
+    [currentUserName, currentRole],
   )
 
   const handleUpdateSituacaoTrafego = useCallback(async () => {
@@ -1645,6 +1660,30 @@ export default function ProcessosCadastrais() {
           if (!open) setSelectedProcessoDetalhes(null)
         }}
         processo={selectedProcessoDetalhes}
+        onEditProcesso={(proc) => {
+          setEditingProcesso({
+            id: proc.id,
+            matricula: proc.matricula,
+            colaborador: proc.colaborador,
+            funcao: proc.funcao,
+            processo: proc.processo,
+            etapa: proc.etapa,
+            prazo: proc.prazo,
+            situacao: proc.situacao,
+            garagem: proc.garagem || 'CURSINO',
+            alerta_trafego: proc.alerta_trafego || '',
+            observacoes: proc.observacoes || '',
+            funcao_antiga: proc.funcao_antiga || '',
+            funcao_atual: proc.funcao_atual || '',
+            data_troca_funcao: proc.data_troca_funcao || '',
+            data_desligamento: proc.data_desligamento || '',
+            motivo_desligamento: proc.motivo_desligamento || '',
+            data_afastamento: proc.data_afastamento || '',
+            data_retorno_afastamento: proc.data_retorno_afastamento || '',
+            dias_afastado: proc.dias_afastado,
+            motivo_afastamento: proc.motivo_afastamento || '',
+          })
+        }}
         onProcessoUpdated={(updated) => {
           setProcessos((prev) =>
             prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),

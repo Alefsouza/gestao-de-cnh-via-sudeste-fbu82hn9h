@@ -29,41 +29,28 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "role",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "Admin",
-            "RH",
-            "Tráfego"
-          ]
+          "selectValues": ["Admin", "RH", "Tráfego"]
         },
         {
           "name": "garagem",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "CURSINO",
-            "SAPOPEMBA",
-            "Todas"
-          ]
+          "selectValues": ["CURSINO", "SAPOPEMBA", "Todas"]
         }
       ],
       "indexes": [
@@ -105,12 +92,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "CURSINO",
-            "SAPOPEMBA",
-            "ITAQUERA",
-            "GUAIANASES"
-          ]
+          "selectValues": ["CURSINO", "SAPOPEMBA", "ITAQUERA", "GUAIANASES"]
         },
         {
           "name": "funcao",
@@ -123,11 +105,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "Ativo",
-            "Afastado",
-            "Desligado"
-          ]
+          "selectValues": ["Ativo", "Afastado", "Desligado"]
         },
         {
           "name": "cnh_numero",
@@ -152,13 +130,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "Válida",
-            "A vencer",
-            "Vencida",
-            "Vencida CNH",
-            "Sem CNH"
-          ]
+          "selectValues": ["Válida", "A vencer", "Vencida", "Vencida CNH", "Sem CNH"]
         },
         {
           "name": "motivo_afastamento",
@@ -195,19 +167,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "registro",
@@ -302,12 +269,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "Documentação",
-            "Exame médico",
-            "Treinamento",
-            "Integração"
-          ]
+          "selectValues": ["Documentação", "Exame médico", "Treinamento", "Integração"]
         },
         {
           "name": "date",
@@ -326,19 +288,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -381,11 +338,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "info",
-            "alert",
-            "success"
-          ]
+          "selectValues": ["info", "alert", "success"]
         },
         {
           "name": "read",
@@ -398,24 +351,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_notifications_user ON notifications (user)"
-      ]
+      "indexes": ["CREATE INDEX idx_notifications_user ON notifications (user)"]
     },
     {
       "name": "sync_runs",
@@ -463,19 +409,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []
@@ -509,19 +450,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -552,11 +488,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "user",
-            "assistant",
-            "system"
-          ]
+          "selectValues": ["user", "assistant", "system"]
         },
         {
           "name": "content",
@@ -575,19 +507,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -676,29 +603,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "garagem",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "CURSINO",
-            "SAPOPEMBA"
-          ]
+          "selectValues": ["CURSINO", "SAPOPEMBA"]
         },
         {
           "name": "alerta_trafego",
@@ -849,19 +768,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -910,11 +824,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "Admin",
-            "RH",
-            "Tráfego"
-          ]
+          "selectValues": ["Admin", "RH", "Tráfego"]
         },
         {
           "name": "observacoes",
@@ -951,19 +861,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -1043,19 +948,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
