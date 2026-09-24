@@ -297,9 +297,12 @@ export function ProcessoDetalhesTimelineModal({
   }, [etapaSelecionada, listaDocsJaRecebidos, documentosAdicionadosNestaEntrega])
 
   // Lista de documentos possíveis para o checklist do evento em edição
+  // Deve mostrar estritamente as opções do Tipo do Evento/Processo e função do colaborador
+  // (a mesma lista de anexos do pop-up da carta via getCamposFixosColaborador), preservando
+  // documentos já salvos no evento para retrocompatibilidade
   const docsChecklistEdicao = useMemo(() => {
     if (!eventoEmEdicao || !processo) return []
-    // 1. Obtém a lista dos campos fixos daquele processo/função
+    // 1. Obtém a lista exata dos campos fixos daquele tipo de processo e função do colaborador
     const camposFixos = getCamposFixosColaborador(
       {
         nome: processo.colaborador,
@@ -309,17 +312,37 @@ export function ProcessoDetalhesTimelineModal({
       },
       processo.processo,
     )
-    // 2. Combina com documentos obrigatórios padrão e quaisquer docs já existentes no evento
-    const todosDocs = new Set<string>()
-    for (const d of camposFixos) if (d) todosDocs.add(d)
-    for (const d of TIMELINE_DOCUMENTOS_OBRIGATORIOS) if (d) todosDocs.add(d)
+    // Mantém a ordem original da lista de campos fixos do tipo de processo/função
+    const listaResultante: string[] = []
+    const setDocs = new Set<string>()
+
+    for (const d of camposFixos) {
+      if (d && !setDocs.has(d)) {
+        setDocs.add(d)
+        listaResultante.push(d)
+      }
+    }
+
+    // Se o evento já possuía documentos recebidos ou pendentes gravados anteriormente
+    // que não estejam na lista oficial do tipo, preserva-os no final para não perder dados legados
     if (Array.isArray(eventoEmEdicao.documentos_recebidos)) {
-      for (const d of eventoEmEdicao.documentos_recebidos) if (d) todosDocs.add(d)
+      for (const d of eventoEmEdicao.documentos_recebidos) {
+        if (d && !setDocs.has(d)) {
+          setDocs.add(d)
+          listaResultante.push(d)
+        }
+      }
     }
     if (Array.isArray(eventoEmEdicao.documentos_pendentes)) {
-      for (const d of eventoEmEdicao.documentos_pendentes) if (d) todosDocs.add(d)
+      for (const d of eventoEmEdicao.documentos_pendentes) {
+        if (d && !setDocs.has(d)) {
+          setDocs.add(d)
+          listaResultante.push(d)
+        }
+      }
     }
-    return Array.from(todosDocs)
+
+    return listaResultante
   }, [eventoEmEdicao, processo])
 
   // Identifica se o evento em edição possui checklist de documentos
