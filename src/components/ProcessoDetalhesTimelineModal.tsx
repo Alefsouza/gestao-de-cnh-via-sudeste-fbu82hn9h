@@ -807,8 +807,34 @@ export function ProcessoDetalhesTimelineModal({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto p-4 sm:p-6">
+      <Dialog
+        open={open}
+        onOpenChange={(isOpen) => {
+          // Se o pop-up de edição de evento estiver aberto, não permite fechar o modal pai
+          if (!isOpen && eventoEmEdicao !== null) {
+            return
+          }
+          onOpenChange(isOpen)
+        }}
+      >
+        <DialogContent
+          className="max-h-[92vh] max-w-5xl overflow-y-auto p-4 sm:p-6"
+          onPointerDownOutside={(e) => {
+            if (eventoEmEdicao !== null) {
+              e.preventDefault()
+            }
+          }}
+          onInteractOutside={(e) => {
+            if (eventoEmEdicao !== null) {
+              e.preventDefault()
+            }
+          }}
+          onEscapeKeyDown={(e) => {
+            if (eventoEmEdicao !== null) {
+              e.preventDefault()
+            }
+          }}
+        >
           <DialogHeader className="border-b pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
