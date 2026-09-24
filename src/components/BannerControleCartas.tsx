@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, FileText } from 'lucide-react'
+import { ChevronRight, FileText, Plus } from 'lucide-react'
 import { extrairNumeroSequencialCarta, listCartas } from '@/services/cartas'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
@@ -142,11 +142,22 @@ export function BannerControleCartas({ className = '' }: BannerControleCartasPro
           </div>
         </div>
 
-        {/* Bloco Direita: Botão Abrir Controle de Cartas alinhado à direita do banner */}
-        <div className="flex flex-none items-center justify-end xl:pl-4">
+        {/* Bloco Direita: Botões de ação alinhados à direita do banner */}
+        <div className="flex flex-col sm:flex-row xl:flex-col gap-2.5 flex-none items-stretch sm:items-center xl:items-end justify-center xl:pl-4 w-full sm:w-auto">
+          {/* Botão Nova Carta empilhado acima */}
+          <Link
+            to="/processos-cadastrais?openNovaCarta=true"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#ebb459] hover:bg-[#f0bd66] px-4 py-3 text-xs sm:text-sm font-extrabold text-[#2e1a00] shadow-md transition-all active:scale-[0.98] whitespace-nowrap border border-amber-300/60"
+            title="Criar nova carta com processo cadastral"
+          >
+            <Plus className="h-4 w-4 stroke-[2.5]" />
+            <span>Nova Carta</span>
+          </Link>
+
+          {/* Botão Abrir Controle de Cartas existente mantido logo abaixo */}
           <Link
             to="/processos-cadastrais?openCartas=true"
-            className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-white/30 bg-white/15 px-4 py-3 text-xs sm:text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white hover:text-[#064229] hover:border-white shadow-sm active:scale-[0.98] whitespace-nowrap"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-white/30 bg-white/15 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white hover:text-[#064229] hover:border-white shadow-sm active:scale-[0.98] whitespace-nowrap"
             title="Abrir controle de cartas emitidas e documentos anexos"
           >
             <span>Abrir controle de cartas</span>

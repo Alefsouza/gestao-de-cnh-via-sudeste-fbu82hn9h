@@ -209,7 +209,15 @@ export default function ProcessosCadastrais() {
 
   // Se veio redirecionado com estado ou query para abrir controle de cartas
   const [loading, setLoading] = useState(true)
-  const [modalOpen, setModalOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(() => {
+    try {
+      const search = window.location.search
+      const params = new URLSearchParams(search)
+      return params.get('openNovaCarta') === 'true' || params.get('openNovoProcesso') === 'true'
+    } catch {
+      return false
+    }
+  })
   const [cartasModalOpen, setCartasModalOpen] = useState(() => {
     try {
       const search = window.location.search
@@ -322,8 +330,12 @@ export default function ProcessosCadastrais() {
   useEffect(() => {
     try {
       const search = window.location.search
-      if (new URLSearchParams(search).get('openCartas') === 'true') {
+      const params = new URLSearchParams(search)
+      if (params.get('openCartas') === 'true') {
         setCartasModalOpen(true)
+      }
+      if (params.get('openNovaCarta') === 'true' || params.get('openNovoProcesso') === 'true') {
+        setModalOpen(true)
       }
     } catch {
       // silencioso
@@ -1941,6 +1953,9 @@ function createEmptyColaborador(garagem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'): C
     motivo_afastamento: '',
   }
 }
+
+export { ProcessoCadastralFormModal }
+export type { ProcessoCadastralFormData, ProcessoCadastralFormModalProps, ColaboradorItem }
 
 function ProcessoCadastralFormModal({
   open,
