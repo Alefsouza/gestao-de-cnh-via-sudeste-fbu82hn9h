@@ -49,6 +49,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatDate } from '@/lib/format'
+import { getCamposFixosColaborador } from '@/components/CartaProcessoModal'
 import {
   TIMELINE_DOCUMENTOS_OBRIGATORIOS,
   TIMELINE_ETAPAS_ORDEM,
@@ -132,6 +133,7 @@ export function ProcessoDetalhesTimelineModal({
   const [editMotivo, setEditMotivo] = useState('')
   const [editResponsavelNome, setEditResponsavelNome] = useState('')
   const [editResponsavelPerfil, setEditResponsavelPerfil] = useState<UserRole>('RH')
+  const [editDocumentosRecebidos, setEditDocumentosRecebidos] = useState<string[]>([])
   const [savingEdit, setSavingEdit] = useState(false)
 
   // Carregar timeline e anexos ao abrir o modal
@@ -293,6 +295,49 @@ export function ProcessoDetalhesTimelineModal({
       setDocumentosRecebidos([...listaDocsJaRecebidos, ...documentosAdicionadosNestaEntrega])
     }
   }, [etapaSelecionada, listaDocsJaRecebidos, documentosAdicionadosNestaEntrega])
+
+  // Lista de documentos possíveis para o checklist do evento em edição
+  const docsChecklistEdicao = useMemo(() => {
+    if (!eventoEmEdicao || !processo) return []
+    // 1. Obtém a lista dos campos fixos daquele processo/função
+    const camposFixos = getCamposFixosColaborador(
+      {
+        nome: processo.colaborador,
+        matricula: processo.matricula,
+        funcao: processo.funcao,
+        processoTipo: processo.processo,
+      },
+      processo.processo,
+    )
+    // 2. Combina com documentos obrigatórios padrão e quaisquer docs já existentes no evento
+    const todosDocs = new Set<string>()
+    for (const d of camposFixos) if (d) todosDocs.add(d)
+    for (const d of TIMELINE_DOCUMENTOS_OBRIGATORIOS) if (d) todosDocs.add(d)
+    if (Array.isArray(eventoEmEdicao.documentos_recebidos)) {
+      for (const d of eventoEmEdicao.documentos_recebidos) if (d) todosDocs.add(d)
+    }
+    if (Array.isArray(eventoEmEdicao.documentos_pendentes)) {
+      for (const d of eventoEmEdicao.documentos_pendentes) if (d) todosDocs.add(d)
+    }
+    return Array.from(todosDocs)
+  }, [eventoEmEdicao, processo])
+
+  // Identifica se o evento em edição possui checklist de documentos
+  const temChecklistNoEventoEmEdicao = useMemo(() => {
+    if (!eventoEmEdicao) return false
+    const hasDocsRecebidos =
+      Array.isArray(eventoEmEdicao.documentos_recebidos) &&
+      eventoEmEdicao.documentos_recebidos.length > 0
+    const hasDocsPendentes =
+      Array.isArray(eventoEmEdicao.documentos_pendentes) &&
+      eventoEmEdicao.documentos_pendentes.length > 0
+    const isEtapaChecklist =
+      eventoEmEdicao.etapa === 'Entrega dos documentos' ||
+      eventoEmEdicao.etapa === 'Carta criada' ||
+      eventoEmEdicao.etapa === 'Conferência' ||
+      eventoEmEdicao.etapa === 'Pendências'
+    return hasDocsRecebidos || hasDocsPendentes || isEtapaChecklist
+  }, [eventoEmEdicao])
 
   if (!processo) return null
 
@@ -463,39 +508,77 @@ export function ProcessoDetalhesTimelineModal({
     setEditMotivo(item.motivo || '')
     setEditResponsavelNome(item.responsavel_nome || '')
     setEditResponsavelPerfil(item.responsavel_perfil || 'RH')
+    setEditDocumentosRecebidos(
+      Array.isArray(item.documentos_recebidos) ? [...item.documentos_recebidos] : [],
+    )
+  }
+
+  const handleToggleEditDocumento = (doc: string) => {
+    setEditDocumentosRecebidos((prev) =>
+      prev.includes(doc) ? prev.filter((d) => d !== doc) : [...prev, doc],
+    )
+  }
+
+  const handleMarcarTodosEditDocs = () => {
+    if (editDocumentosRecebidos.length === docsChecklistEdicao.length) {
+      setEditDocumentosRecebidos([])
+    } else {
+      setEditDocumentosRecebidos([...docsChecklistEdicao])
+    }
   }
 
   const handleSaveEventoEdicao = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!eventoEmEdicao) return
 
-    if (!editEtapa.trim()) {
-      toast.error('A etapa/título do evento não pode ficar vazia.')
-      return
-    }
-
-    if (editEtapa === 'Impossibilitado de trabalhar' && !editMotivo.trim()) {
-      toast.error('O motivo é obrigatório para a situação "Impossibilitado de trabalhar".')
-      return
-    }
-
     setSavingEdit(true)
     try {
-      let dataHoraIso: string | undefined = undefined
-      if (editDataHora) {
-        const parsed = new Date(editDataHora)
-        if (!isNaN(parsed.getTime())) {
-          dataHoraIso = parsed.toISOString()
-        }
+      // Verifica se houve alguma alteração real nos campos editáveis (observações, motivo e checklist)
+      const obsOriginal = (eventoEmEdicao.observacoes || '').trim()
+      const obsAtual = editObservacoes.trim()
+      const motivoOriginal = (eventoEmEdicao.motivo || '').trim()
+      const motivoAtual = editMotivo.trim()
+
+      const docsRecebidosOrig = [...(eventoEmEdicao.documentos_recebidos || [])].sort()
+      const docsRecebidosNovos = [...editDocumentosRecebidos].sort()
+      const checklistMudou =
+        temChecklistNoEventoEmEdicao &&
+        (docsRecebidosOrig.length !== docsRecebidosNovos.length ||
+          docsRecebidosOrig.some((d, idx) => d !== docsRecebidosNovos[idx]))
+
+      const houveMudancaEditavel =
+        obsOriginal !== obsAtual || motivoOriginal !== motivoAtual || checklistMudou
+
+      // Se nada editável mudou, apenas fecha o modal sem regravar auditoria desnecessária
+      if (!houveMudancaEditavel) {
+        toast.info('Nenhuma alteração foi realizada.')
+        setEventoEmEdicao(null)
+        setSavingEdit(false)
+        return
+      }
+
+      // Calcula nova lista de pendentes e status se houver checklist
+      let docsPendentesNovos: string[] | undefined = undefined
+      let novoStatusDocs: string | undefined = undefined
+
+      if (temChecklistNoEventoEmEdicao) {
+        docsPendentesNovos = docsChecklistEdicao.filter(
+          (doc) => !editDocumentosRecebidos.includes(doc),
+        )
+        novoStatusDocs =
+          docsPendentesNovos.length > 0 ? 'Documentação incompleta' : 'Documentação completa'
       }
 
       const updatedRecord = await updateTimelineItem(eventoEmEdicao.id, {
-        etapa: editEtapa.trim(),
-        data_hora: dataHoraIso,
-        observacoes: editObservacoes.trim(),
-        motivo: editMotivo.trim(),
-        responsavel_nome: editResponsavelNome.trim() || undefined,
-        responsavel_perfil: editResponsavelPerfil,
+        observacoes: obsAtual,
+        motivo: motivoAtual,
+        ...(temChecklistNoEventoEmEdicao
+          ? {
+              documentos_recebidos: editDocumentosRecebidos,
+              documentos_pendentes: docsPendentesNovos,
+              status_documentacao: novoStatusDocs,
+            }
+          : {}),
         alterado_por: currentUserName,
         alterado_em: new Date().toISOString(),
       })
@@ -1466,77 +1549,182 @@ export function ProcessoDetalhesTimelineModal({
 
           {eventoEmEdicao && (
             <form onSubmit={handleSaveEventoEdicao} className="space-y-3.5 pt-2">
-              {/* Etapa / Nome do evento */}
+              {/* Etapa / Nome do evento (BLOQUEADO / SOMENTE LEITURA) */}
               <div className="space-y-1">
-                <Label htmlFor="edit-evento-etapa" className="text-xs font-semibold">
-                  Etapa / Título do Evento *
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="edit-evento-etapa"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Etapa / Título do Evento
+                  </Label>
+                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.2">
+                    Bloqueado para edição
+                  </span>
+                </div>
                 <Input
                   id="edit-evento-etapa"
                   value={editEtapa}
-                  onChange={(e) => setEditEtapa(e.target.value)}
-                  placeholder="Ex: Entrega dos documentos, Processo criado..."
-                  className="h-8 text-xs bg-white"
-                  required
+                  readOnly
+                  disabled
+                  className="h-8 text-xs bg-muted/60 text-muted-foreground cursor-not-allowed select-none font-medium"
                 />
               </div>
 
-              {/* Data e Hora do evento */}
+              {/* Data e Hora do evento (BLOQUEADO / SOMENTE LEITURA) */}
               <div className="space-y-1">
-                <Label htmlFor="edit-evento-datahora" className="text-xs font-semibold">
-                  Data e Hora do Evento
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="edit-evento-datahora"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Data e Hora do Evento
+                  </Label>
+                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.2">
+                    Bloqueado para edição
+                  </span>
+                </div>
                 <Input
                   id="edit-evento-datahora"
                   type="datetime-local"
                   value={editDataHora}
-                  onChange={(e) => setEditDataHora(e.target.value)}
-                  className="h-8 text-xs bg-white"
+                  readOnly
+                  disabled
+                  className="h-8 text-xs bg-muted/60 text-muted-foreground cursor-not-allowed select-none"
                 />
-                <span className="text-[10px] text-muted-foreground">
-                  Deixe no formato desejado ou mantenha o horário original.
-                </span>
               </div>
 
-              {/* Responsável e Perfil */}
+              {/* Responsável e Perfil (BLOQUEADOS / SOMENTE LEITURA) */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label htmlFor="edit-evento-resp-nome" className="text-xs font-semibold">
-                    Registrado por (Nome)
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="edit-evento-resp-nome"
+                      className="text-xs font-semibold text-muted-foreground truncate"
+                    >
+                      Nome (Registrado por)
+                    </Label>
+                  </div>
                   <Input
                     id="edit-evento-resp-nome"
                     value={editResponsavelNome}
-                    onChange={(e) => setEditResponsavelNome(e.target.value)}
+                    readOnly
+                    disabled
                     placeholder="Nome do responsável"
-                    className="h-8 text-xs bg-white"
+                    className="h-8 text-xs bg-muted/60 text-muted-foreground cursor-not-allowed select-none font-medium"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="edit-evento-resp-perfil" className="text-xs font-semibold">
-                    Perfil
-                  </Label>
-                  <Select
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="edit-evento-resp-perfil"
+                      className="text-xs font-semibold text-muted-foreground"
+                    >
+                      Perfil
+                    </Label>
+                  </div>
+                  <Input
+                    id="edit-evento-resp-perfil"
                     value={editResponsavelPerfil}
-                    onValueChange={(val) => setEditResponsavelPerfil(val as UserRole)}
-                  >
-                    <SelectTrigger id="edit-evento-resp-perfil" className="h-8 text-xs bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="RH" className="text-xs">
-                        RH
-                      </SelectItem>
-                      <SelectItem value="Admin" className="text-xs">
-                        Admin
-                      </SelectItem>
-                      <SelectItem value="Tráfego" className="text-xs">
-                        Tráfego
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    readOnly
+                    disabled
+                    className="h-8 text-xs bg-muted/60 text-muted-foreground cursor-not-allowed select-none font-medium"
+                  />
                 </div>
               </div>
+
+              {/* Checklist de Documentos para Edição (se houver documentos associados ao evento) */}
+              {temChecklistNoEventoEmEdicao && docsChecklistEdicao.length > 0 && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between border-b pb-1.5">
+                    <Label className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                      <FileCheck2 className="h-3.5 w-3.5 text-primary" />
+                      Checklist de Documentos ({editDocumentosRecebidos.length}/
+                      {docsChecklistEdicao.length})
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={handleMarcarTodosEditDocs}
+                      className="text-[11px] font-medium text-primary hover:underline"
+                    >
+                      {editDocumentosRecebidos.length === docsChecklistEdicao.length
+                        ? 'Desmarcar todos'
+                        : 'Marcar todos'}
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Marque os documentos entregues e desmarque os que estão pendentes:
+                  </p>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 pt-0.5">
+                    {docsChecklistEdicao.map((doc) => {
+                      const isChecked = editDocumentosRecebidos.includes(doc)
+                      return (
+                        <div
+                          key={doc}
+                          className={cn(
+                            'flex items-center justify-between gap-2 rounded-md p-2 border transition-colors cursor-pointer',
+                            isChecked
+                              ? 'bg-emerald-50/80 border-emerald-300'
+                              : 'bg-white border-border hover:bg-muted/40',
+                          )}
+                          onClick={() => handleToggleEditDocumento(doc)}
+                        >
+                          <div className="flex items-center space-x-2 min-w-0">
+                            <Checkbox
+                              id={`edit-doc-${doc}`}
+                              checked={isChecked}
+                              onCheckedChange={() => handleToggleEditDocumento(doc)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <label
+                              htmlFor={`edit-doc-${doc}`}
+                              className={cn(
+                                'text-xs font-medium cursor-pointer truncate select-none',
+                                isChecked ? 'text-emerald-950 font-semibold' : 'text-foreground',
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {doc}
+                            </label>
+                          </div>
+
+                          {isChecked ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 flex-none">
+                              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                              Entregue
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded bg-amber-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 flex-none">
+                              <AlertCircle className="h-3 w-3 text-amber-600" />
+                              Pendente
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Resumo do checklist */}
+                  {editDocumentosRecebidos.length < docsChecklistEdicao.length ? (
+                    <div className="flex items-start gap-1.5 rounded-md bg-amber-100/70 p-2 text-[11px] text-amber-900">
+                      <AlertCircle className="h-4 w-4 text-amber-600 flex-none mt-0.5" />
+                      <div>
+                        <strong>Documentação pendente:</strong>{' '}
+                        {docsChecklistEdicao
+                          .filter((d) => !editDocumentosRecebidos.includes(d))
+                          .join(', ')}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 rounded-md bg-emerald-100/70 p-2 text-[11px] text-emerald-900 font-medium">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-none" />
+                      <span>Todos os documentos do checklist estão marcados como entregues!</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Motivo (se for etapa de bloqueio/impossibilitado) */}
               {(editEtapa === 'Impossibilitado de trabalhar' ||
@@ -1544,7 +1732,7 @@ export function ProcessoDetalhesTimelineModal({
                 eventoEmEdicao.motivo) && (
                 <div className="space-y-1">
                   <Label htmlFor="edit-evento-motivo" className="text-xs font-semibold">
-                    Motivo {editEtapa === 'Impossibilitado de trabalhar' ? '*' : ''}
+                    Motivo informado
                   </Label>
                   <Input
                     id="edit-evento-motivo"
@@ -1552,16 +1740,18 @@ export function ProcessoDetalhesTimelineModal({
                     onChange={(e) => setEditMotivo(e.target.value)}
                     placeholder="Descreva o motivo..."
                     className="h-8 text-xs bg-white"
-                    required={editEtapa === 'Impossibilitado de trabalhar'}
                   />
                 </div>
               )}
 
-              {/* Observações */}
+              {/* Observações (EDITÁVEL) */}
               <div className="space-y-1">
-                <Label htmlFor="edit-evento-obs" className="text-xs font-semibold">
-                  Observações
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="edit-evento-obs" className="text-xs font-semibold">
+                    Observações
+                  </Label>
+                  <span className="text-[10px] text-muted-foreground">Editável</span>
+                </div>
                 <Textarea
                   id="edit-evento-obs"
                   value={editObservacoes}
@@ -1579,7 +1769,7 @@ export function ProcessoDetalhesTimelineModal({
                   <span>Aviso de Auditoria do RH</span>
                 </div>
                 <p>
-                  Ao salvar, este item exibirá em fonte vermelha permanente:{' '}
+                  Ao salvar alterações, este item exibirá em fonte vermelha permanente:{' '}
                   <strong>
                     &quot;Alterado por {currentUserName}, em{' '}
                     {new Date().toLocaleDateString('pt-BR', {
