@@ -318,46 +318,135 @@ export function ProcessoDetalhesTimelineModal({
     docsObrigatoriosProcesso,
   ])
 
-  // Lista de documentos possíveis para o checklist do evento em edição
-  // Deve mostrar estritamente as opções do Tipo do Evento/Processo e função do colaborador
-  // (a mesma lista de anexos do pop-up da carta via getCamposFixosColaborador), preservando
-  // documentos já salvos no evento para retrocompatibilidade
+  // Mapeia nomes legados ou variações para o nome oficial correspondente na lista do tipo de processo
+  const mapearDocParaOficial = (doc: string, listaOficiais: string[]): string | null => {
+    if (!doc) return null
+    // Se o documento já é idêntico a um oficial
+    if (listaOficiais.includes(doc)) return doc
+
+    const lower = doc.toLowerCase().trim()
+
+    // Correspondência direta case-insensitive
+    const matchCase = listaOficiais.find((d) => d.toLowerCase().trim() === lower)
+    if (matchCase) return matchCase
+
+    // Mapeamento semântico de nomes legados para a lista oficial:
+    // 1. CNH -> 'CNH atualizada' ou 'CNH'
+    if (lower === 'cnh' || lower === 'cnh atualizada' || lower.includes('cnh')) {
+      const matchCnh = listaOficiais.find(
+        (d) => d === 'CNH atualizada' || d === 'CNH' || d.toLowerCase().includes('cnh'),
+      )
+      if (matchCnh) return matchCnh
+    }
+
+    // 2. Prontuário -> 'Certidão de prontuário' ou 'Prontuário'
+    if (lower === 'prontuário' || lower === 'prontuario' || lower.includes('prontu')) {
+      const matchPront = listaOficiais.find(
+        (d) =>
+          d === 'Certidão de prontuário' ||
+          d === 'Prontuário' ||
+          d.toLowerCase().includes('prontu'),
+      )
+      if (matchPront) return matchPront
+    }
+
+    // 3. Comprovante de Residência / Comprovante de endereço
+    if (
+      lower.includes('residência') ||
+      lower.includes('residencia') ||
+      lower.includes('endereço') ||
+      lower.includes('endereco')
+    ) {
+      const matchEnd = listaOficiais.find((d) => {
+        const l = d.toLowerCase()
+        return (
+          l.includes('endereço') ||
+          l.includes('endereco') ||
+          l.includes('residência') ||
+          l.includes('residencia')
+        )
+      })
+      if (matchEnd) return matchEnd
+    }
+
+    // 4. Atestado / Antecedente Criminal / Atestado de antecedentes criminais
+    if (
+      lower.includes('antecedente') ||
+      lower.includes('criminal') ||
+      lower === 'atestado' ||
+      lower.includes('antecedentes')
+    ) {
+      const matchAnt = listaOficiais.find((d) => {
+        const l = d.toLowerCase()
+        return l.includes('antecedente') || l.includes('criminal')
+      })
+      if (matchAnt) return matchAnt
+    }
+
+    // 5. Doc. Assinado pela Gestora / Carta assinada pela Sabrina
+    if (
+      lower.includes('sabrina') ||
+      lower.includes('gestora') ||
+      lower.includes('assinado') ||
+      lower.includes('assinada')
+    ) {
+      const matchSabrina = listaOficiais.find((d) => {
+        const l = d.toLowerCase()
+        return l.includes('sabrina') || l.includes('gestora')
+      })
+      if (matchSabrina) return matchSabrina
+    }
+
+    // 6. RG / Documento pessoal
+    if (lower === 'rg' || lower.includes('documento pessoal')) {
+      const matchRg = listaOficiais.find((d) => {
+        const l = d.toLowerCase()
+        return l === 'rg' || l.includes('rg')
+      })
+      if (matchRg) return matchRg
+    }
+
+    // 7. ASO / Laudo / Exame Médico
+    if (
+      lower === 'aso' ||
+      lower.includes('aso') ||
+      lower.includes('médico') ||
+      lower.includes('medico')
+    ) {
+      const matchAso = listaOficiais.find((d) => {
+        const l = d.toLowerCase()
+        return l === 'aso' || l.includes('aso') || l.includes('médico') || l.includes('medico')
+      })
+      if (matchAso) return matchAso
+    }
+
+    // 8. CTPS
+    if (lower.includes('ctps')) {
+      const matchCtps = listaOficiais.find((d) => d.toLowerCase().includes('ctps'))
+      if (matchCtps) return matchCtps
+    }
+
+    // 9. Leandro / Aptidão
+    if (lower.includes('leandro') || lower.includes('aptidão') || lower.includes('aptidao')) {
+      const matchLeandro = listaOficiais.find((d) => {
+        const l = d.toLowerCase()
+        return l.includes('leandro') || l.includes('aptidão') || l.includes('aptidao')
+      })
+      if (matchLeandro) return matchLeandro
+    }
+
+    return null
+  }
+
+  // Lista de documentos possíveis para o checklist do evento em edição.
+  // Deve conter ESTRITAMENTE as opções do Tipo de Movimentação do processo + função do colaborador
+  // (a mesma lista oficial de anexos da carta via docsObrigatoriosProcesso).
+  // Nenhum documento genérico antigo deve aparecer como item do checklist.
   const docsChecklistEdicao = useMemo(() => {
     if (!eventoEmEdicao || !processo) return []
-    // 1. Obtém a lista exata dos campos fixos daquele tipo de processo e função do colaborador
-    const camposFixos = docsObrigatoriosProcesso
-    // Mantém a ordem original da lista de campos fixos do tipo de processo/função
-    const listaResultante: string[] = []
-    const setDocs = new Set<string>()
-
-    for (const d of camposFixos) {
-      if (d && !setDocs.has(d)) {
-        setDocs.add(d)
-        listaResultante.push(d)
-      }
-    }
-
-    // Se o evento já possuía documentos recebidos ou pendentes gravados anteriormente
-    // que não estejam na lista oficial do tipo, preserva-os no final para não perder dados legados
-    if (Array.isArray(eventoEmEdicao.documentos_recebidos)) {
-      for (const d of eventoEmEdicao.documentos_recebidos) {
-        if (d && !setDocs.has(d)) {
-          setDocs.add(d)
-          listaResultante.push(d)
-        }
-      }
-    }
-    if (Array.isArray(eventoEmEdicao.documentos_pendentes)) {
-      for (const d of eventoEmEdicao.documentos_pendentes) {
-        if (d && !setDocs.has(d)) {
-          setDocs.add(d)
-          listaResultante.push(d)
-        }
-      }
-    }
-
-    return listaResultante
-  }, [eventoEmEdicao, processo])
+    // Retorna exatamente a lista oficial de documentos do tipo de processo + função
+    return [...docsObrigatoriosProcesso]
+  }, [eventoEmEdicao, processo, docsObrigatoriosProcesso])
 
   // Identifica se o evento em edição possui checklist de documentos
   const temChecklistNoEventoEmEdicao = useMemo(() => {
@@ -543,9 +632,21 @@ export function ProcessoDetalhesTimelineModal({
     setEditMotivo(item.motivo || '')
     setEditResponsavelNome(item.responsavel_nome || '')
     setEditResponsavelPerfil(item.responsavel_perfil || 'RH')
-    setEditDocumentosRecebidos(
-      Array.isArray(item.documentos_recebidos) ? [...item.documentos_recebidos] : [],
-    )
+
+    // Mapeia os documentos já gravados no evento para a lista oficial de documentos do tipo de processo + função
+    const docsOriginais = Array.isArray(item.documentos_recebidos) ? item.documentos_recebidos : []
+    const docsOficiaisRecebidos: string[] = []
+    const jaAdicionados = new Set<string>()
+
+    for (const doc of docsOriginais) {
+      const oficial = mapearDocParaOficial(doc, docsObrigatoriosProcesso)
+      if (oficial && !jaAdicionados.has(oficial)) {
+        jaAdicionados.add(oficial)
+        docsOficiaisRecebidos.push(oficial)
+      }
+    }
+
+    setEditDocumentosRecebidos(docsOficiaisRecebidos)
   }
 
   const handleToggleEditDocumento = (doc: string) => {
@@ -574,7 +675,17 @@ export function ProcessoDetalhesTimelineModal({
       const motivoOriginal = (eventoEmEdicao.motivo || '').trim()
       const motivoAtual = editMotivo.trim()
 
-      const docsRecebidosOrig = [...(eventoEmEdicao.documentos_recebidos || [])].sort()
+      // Compara a seleção do checklist com os documentos oficiais normalizados do evento original
+      const docsOficiaisOriginaisNoEvento: string[] = []
+      const setOrig = new Set<string>()
+      for (const d of eventoEmEdicao.documentos_recebidos || []) {
+        const oficial = mapearDocParaOficial(d, docsObrigatoriosProcesso)
+        if (oficial && !setOrig.has(oficial)) {
+          setOrig.add(oficial)
+          docsOficiaisOriginaisNoEvento.push(oficial)
+        }
+      }
+      const docsRecebidosOrig = docsOficiaisOriginaisNoEvento.sort()
       const docsRecebidosNovos = [...editDocumentosRecebidos].sort()
       const checklistMudou =
         temChecklistNoEventoEmEdicao &&
