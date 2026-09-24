@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowRight,
@@ -126,6 +126,10 @@ export function ProcessoDetalhesTimelineModal({
 
   // Estado para Edição de Evento Individual da Timeline
   const [eventoEmEdicao, setEventoEmEdicao] = useState<ProcessoTimelineRecord | null>(null)
+  const eventoEmEdicaoRef = useRef<ProcessoTimelineRecord | null>(null)
+  const blockParentCloseRef = useRef(false)
+  const blockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [editEtapa, setEditEtapa] = useState('')
   const [editDataHora, setEditDataHora] = useState('')
   const [editObservacoes, setEditObservacoes] = useState('')
@@ -134,6 +138,34 @@ export function ProcessoDetalhesTimelineModal({
   const [editResponsavelPerfil, setEditResponsavelPerfil] = useState<UserRole>('RH')
   const [editDocumentosRecebidos, setEditDocumentosRecebidos] = useState<string[]>([])
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // Atualiza a ref síncrona sempre que eventoEmEdicao mudar
+  useEffect(() => {
+    eventoEmEdicaoRef.current = eventoEmEdicao
+  }, [eventoEmEdicao])
+
+  // Função centralizada para fechar o pop-up de edição sem nunca fechar o modal pai
+  const closeEditModal = () => {
+    // Bloqueia qualquer tentativa de fechar o pai desencadeada por este fechamento
+    blockParentCloseRef.current = true
+    if (blockTimerRef.current) {
+      clearTimeout(blockTimerRef.current)
+    }
+    blockTimerRef.current = setTimeout(() => {
+      blockParentCloseRef.current = false
+      eventoEmEdicaoRef.current = null
+    }, 600)
+
+    setEventoEmEdicao(null)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (blockTimerRef.current) {
+        clearTimeout(blockTimerRef.current)
+      }
+    }
+  }, [])
 
   // Carregar timeline e anexos ao abrir o modal
   useEffect(() => {
@@ -625,6 +657,7 @@ export function ProcessoDetalhesTimelineModal({
   }
 
   const handleOpenEditModal = (item: ProcessoTimelineRecord) => {
+    eventoEmEdicaoRef.current = item
     setEventoEmEdicao(item)
     setEditEtapa(item.etapa || '')
     setEditDataHora(toInputDateTimeValue(item.data_hora || item.created))
@@ -698,7 +731,7 @@ export function ProcessoDetalhesTimelineModal({
       // Se nada editável mudou, apenas fecha o modal sem regravar auditoria desnecessária
       if (!houveMudancaEditavel) {
         toast.info('Nenhuma alteração foi realizada.')
-        setEventoEmEdicao(null)
+        closeEditModal()
         setSavingEdit(false)
         return
       }
@@ -735,7 +768,7 @@ export function ProcessoDetalhesTimelineModal({
       )
 
       toast.success('Evento da linha do tempo atualizado com sucesso!')
-      setEventoEmEdicao(null)
+      closeEditModal()
     } catch (err) {
       console.error('Erro ao atualizar evento da timeline:', err)
       toast.error('Erro ao salvar edição do evento. Tente novamente.')
@@ -810,8 +843,14 @@ export function ProcessoDetalhesTimelineModal({
       <Dialog
         open={open}
         onOpenChange={(isOpen) => {
-          // Se o pop-up de edição de evento estiver aberto, não permite fechar o modal pai
-          if (!isOpen && eventoEmEdicao !== null) {
+          // Se o pop-up de edição de evento estiver aberto (ou acabou de ser fechado na mesma interação),
+          // nunca fecha o modal pai de detalhes.
+          if (
+            !isOpen &&
+            (eventoEmEdicao !== null ||
+              eventoEmEdicaoRef.current !== null ||
+              blockParentCloseRef.current)
+          ) {
             return
           }
           onOpenChange(isOpen)
@@ -820,17 +859,29 @@ export function ProcessoDetalhesTimelineModal({
         <DialogContent
           className="max-h-[92vh] max-w-5xl overflow-y-auto p-4 sm:p-6"
           onPointerDownOutside={(e) => {
-            if (eventoEmEdicao !== null) {
+            if (
+              eventoEmEdicao !== null ||
+              eventoEmEdicaoRef.current !== null ||
+              blockParentCloseRef.current
+            ) {
               e.preventDefault()
             }
           }}
           onInteractOutside={(e) => {
-            if (eventoEmEdicao !== null) {
+            if (
+              eventoEmEdicao !== null ||
+              eventoEmEdicaoRef.current !== null ||
+              blockParentCloseRef.current
+            ) {
               e.preventDefault()
             }
           }}
           onEscapeKeyDown={(e) => {
-            if (eventoEmEdicao !== null) {
+            if (
+              eventoEmEdicao !== null ||
+              eventoEmEdicaoRef.current !== null ||
+              blockParentCloseRef.current
+            ) {
               e.preventDefault()
             }
           }}
@@ -1737,7 +1788,7 @@ export function ProcessoDetalhesTimelineModal({
         open={Boolean(eventoEmEdicao)}
         onOpenChange={(isOpen) => {
           if (!isOpen && !savingEdit) {
-            setEventoEmEdicao(null)
+            closeEditModal()
           }
         }}
       >
@@ -1746,7 +1797,7 @@ export function ProcessoDetalhesTimelineModal({
           onEscapeKeyDown={(e) => {
             e.stopPropagation()
             if (!savingEdit) {
-              setEventoEmEdicao(null)
+              closeEditModal()
             }
           }}
           onPointerDownOutside={(e) => {
@@ -2014,7 +2065,7 @@ export function ProcessoDetalhesTimelineModal({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setEventoEmEdicao(null)}
+                  onClick={closeEditModal}
                   disabled={savingEdit}
                   className="h-8 text-xs"
                 >
