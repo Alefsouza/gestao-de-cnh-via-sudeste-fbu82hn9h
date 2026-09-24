@@ -51,7 +51,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { formatDate } from '@/lib/format'
 import { getCamposFixosColaborador } from '@/components/CartaProcessoModal'
 import {
-  TIMELINE_DOCUMENTOS_OBRIGATORIOS,
   TIMELINE_ETAPAS_ORDEM,
   type ProcessoCadastralRecord,
   type ProcessoSituacao,
@@ -278,32 +277,11 @@ export function ProcessoDetalhesTimelineModal({
     return mapa
   }, [timeline])
 
-  // Lista dos documentos já recebidos anteriormente
-  const listaDocsJaRecebidos = useMemo(() => {
-    return Array.from(documentosJaRecebidosInfo.keys())
-  }, [documentosJaRecebidosInfo])
-
-  // Documentos que ainda estão pendentes de entrega
-  const docsAindaPendentes = useMemo(() => {
-    return TIMELINE_DOCUMENTOS_OBRIGATORIOS.filter((doc) => !documentosJaRecebidosInfo.has(doc))
-  }, [documentosJaRecebidosInfo])
-
-  // Inicializa o checklist cumulativo ao selecionar "Entrega dos documentos"
-  useEffect(() => {
-    if (etapaSelecionada === 'Entrega dos documentos') {
-      // Documentos recebidos acumulados = já recebidos antes + os marcados nesta nova entrega
-      setDocumentosRecebidos([...listaDocsJaRecebidos, ...documentosAdicionadosNestaEntrega])
-    }
-  }, [etapaSelecionada, listaDocsJaRecebidos, documentosAdicionadosNestaEntrega])
-
-  // Lista de documentos possíveis para o checklist do evento em edição
-  // Deve mostrar estritamente as opções do Tipo do Evento/Processo e função do colaborador
-  // (a mesma lista de anexos do pop-up da carta via getCamposFixosColaborador), preservando
-  // documentos já salvos no evento para retrocompatibilidade
-  const docsChecklistEdicao = useMemo(() => {
-    if (!eventoEmEdicao || !processo) return []
-    // 1. Obtém a lista exata dos campos fixos daquele tipo de processo e função do colaborador
-    const camposFixos = getCamposFixosColaborador(
+  // Lista oficial de campos fixos / documentos obrigatórios para este processo cadastral,
+  // obtida estritamente via getCamposFixosColaborador conforme o Tipo de Processo e Função
+  const docsObrigatoriosProcesso = useMemo(() => {
+    if (!processo) return []
+    return getCamposFixosColaborador(
       {
         nome: processo.colaborador,
         matricula: processo.matricula,
@@ -312,6 +290,42 @@ export function ProcessoDetalhesTimelineModal({
       },
       processo.processo,
     )
+  }, [processo])
+
+  // Lista dos documentos já recebidos anteriormente
+  const listaDocsJaRecebidos = useMemo(() => {
+    return Array.from(documentosJaRecebidosInfo.keys())
+  }, [documentosJaRecebidosInfo])
+
+  // Documentos que ainda estão pendentes de entrega
+  const docsAindaPendentes = useMemo(() => {
+    return docsObrigatoriosProcesso.filter((doc) => !documentosJaRecebidosInfo.has(doc))
+  }, [docsObrigatoriosProcesso, documentosJaRecebidosInfo])
+
+  // Inicializa o checklist cumulativo ao selecionar "Entrega dos documentos"
+  useEffect(() => {
+    if (etapaSelecionada === 'Entrega dos documentos') {
+      // Documentos recebidos acumulados = já recebidos antes (que pertençam aos docs do processo) + os marcados nesta nova entrega
+      const jaRecebidosValidos = listaDocsJaRecebidos.filter((d) =>
+        docsObrigatoriosProcesso.includes(d),
+      )
+      setDocumentosRecebidos([...jaRecebidosValidos, ...documentosAdicionadosNestaEntrega])
+    }
+  }, [
+    etapaSelecionada,
+    listaDocsJaRecebidos,
+    documentosAdicionadosNestaEntrega,
+    docsObrigatoriosProcesso,
+  ])
+
+  // Lista de documentos possíveis para o checklist do evento em edição
+  // Deve mostrar estritamente as opções do Tipo do Evento/Processo e função do colaborador
+  // (a mesma lista de anexos do pop-up da carta via getCamposFixosColaborador), preservando
+  // documentos já salvos no evento para retrocompatibilidade
+  const docsChecklistEdicao = useMemo(() => {
+    if (!eventoEmEdicao || !processo) return []
+    // 1. Obtém a lista exata dos campos fixos daquele tipo de processo e função do colaborador
+    const camposFixos = docsObrigatoriosProcesso
     // Mantém a ordem original da lista de campos fixos do tipo de processo/função
     const listaResultante: string[] = []
     const setDocs = new Set<string>()
@@ -424,9 +438,7 @@ export function ProcessoDetalhesTimelineModal({
 
       if (etapaSelecionada === 'Entrega dos documentos') {
         docsRecebidos = documentosRecebidos
-        docsPendentes = TIMELINE_DOCUMENTOS_OBRIGATORIOS.filter(
-          (doc) => !documentosRecebidos.includes(doc),
-        )
+        docsPendentes = docsObrigatoriosProcesso.filter((doc) => !documentosRecebidos.includes(doc))
         statusDocs = docsPendentes.length > 0 ? 'Documentação incompleta' : 'Documentação completa'
       }
 
@@ -1042,6 +1054,10 @@ export function ProcessoDetalhesTimelineModal({
                     onValueChange={(val) => {
                       setEtapaSelecionada(val)
                       if (val !== 'Impossibilitado de trabalhar') setMotivo('')
+                      if (val !== 'Entrega dos documentos') {
+                        setDocumentosAdicionadosNestaEntrega([])
+                        setDocumentosRecebidos([])
+                      }
                     }}
                   >
                     <SelectTrigger id="timeline-etapa" className="h-9 text-xs">
@@ -1085,7 +1101,7 @@ export function ProcessoDetalhesTimelineModal({
                       <Label className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                         <FileCheck2 className="h-3.5 w-3.5 text-primary" />
                         Checklist de Documentos ({documentosRecebidos.length}/
-                        {TIMELINE_DOCUMENTOS_OBRIGATORIOS.length})
+                        {docsObrigatoriosProcesso.length})
                       </Label>
                       {docsAindaPendentes.length > 0 && (
                         <button
@@ -1094,20 +1110,21 @@ export function ProcessoDetalhesTimelineModal({
                           className="text-[11px] font-medium text-primary hover:underline"
                         >
                           {documentosAdicionadosNestaEntrega.length === docsAindaPendentes.length
-                            ? 'Desmarcar novos'
-                            : 'Marcar pendentes'}
+                            ? 'Desmarcar todos'
+                            : 'Marcar todos'}
                         </button>
                       )}
                     </div>
 
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      {listaDocsJaRecebidos.length > 0
-                        ? `${listaDocsJaRecebidos.length} documento(s) já recebido(s) anteriormente. Marque abaixo somente os novos documentos entregues hoje:`
+                      {listaDocsJaRecebidos.filter((d) => docsObrigatoriosProcesso.includes(d))
+                        .length > 0
+                        ? `${listaDocsJaRecebidos.filter((d) => docsObrigatoriosProcesso.includes(d)).length} documento(s) já recebido(s) anteriormente. Marque abaixo somente os novos documentos entregues hoje:`
                         : 'Selecione os documentos entregues pelo colaborador nesta etapa. Documentos desmarcados serão marcados como pendentes.'}
                     </p>
 
                     <div className="space-y-2 pt-0.5">
-                      {TIMELINE_DOCUMENTOS_OBRIGATORIOS.map((doc) => {
+                      {docsObrigatoriosProcesso.map((doc) => {
                         const jaRecebido = documentosJaRecebidosInfo.get(doc)
                         const marcadoNestaEntrega = documentosAdicionadosNestaEntrega.includes(doc)
                         const isChecked = Boolean(jaRecebido) || marcadoNestaEntrega
@@ -1191,20 +1208,23 @@ export function ProcessoDetalhesTimelineModal({
                     </div>
 
                     {/* Alerta de Documentação Incompleta caso falte algum */}
-                    {documentosRecebidos.length < TIMELINE_DOCUMENTOS_OBRIGATORIOS.length ? (
+                    {documentosRecebidos.length < docsObrigatoriosProcesso.length ? (
                       <div className="flex items-start gap-1.5 rounded-md bg-amber-100/70 p-2 text-[11px] text-amber-900">
                         <AlertCircle className="h-4 w-4 text-amber-600 flex-none mt-0.5" />
                         <div>
                           <strong>Documentação incompleta:</strong>{' '}
-                          {TIMELINE_DOCUMENTOS_OBRIGATORIOS.filter(
-                            (d) => !documentosRecebidos.includes(d),
-                          ).join(', ')}
+                          {docsObrigatoriosProcesso
+                            .filter((d) => !documentosRecebidos.includes(d))
+                            .join(', ')}
                         </div>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5 rounded-md bg-emerald-100/70 p-2 text-[11px] text-emerald-900 font-medium">
                         <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-none" />
-                        <span>Todos os 5 documentos obrigatórios foram recebidos!</span>
+                        <span>
+                          Todos os {docsObrigatoriosProcesso.length} documentos obrigatórios foram
+                          recebidos!
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1464,7 +1484,10 @@ export function ProcessoDetalhesTimelineModal({
                                   </span>
                                   {item.etapa === 'Carta criada' ? (
                                     <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 text-[10px]">
-                                      Todos os 5 anexos incluídos
+                                      {item.documentos_recebidos &&
+                                      item.documentos_recebidos.length > 0
+                                        ? `Todos os ${item.documentos_recebidos.length} anexos incluídos`
+                                        : 'Todos os anexos incluídos'}
                                     </Badge>
                                   ) : (
                                     <>
