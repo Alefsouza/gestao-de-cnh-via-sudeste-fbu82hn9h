@@ -2069,8 +2069,10 @@ function ProcessoCadastralFormModal({
   }, [open, initialData])
 
   // Helper de busca de colaborador por registro/chapa usando busca indexada pontual
-  // Regra crítica: se processo for 'Exclusão', busca MESMO DESLIGADO e traz data_desligamento e motivo_desligamento.
-  // Nos demais tipos (Inclusão, Mudança de Função, Atualização), busca SOMENTE Ativos e Afastados.
+  // Regra crítica do negócio:
+  // - Processos de Inclusão, PRAT, Retorno do Afastamento, Mudança de Função e Atualização:
+  //   o campo Registro só deve considerar colaboradores Ativos e Afastados.
+  // - Processo de Exclusão: considera também os Demitidos/Desligados (Ativo + Afastado + Desligado).
   const isProcessoExclusao = processo === 'Exclusão'
 
   const searchEmployeeData = useCallback(
@@ -2084,6 +2086,18 @@ function ProcessoCadastralFormModal({
       })
 
       if (emp) {
+        // Validação defensiva de situação:
+        // Se NÃO for Exclusão, colaboradores com situação Demitido/Desligado não são permitidos
+        const rawSit = String(emp.situacao || '')
+          .trim()
+          .toLowerCase()
+        const isDemitido = rawSit.startsWith('deslig') || rawSit.startsWith('demit')
+        if (!isProcessoExclusao && isDemitido) {
+          toast.warning(
+            `O colaborador ${emp.name || cleanTerm} consta como Demitido/Desligado e só pode ser selecionado em processos de Exclusão.`,
+          )
+          return null
+        }
         let matchedGaragem: 'CURSINO' | 'SAPOPEMBA' = 'CURSINO'
         if (emp.filial) {
           const f = emp.filial.toUpperCase()
@@ -2429,6 +2443,36 @@ function ProcessoCadastralFormModal({
       }
     }
 
+    // Validação de defesa em profundidade por situação do colaborador:
+    // Para Inclusão, PRAT, Retorno do Afastamento, Mudança de Função e Atualização,
+    // não permite colaborador Demitido/Desligado.
+    if (processo !== 'Exclusão') {
+      const matriculasParaValidar = isMultiMode
+        ? colaboradores
+            .map((c) => ({ mat: c.matricula.trim(), nome: c.nome.trim() }))
+            .filter((c) => c.mat)
+        : [{ mat: singleMatricula.trim(), nome: singleNome.trim() }].filter((c) => c.mat)
+
+      for (const item of matriculasParaValidar) {
+        try {
+          const empCheck = await findEmployeeByMatriculaOrChapa(item.mat, { allowDesligados: true })
+          if (empCheck) {
+            const sit = String(empCheck.situacao || '')
+              .trim()
+              .toLowerCase()
+            if (sit.startsWith('deslig') || sit.startsWith('demit')) {
+              toast.error(
+                `O colaborador ${item.nome || item.mat} possui situação "${empCheck.situacao}" e não pode ser selecionado para processos de ${processo}. Permitido apenas para Exclusão.`,
+              )
+              return
+            }
+          }
+        } catch {
+          // Se falhar a checagem de rede, prossegue sem bloquear indevidamente
+        }
+      }
+    }
+
     setSaving(true)
     try {
       if (isMultiMode) {
@@ -2637,6 +2681,21 @@ function ProcessoCadastralFormModal({
               onValueChange={(value) => {
                 const newProcesso = value as Categoria
                 setProcesso(newProcesso)
+
+                // Ao mudar o tipo de processo, se mudou entre Exclusão e outro tipo, revalida colaboradores já preenchidos
+                if (newProcesso !== 'Exclusão') {
+                  if (isMultiMode) {
+                    colaboradores.forEach((colab) => {
+                      if (colab.matricula.trim()) {
+                        void handleColaboradorMatriculaChange(colab.id, colab.matricula)
+                      }
+                    })
+                  } else if (singleMatricula.trim()) {
+                    // Limpa dados de desligamento se estava em Exclusão e foi para outro tipo
+                    setDataDesligamento('')
+                    setMotivoDesligamento('')
+                  }
+                }
                 // Se mudar para Inclusão, PRAT, Retorno do Afastamento, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo e marcação de ciência
                 if (
                   newProcesso === 'Inclusão' ||
@@ -2670,6 +2729,11 @@ function ProcessoCadastralFormModal({
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {processo === 'Exclusão'
+                ? 'Busca de registro aceita colaboradores Ativos, Afastados e Demitidos.'
+                : 'Busca de registro restrita a colaboradores Ativos e Afastados.'}
+            </p>
           </div>
 
           {/* CASO 1: Múltiplos Colaboradores (Criação para qualquer tipo de processo) */}
@@ -2846,6 +2910,11 @@ function ProcessoCadastralFormModal({
                                 autoComplete="off"
                                 className="h-8 text-xs"
                               />
+                              <span className="text-[10px] text-muted-foreground block">
+                                {isExcl
+                                  ? 'Busca: Ativo, Afastado ou Demitido'
+                                  : 'Busca: Somente Ativo ou Afastado'}
+                              </span>
                             </div>
 
                             <div className="space-y-1.5">
@@ -3235,6 +3304,11 @@ function ProcessoCadastralFormModal({
                     onChange={(event) => setSingleMatricula(event.target.value)}
                     autoComplete="off"
                   />
+                  <span className="text-[10px] text-muted-foreground block">
+                    {processo === 'Exclusão'
+                      ? 'Busca: Ativo, Afastado ou Demitido'
+                      : 'Busca: Somente Ativo ou Afastado'}
+                  </span>
                 </div>
 
                 <div className="space-y-2">

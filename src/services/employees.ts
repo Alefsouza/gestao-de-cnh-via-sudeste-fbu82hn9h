@@ -897,9 +897,11 @@ export async function findEmployeeByMatriculaOrChapa(
   }
 
   let finalFilter = clauses.join(' || ')
-  // Se não permitir desligados (ex.: Inclusão, Mudança de Função, Atualização), filtra apenas Ativo e Afastado
+  // Se não permitir desligados (ex.: Inclusão, PRAT, Retorno do Afastamento, Mudança de Função, Atualização),
+  // filtra apenas registros Ativos e Afastados (exclui Desligado e Demitido).
+  // Se allowDesligados for true (processo de Exclusão), permite Ativos, Afastados e Demitidos/Desligados.
   if (!options.allowDesligados) {
-    finalFilter = `(${finalFilter}) && situacao != "Desligado"`
+    finalFilter = `(${finalFilter}) && situacao != "Desligado" && situacao != "Demitido"`
   }
 
   // Executa com indexed filter direto no PocketBase (rápido e sem carregar a base toda)
