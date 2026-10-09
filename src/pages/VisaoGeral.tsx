@@ -190,7 +190,16 @@ export default function VisaoGeral() {
     }
   }
 
-  const totalColaboradores = stats.totalColaboradores
+  // Garagens oficiais exibidas no gráfico de distribuição da Visão Geral (apenas CURSINO e SAPOPEMBA)
+  const garagensGrafico = useMemo(() => {
+    return stats.garagens.filter(
+      (item) => item.garagem === 'CURSINO' || item.garagem === 'SAPOPEMBA',
+    )
+  }, [stats.garagens])
+
+  const totalGaragensGrafico = useMemo(() => {
+    return garagensGrafico.reduce((acc, curr) => acc + curr.total, 0)
+  }, [garagensGrafico])
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -405,12 +414,14 @@ export default function VisaoGeral() {
           >
             <header>
               <h2 className="text-sm font-bold text-foreground">Distribuição por Garagem</h2>
-              <p className="text-xs text-muted-foreground">{totalColaboradores} colaboradores</p>
+              <p className="text-xs text-muted-foreground">{totalGaragensGrafico} colaboradores</p>
             </header>
             <div className="mt-4 space-y-4">
-              {stats.garagens.map((item, index) => {
+              {garagensGrafico.map((item, index) => {
                 const percent =
-                  totalColaboradores > 0 ? Math.round((item.total / totalColaboradores) * 100) : 0
+                  totalGaragensGrafico > 0
+                    ? Math.round((item.total / totalGaragensGrafico) * 100)
+                    : 0
                 return (
                   <DistribuitionBar
                     key={item.garagem}
@@ -421,7 +432,7 @@ export default function VisaoGeral() {
                   />
                 )
               })}
-              {stats.garagens.length === 0 && !loading && (
+              {garagensGrafico.length === 0 && !loading && (
                 <p className="text-xs text-muted-foreground">Nenhuma garagem cadastrada.</p>
               )}
             </div>
