@@ -1969,7 +1969,6 @@ function ProcessoCadastralFormModal({
   const [etapa, setEtapa] = useState<Etapa>(ETAPA_INICIAL)
   const [prazo, setPrazo] = useState('')
   const [situacao, setSituacao] = useState<Situacao>('Pendente')
-  const [alertaTrafego, setAlertaTrafego] = useState<AlertaTrafego>('')
   const [saving, setSaving] = useState(false)
 
   // Estado para modo edição (processo único já existente)
@@ -2036,9 +2035,6 @@ function ProcessoCadastralFormModal({
         setPrazo(isSemPrazoAlertaInitial ? '' : initialData.prazo || '')
         setSituacao(initialData.situacao || 'Pendente')
         setSingleGaragem(initialData.garagem === 'SAPOPEMBA' ? 'SAPOPEMBA' : 'CURSINO')
-        setAlertaTrafego(
-          isSemPrazoAlertaInitial ? '' : (initialData.alerta_trafego as AlertaTrafego) || '',
-        )
         setSingleResolvedEmpId(undefined)
       } else {
         setProcesso('Inclusão')
@@ -2058,7 +2054,6 @@ function ProcessoCadastralFormModal({
         setPrazo('')
         setSituacao('Pendente')
         setSingleGaragem('CURSINO')
-        setAlertaTrafego('')
         setSingleResolvedEmpId(undefined)
 
         const initialColab = createEmptyColaborador()
@@ -2546,7 +2541,6 @@ function ProcessoCadastralFormModal({
             prazo: isSemPrazoAlerta ? '' : prazo,
             situacao: 'Pendente',
             garagem: c.garagem,
-            alerta_trafego: isSemPrazoAlerta ? '' : alertaTrafego,
             employeeId: c.employeeId,
             funcao_antiga: isMudancaFuncao ? (c.funcao_antiga || '').trim() : '',
             funcao_atual: isMudancaFuncao ? (c.funcao_atual || '').trim() : '',
@@ -2627,7 +2621,6 @@ function ProcessoCadastralFormModal({
           prazo: isSemPrazoAlerta ? '' : prazo,
           situacao: isEditing ? situacao : 'Pendente',
           garagem: singleGaragem,
-          alerta_trafego: isSemPrazoAlerta ? '' : alertaTrafego,
           employeeId: singleResolvedEmpId,
           funcao_antiga: isMudancaFuncao ? funcaoAntiga.trim() : '',
           funcao_atual: isMudancaFuncao ? funcaoAtual.trim() : '',
@@ -2696,7 +2689,7 @@ function ProcessoCadastralFormModal({
                     setMotivoDesligamento('')
                   }
                 }
-                // Se mudar para Inclusão, PRAT, Retorno do Afastamento, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo e marcação de ciência
+                // Se mudar para Inclusão, PRAT, Retorno do Afastamento, Mudança de Função ou Exclusão, reseta etapa para a padrão e limpa prazo
                 if (
                   newProcesso === 'Inclusão' ||
                   newProcesso === 'PRAT' ||
@@ -2706,7 +2699,6 @@ function ProcessoCadastralFormModal({
                 ) {
                   setEtapa(ETAPA_INICIAL)
                   setPrazo('')
-                  setAlertaTrafego('')
                 }
                 // Se mudar para Mudança de Função e a Função antiga estiver vazia, aproveita a função já encontrada
                 if (newProcesso === 'Mudança de Função' && !funcaoAntiga && singleFuncao) {
@@ -3613,80 +3605,6 @@ function ProcessoCadastralFormModal({
                   value={prazo}
                   onChange={(event) => setPrazo(event.target.value)}
                 />
-              </div>
-            )}
-
-          {/* Marcação de ciência para o Tráfego (opcional) - Oculto para Inclusão, PRAT, Retorno do Afastamento, Mudança de Função e Exclusão; mantido para Atualização e outros tipos */}
-          {processo !== 'Inclusão' &&
-            processo !== 'PRAT' &&
-            processo !== 'Retorno do Afastamento' &&
-            processo !== 'Mudança de Função' &&
-            processo !== 'Exclusão' && (
-              <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold text-foreground">
-                    Marcação de ciência (opcional)
-                  </Label>
-                  {alertaTrafego && (
-                    <button
-                      type="button"
-                      onClick={() => setAlertaTrafego('')}
-                      className="text-[11px] text-muted-foreground hover:text-foreground underline"
-                    >
-                      Limpar marcação
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
-                  <label
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
-                      alertaTrafego === 'bloquear_foto'
-                        ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
-                        : 'border-border/70 hover:bg-muted/40 text-foreground',
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="alerta_trafego"
-                      value="bloquear_foto"
-                      checked={alertaTrafego === 'bloquear_foto'}
-                      onChange={() => setAlertaTrafego('bloquear_foto')}
-                      className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
-                    />
-                    <span>Bloquear foto</span>
-                  </label>
-
-                  <label
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-md border p-2.5 text-xs cursor-pointer transition-colors',
-                      alertaTrafego === 'impossibilitado_trabalhar'
-                        ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-medium'
-                        : 'border-border/70 hover:bg-muted/40 text-foreground',
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="alerta_trafego"
-                      value="impossibilitado_trabalhar"
-                      checked={alertaTrafego === 'impossibilitado_trabalhar'}
-                      onChange={() => setAlertaTrafego('impossibilitado_trabalhar')}
-                      className="h-3.5 w-3.5 text-amber-600 focus:ring-amber-500"
-                    />
-                    <span>Impossibilitar de Trabalhar</span>
-                  </label>
-                </div>
-
-                {alertaTrafego ? (
-                  <p className="text-[11px] text-amber-800 font-medium pt-0.5">
-                    Apenas informativo — não altera a Situação do processo.
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground pt-0.5">
-                    Selecione uma opção caso deseje sinalizar o Tráfego na data do prazo.
-                  </p>
-                )}
               </div>
             )}
 
