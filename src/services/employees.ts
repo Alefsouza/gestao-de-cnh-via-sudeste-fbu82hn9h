@@ -446,6 +446,7 @@ export async function getCnhsSummary(
     filial?: string
     funcao?: string
     situacao?: string
+    obsCnhOnly?: boolean
   } = {},
 ): Promise<{ summary: CnhsSummary; hasError: boolean }> {
   let hasError = false
@@ -465,6 +466,9 @@ export async function getCnhsSummary(
       }
       if (baseFilters.funcao) {
         parts.push(`funcao = "${baseFilters.funcao.replace(/"/g, '\\"')}"`)
+      }
+      if (baseFilters.obsCnhOnly) {
+        parts.push('obs_cnh != ""')
       }
       if (baseFilters.situacao) {
         parts.push(`situacao = "${baseFilters.situacao}"`)

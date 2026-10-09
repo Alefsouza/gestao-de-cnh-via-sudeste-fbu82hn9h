@@ -49,7 +49,7 @@ const PAGE_SIZE = 15
 const RELOAD_THROTTLE_MS = 5_000
 
 type StatusFilter = 'todas' | 'Válida' | 'A vencer' | 'Vencida'
-type SituacaoFilter = 'todos' | 'Ativo' | 'Afastado' | 'Desligado'
+type SituacaoFilter = 'todos' | 'Ativo' | 'Afastado' | 'Desligado' | 'Mudança de Função'
 type SortField = 'validade' | 'dias'
 type SortDirection = 'asc' | 'desc'
 
@@ -152,11 +152,13 @@ export default function Cnhs() {
   const loadSummary = useCallback(async () => {
     const runId = ++summaryRunId.current
     try {
+      const isMudanca = situacao === 'Mudança de Função'
       const res = await getCnhsSummary({
         search: debouncedSearch.trim(),
         filial: garagem || undefined,
         funcao: funcao || undefined,
-        situacao: situacao === 'todos' ? undefined : situacao,
+        situacao: isMudanca || situacao === 'todos' ? undefined : situacao,
+        obsCnhOnly: isMudanca,
       })
       if (runId !== summaryRunId.current) return
       setCounts({
@@ -176,6 +178,10 @@ export default function Cnhs() {
   const activeFilters = useMemo<EmployeeFilters>(() => {
     const customParts: string[] = [CNH_VALIDA_FIELD_FILTER]
 
+    if (situacao === 'Mudança de Função') {
+      customParts.push('obs_cnh != ""')
+    }
+
     if (tab === 'Válida') {
       customParts.push('situacao_cnh = "Válida"')
     } else if (tab === 'A vencer') {
@@ -187,12 +193,14 @@ export default function Cnhs() {
     // Ordenação no backend por validade_cnh quando sortField for validade ou dias
     const pbSort = sortDirection === 'asc' ? '+validade_cnh,chapa' : '-validade_cnh,chapa'
 
+    const isMudanca = situacao === 'Mudança de Função'
+
     return {
       search: debouncedSearch.trim() || undefined,
       filial: garagem || undefined,
       funcao: funcao || undefined,
-      situacao: situacao === 'todos' ? undefined : situacao,
-      excludeDesligados: situacao === 'todos',
+      situacao: isMudanca || situacao === 'todos' ? undefined : situacao,
+      excludeDesligados: situacao === 'todos' || isMudanca,
       customFilter: customParts.join(' && '),
       page,
       perPage: PAGE_SIZE,
@@ -365,12 +373,13 @@ export default function Cnhs() {
 
       const rows = allData.map((employee) => {
         const days = daysUntil(employee.validade_cnh)
+        const hasObs = Boolean((employee.obs_cnh || '').trim())
         return {
           REGISTRO: employee.chapa || employee.registro || '',
           Nome: employee.name || '',
           Função: employee.funcao || '',
           'Filial/Garagem': employee.filial || '',
-          'Situação Funcionário': employee.situacao || '',
+          'Situação Funcionário': hasObs ? 'Mudança de Função' : employee.situacao || '',
           CNH: formatCnh(employee.cnh_categoria, employee.cnh_numero),
           Categoria: employee.cnh_categoria || '',
           Validade: formatDate(employee.validade_cnh),
@@ -542,6 +551,7 @@ export default function Cnhs() {
               <option value="todos">Todas as situações</option>
               <option value="Ativo">Ativos</option>
               <option value="Afastado">Afastados</option>
+              <option value="Mudança de Função">Mudança de Função</option>
               <option value="Desligado">Desligados</option>
             </select>
             <select
@@ -728,7 +738,7 @@ export default function Cnhs() {
                         <td className="px-4 py-3 text-muted-foreground">{empFuncao}</td>
                         <td className="px-4 py-3 text-muted-foreground">{empFilial}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge value={employee?.situacao} />
+                          <StatusBadge value={obs ? 'Mudança de Função' : employee?.situacao} />
                         </td>
                         <td className="tabular-nums px-4 py-3 font-medium">
                           {formatCnh(employee?.cnh_categoria, employee?.cnh_numero)}
