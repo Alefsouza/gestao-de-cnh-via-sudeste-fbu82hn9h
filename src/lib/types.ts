@@ -19,6 +19,7 @@ export interface Employee {
   validade_documento_fiscal: string
   registro?: string
   cpf?: string
+  obs_cnh?: string
   data_desligamento?: string
   motivo_desligamento?: string
   data_afastamento?: string

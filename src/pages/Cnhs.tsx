@@ -8,7 +8,10 @@ import {
   CreditCard,
   FileDown,
   Loader2,
+  MessageSquare,
+  MessageSquarePlus,
   Search,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
@@ -16,6 +19,16 @@ import * as XLSX from 'xlsx'
 import NovaCartaModal from '@/components/NovaCartaModal'
 import StatusBadge from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAuth } from '@/contexts/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
 import { daysUntil, formatDate, formatCnh } from '@/lib/format'
@@ -25,6 +38,7 @@ import {
   listDistinctFuncoes,
   listEmployees,
   listEmployeesControlled,
+  updateEmployee,
   type CnhsSummary,
   type EmployeeFilters,
 } from '@/services/employees'
@@ -73,6 +87,16 @@ export default function Cnhs() {
   // Mapa de processos cadastrais indexados por matrícula (chapa e registro)
   // para identificar situações como "Foto Bloqueada" ou "Impossibilitado de Trabalhar"
   const [processosMap, setProcessosMap] = useState<Map<string, ProcessoCadastralRecord>>(new Map())
+  const { user } = useAuth()
+  const userRole = ((user?.role as string) || 'Admin').toLowerCase()
+  const canEditObs = userRole === 'admin' || userRole === 'rh'
+
+  // Modal para adicionar/editar/remover OBS em CNH Vencida
+  const [obsModalOpen, setObsModalOpen] = useState(false)
+  const [obsEmployee, setObsEmployee] = useState<Employee | null>(null)
+  const [obsText, setObsText] = useState('')
+  const [savingObs, setSavingObs] = useState(false)
+
   const [cartaModalEmployee, setCartaModalEmployee] = useState<Employee | null>(null)
   const [cartaModalOpen, setCartaModalOpen] = useState(false)
 
@@ -284,6 +308,38 @@ export default function Cnhs() {
 
   // Exportação para XLSX respeitando todos os filtros ativos no momento do clique,
   // com carregamento sequencial controlado e retry/backoff para não gerar rajadas de 429
+  // Abertura do modal de OBS
+  const handleOpenObsModal = (emp: Employee) => {
+    setObsEmployee(emp)
+    setObsText(emp.obs_cnh || '')
+    setObsModalOpen(true)
+  }
+
+  // Salvar ou remover OBS
+  const handleSaveObs = async (remove = false) => {
+    if (!obsEmployee) return
+    const textToSave = remove ? '' : obsText.trim()
+    setSavingObs(true)
+    try {
+      const updated = await updateEmployee(obsEmployee.id, { obs_cnh: textToSave })
+      // Atualiza o estado local imediatamente
+      setEmployees((prev) =>
+        prev.map((emp) =>
+          emp.id === obsEmployee.id ? { ...emp, obs_cnh: updated.obs_cnh || textToSave } : emp,
+        ),
+      )
+      toast.success(remove ? 'Observação removida' : 'Observação salva')
+      setObsModalOpen(false)
+      setObsEmployee(null)
+      setObsText('')
+    } catch (err) {
+      console.error('Erro ao salvar observação da CNH:', err)
+      toast.error('Não foi possível salvar a observação.')
+    } finally {
+      setSavingObs(false)
+    }
+  }
+
   const exportXlsx = useCallback(async () => {
     if (totalItems === 0 || exporting) return
     setExporting(true)
@@ -532,159 +588,230 @@ export default function Cnhs() {
               Carregando…
             </div>
           ) : (
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-3 font-semibold">
-                    REGISTRO
-                    <br />
-                  </th>
-                  <th className="px-4 py-3 font-semibold">Nome</th>
-                  <th className="px-4 py-3 font-semibold">Função</th>
-                  <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
-                  <th className="px-4 py-3 font-semibold">Situação</th>
-                  <th className="px-4 py-3 font-semibold">CNH</th>
-                  <th className="px-4 py-3 font-semibold">Categoria</th>
-                  <th className="px-4 py-3 font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort('validade')}
-                      className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 py-0.5 -mx-1"
-                      title="Ordenar por Validade"
-                    >
-                      <span>Validade</span>
-                      {sortField === 'validade' ? (
-                        sortDirection === 'asc' ? (
-                          <ChevronUp className="h-3.5 w-3.5 text-primary" />
+            <TooltipProvider delayDuration={150}>
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-3 font-semibold">
+                      REGISTRO
+                      <br />
+                    </th>
+                    <th className="px-4 py-3 font-semibold">Nome</th>
+                    <th className="px-4 py-3 font-semibold">Função</th>
+                    <th className="px-4 py-3 font-semibold">Filial/Garagem</th>
+                    <th className="px-4 py-3 font-semibold">Situação</th>
+                    <th className="px-4 py-3 font-semibold">CNH</th>
+                    <th className="px-4 py-3 font-semibold">Categoria</th>
+                    <th className="px-4 py-3 font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('validade')}
+                        className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 py-0.5 -mx-1"
+                        title="Ordenar por Validade"
+                      >
+                        <span>Validade</span>
+                        {sortField === 'validade' ? (
+                          sortDirection === 'asc' ? (
+                            <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                          )
                         ) : (
-                          <ChevronDown className="h-3.5 w-3.5 text-primary" />
-                        )
-                      ) : (
-                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
-                      )}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort('dias')}
-                      className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 py-0.5 -mx-1"
-                      title="Ordenar por Dias para Vencer"
-                    >
-                      <span>Dias para vencer</span>
-                      {sortField === 'dias' ? (
-                        sortDirection === 'asc' ? (
-                          <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                          <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('dias')}
+                        className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1 py-0.5 -mx-1"
+                        title="Ordenar por Dias para Vencer"
+                      >
+                        <span>Dias para vencer</span>
+                        {sortField === 'dias' ? (
+                          sortDirection === 'asc' ? (
+                            <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                          )
                         ) : (
-                          <ChevronDown className="h-3.5 w-3.5 text-primary" />
-                        )
-                      ) : (
-                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
-                      )}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 font-semibold">Status CNH</th>
-                  <th className="px-4 py-3 font-semibold text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((employee) => {
-                  const days = daysUntil(employee?.validade_cnh)
-                  const proc = getProcessoForEmployee(employee)
-                  const procSit = proc?.situacao
-                  // Condição do requisito: colaboradores com SITUAÇÃO "Foto Bloqueada" ou "Impossibilitado de Trabalhar"
-                  // Verifica tanto na situação do processo cadastral vinculado quanto na situação do colaborador
-                  const canEmitirCarta =
-                    procSit === 'Foto Bloqueada' ||
-                    procSit === 'Impossibilitado de Trabalhar' ||
-                    employee?.situacao === ('Foto Bloqueada' as any) ||
-                    employee?.situacao === ('Impossibilitado de Trabalhar' as any)
+                          <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 font-semibold">Status CNH</th>
+                    <th className="px-4 py-3 font-semibold text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map((employee) => {
+                    const days = daysUntil(employee?.validade_cnh)
+                    const proc = getProcessoForEmployee(employee)
+                    const procSit = proc?.situacao
+                    const isCnhVencida =
+                      employee?.situacao_cnh === 'Vencida' ||
+                      employee?.situacao_cnh === 'Vencida CNH' ||
+                      (days !== null && days < 0)
+                    const obs = (employee?.obs_cnh || '').trim()
 
-                  const empId = employee?.id || `emp-${employee?.chapa || Math.random()}`
-                  const empChapa = employee?.chapa || employee?.registro || '—'
-                  const empName = employee?.name || '—'
-                  const empFuncao = employee?.funcao || '—'
-                  const empFilial = employee?.filial || '—'
+                    // Condição do requisito: colaboradores com SITUAÇÃO "Foto Bloqueada" ou "Impossibilitado de Trabalhar"
+                    // Verifica tanto na situação do processo cadastral vinculado quanto na situação do colaborador
+                    const canEmitirCarta =
+                      procSit === 'Foto Bloqueada' ||
+                      procSit === 'Impossibilitado de Trabalhar' ||
+                      employee?.situacao === ('Foto Bloqueada' as any) ||
+                      employee?.situacao === ('Impossibilitado de Trabalhar' as any)
 
-                  return (
-                    <tr
-                      key={empId}
-                      className={`border-b transition-colors last:border-b-0 hover:bg-muted/40 ${
-                        canEmitirCarta ? 'bg-amber-50/40' : ''
-                      }`}
-                    >
-                      <td className="tabular-nums px-4 py-3 font-medium">{empChapa}</td>
-                      <td className="px-4 py-3 font-medium">
-                        <div>{empName}</div>
-                        {procSit && (
-                          <div className="text-[11px] text-muted-foreground">
-                            Processo:{' '}
-                            <span
-                              className={
-                                procSit === 'Foto Bloqueada'
-                                  ? 'font-semibold text-rose-700'
-                                  : procSit === 'Impossibilitado de Trabalhar'
-                                    ? 'font-semibold text-amber-700'
-                                    : procSit === 'Regular'
-                                      ? 'text-emerald-700'
-                                      : 'text-muted-foreground'
-                              }
-                            >
-                              {procSit}
-                            </span>
+                    const empId = employee?.id || `emp-${employee?.chapa || Math.random()}`
+                    const empChapa = employee?.chapa || employee?.registro || '—'
+                    const empName = employee?.name || '—'
+                    const empFuncao = employee?.funcao || '—'
+                    const empFilial = employee?.filial || '—'
+
+                    return (
+                      <tr
+                        key={empId}
+                        className={`border-b transition-colors last:border-b-0 hover:bg-muted/40 ${
+                          canEmitirCarta ? 'bg-amber-50/40' : ''
+                        }`}
+                      >
+                        <td className="tabular-nums px-4 py-3 font-medium">
+                          <div className="inline-flex items-center gap-1.5">
+                            <span>{empChapa}</span>
+                            {obs ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    tabIndex={0}
+                                    role="note"
+                                    aria-label={`Observação: ${obs}`}
+                                    className="inline-flex cursor-help items-center text-amber-500 transition-colors hover:text-amber-600 focus:outline-none"
+                                  >
+                                    <AlertTriangle className="h-4 w-4 fill-amber-500/20 text-amber-500" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-xs whitespace-pre-wrap break-words border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 shadow-md"
+                                >
+                                  <div className="font-semibold text-amber-900 mb-0.5">
+                                    Observação:
+                                  </div>
+                                  <div>{obs}</div>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : null}
                           </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{empFuncao}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{empFilial}</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge value={employee?.situacao} />
-                      </td>
-                      <td className="tabular-nums px-4 py-3 font-medium">
-                        {formatCnh(employee?.cnh_categoria, employee?.cnh_numero)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {employee?.cnh_categoria || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatDate(employee?.validade_cnh)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{daysLabel(days)}</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge value={employee?.situacao_cnh} />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {canEmitirCarta ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setCartaModalEmployee(employee)
-                              setCartaModalOpen(true)
-                            }}
-                            className="inline-flex h-8 items-center gap-1.5 border-emerald-600 bg-emerald-50 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900"
-                            title={`Emitir carta de regularização para ${empName}`}
-                          >
-                            <CheckCircle className="h-4 w-4 text-emerald-600" />
-                            <span>Carta</span>
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        </td>
+                        <td className="px-4 py-3 font-medium">
+                          <div>{empName}</div>
+                          {procSit && (
+                            <div className="text-[11px] text-muted-foreground">
+                              Processo:{' '}
+                              <span
+                                className={
+                                  procSit === 'Foto Bloqueada'
+                                    ? 'font-semibold text-rose-700'
+                                    : procSit === 'Impossibilitado de Trabalhar'
+                                      ? 'font-semibold text-amber-700'
+                                      : procSit === 'Regular'
+                                        ? 'text-emerald-700'
+                                        : 'text-muted-foreground'
+                                }
+                              >
+                                {procSit}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{empFuncao}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{empFilial}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge value={employee?.situacao} />
+                        </td>
+                        <td className="tabular-nums px-4 py-3 font-medium">
+                          {formatCnh(employee?.cnh_categoria, employee?.cnh_numero)}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {employee?.cnh_categoria || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {formatDate(employee?.validade_cnh)}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{daysLabel(days)}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge value={employee?.situacao_cnh} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* Ação de OBS para CNHs Vencidas acessível para Admin e RH */}
+                            {isCnhVencida && canEditObs && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenObsModal(employee)}
+                                className={`inline-flex h-8 items-center gap-1 px-2 text-xs font-medium transition-colors ${
+                                  obs
+                                    ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-950'
+                                    : 'border-muted text-muted-foreground hover:bg-accent hover:text-foreground'
+                                }`}
+                                title={
+                                  obs
+                                    ? `Editar observação da CNH de ${empName}`
+                                    : `Adicionar observação na CNH vencida de ${empName}`
+                                }
+                              >
+                                {obs ? (
+                                  <>
+                                    <MessageSquare className="h-3.5 w-3.5 text-amber-600" />
+                                    <span>Editar OBS</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <MessageSquarePlus className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <span>OBS</span>
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                            {canEmitirCarta && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setCartaModalEmployee(employee)
+                                  setCartaModalOpen(true)
+                                }}
+                                className="inline-flex h-8 items-center gap-1.5 border-emerald-600 bg-emerald-50 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900"
+                                title={`Emitir carta de regularização para ${empName}`}
+                              >
+                                <CheckCircle className="h-4 w-4 text-emerald-600" />
+                                <span>Carta</span>
+                              </Button>
+                            )}
+
+                            {!canEmitirCarta && (!isCnhVencida || !canEditObs) && (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {employees.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
+                        Nenhum registro encontrado.
                       </td>
                     </tr>
-                  )
-                })}
-                {employees.length === 0 && (
-                  <tr>
-                    <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
-                      Nenhum registro encontrado.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </TooltipProvider>
           )}
         </div>
 
@@ -729,6 +856,90 @@ export default function Cnhs() {
           void loadPage()
         }}
       />
+
+      {/* Modal de Observação (OBS) em CNH Vencida */}
+      <Dialog open={obsModalOpen} onOpenChange={setObsModalOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Observação na CNH Vencida
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {obsEmployee ? (
+                <>
+                  Colaborador: <strong className="text-foreground">{obsEmployee.name}</strong>{' '}
+                  (Registro: {obsEmployee.registro || obsEmployee.chapa})
+                </>
+              ) : (
+                'Adicione ou edite a observação da CNH.'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Esta observação gerará um ícone de alerta de exclamação amarela ao lado do Registro na
+              tabela de CNHs, visível ao passar o mouse.
+            </p>
+            <label
+              htmlFor="obs-cnh-textarea"
+              className="block text-xs font-semibold text-foreground"
+            >
+              Texto da Observação (OBS):
+            </label>
+            <textarea
+              id="obs-cnh-textarea"
+              rows={4}
+              value={obsText}
+              onChange={(e) => setObsText(e.target.value)}
+              placeholder="Ex.: Colaborador agendou renovação no Poupatempo para o dia 25/10..."
+              className="w-full rounded-md border border-input bg-background p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={savingObs}
+            />
+          </div>
+
+          <DialogFooter className="flex flex-row items-center justify-between gap-2 sm:justify-between">
+            {obsEmployee?.obs_cnh ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => void handleSaveObs(true)}
+                disabled={savingObs}
+                className="inline-flex items-center gap-1.5"
+              >
+                <Trash2 className="h-4 w-4" />
+                Remover OBS
+              </Button>
+            ) : (
+              <div />
+            )}
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setObsModalOpen(false)}
+                disabled={savingObs}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleSaveObs(false)}
+                disabled={savingObs}
+                className="inline-flex items-center gap-1.5"
+              >
+                {savingObs ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Salvar OBS
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
