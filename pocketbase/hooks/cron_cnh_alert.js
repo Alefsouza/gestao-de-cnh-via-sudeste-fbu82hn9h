@@ -408,7 +408,7 @@ cronAdd('alert_cnh_expiration', '0 9 * * *', () => {
           const htmlContent = buildEmailTemplate(finalColabs, false)
 
           const senderAddress = $app.settings().meta.senderAddress || 'no-reply@viasudeste.com'
-          const senderName = $app.settings().meta.senderName || 'Via Sudeste Transportes'
+          const senderName = 'Via Sudeste — Gestão de CNH'
 
           const mailTo = recipientAddresses.map((addr) => ({ address: addr }))
 
@@ -672,7 +672,7 @@ onRecordCreate((e) => {
     const htmlContent = buildEmailTemplate(exemplos, true)
 
     const senderAddress = $app.settings().meta.senderAddress || 'no-reply@viasudeste.com'
-    const senderName = $app.settings().meta.senderName || 'Via Sudeste Transportes'
+    const senderName = 'Via Sudeste — Gestão de CNH'
 
     const mailTo = targets.map((addr) => ({ address: addr }))
 
