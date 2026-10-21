@@ -3,7 +3,15 @@
  *
  * Agendamento: 1x ao dia às 06:00 BRT (09:00 UTC): '0 9 * * *'
  *
- * Destinatários: usuários com perfil Admin e RH.
+ * Destinatários do e-mail consolidado de 15 dias: lista fixa institucional:
+ * - sabrina.trombini@viasudeste.com
+ * - matheus.silva@viasudeste.com
+ * - rh@viasudeste.com
+ * - bianca.silva@viasudeste.com
+ * - mariana.melo@viasudeste.com
+ * - paola.tracinkas@viasudeste.com
+ * - treinamento@viasudeste.com
+ * - alef.silva@viasudeste.com
  *
  * 1. Notificações in-app (sininho) para usuários com perfil Admin e RH:
  *    - CNHs já vencidas
@@ -14,7 +22,7 @@
  *    - Identifica colaboradores cuja CNH vence no marco de 15 dias corridos (janela 14 a 16 dias).
  *    - Deduplicação/Idempotência: registra em cnh_email_logs com (matricula, validade_cnh, tipo_aviso='15_dias')
  *      para nunca enviar o mesmo marco mais de uma vez para o mesmo colaborador e vencimento.
- *    - Envia UM ÚNICO e-mail consolidado para os usuários Admin e RH com e-mail válido.
+ *    - Envia UM ÚNICO e-mail consolidado para os destinatários institucionais fixos.
  *    - Se nenhum colaborador estiver no marco de 15 dias naquele dia, nenhum e-mail sai.
  *
  * NOTA DE ARQUITETURA POCKETBASE:
@@ -99,7 +107,7 @@ cronAdd('alert_cnh_expiration', '0 9 * * *', () => {
         .replace(/'/g, '&#39;')
     }
 
-    const buildEmailTemplate = (colaboradores, isTest) => {
+    const buildEmailTemplate = (colaboradores) => {
       const qtd = colaboradores.length
       const plural = qtd > 1
 
@@ -129,18 +137,6 @@ cronAdd('alert_cnh_expiration', '0 9 * * *', () => {
           </tr>
         `
       }
-
-      const testBanner = isTest
-        ? `
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; margin-bottom: 20px;">
-            <tr>
-              <td style="padding: 12px 16px; font-size: 13px; color: #92400e; font-weight: 600; text-align: center;">
-                🧪 E-MAIL DE TESTE DO SISTEMA — Validação do disparo automático e layout institucional
-              </td>
-            </tr>
-          </table>
-        `
-        : ''
 
       return `
 <!DOCTYPE html>
@@ -181,8 +177,6 @@ cronAdd('alert_cnh_expiration', '0 9 * * *', () => {
           <!-- Corpo Principal -->
           <tr>
             <td style="padding: 26px 28px;">
-              ${testBanner}
-
               <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 22px; color: #374151;">
                 Olá, equipe de Recursos Humanos e Administração,
               </p>
@@ -388,24 +382,24 @@ cronAdd('alert_cnh_expiration', '0 9 * * *', () => {
           'alert_cnh_expiration: Todos os colaboradores do marco de 15 dias ja receberam o e-mail anteriormente. Sem novos envios.',
         )
       } else {
-        // Resolver destinatários (Admin e RH com e-mail preenchido)
-        const emailMap = {}
-        for (const u of targets) {
-          const mail = String(u.getString('email') || '')
-            .trim()
-            .toLowerCase()
-          if (mail && mail.indexOf('@') !== -1) {
-            emailMap[mail] = true
-          }
-        }
-        const recipientAddresses = Object.keys(emailMap)
+        // Lista fixa oficial de destinatários para o alerta consolidado de 15 dias
+        const recipientAddresses = [
+          'sabrina.trombini@viasudeste.com',
+          'matheus.silva@viasudeste.com',
+          'rh@viasudeste.com',
+          'bianca.silva@viasudeste.com',
+          'mariana.melo@viasudeste.com',
+          'paola.tracinkas@viasudeste.com',
+          'treinamento@viasudeste.com',
+          'alef.silva@viasudeste.com',
+        ]
 
         if (recipientAddresses.length === 0) {
           console.log('alert_cnh_expiration: Nenhum destinatario com e-mail valido encontrado.')
         } else {
           const plural = finalColabs.length > 1
           const subject = `⚠ Via Sudeste — CNH${plural ? 's' : ''} vencendo em 15 dias (${finalColabs.length} colaborador${plural ? 'es' : ''})`
-          const htmlContent = buildEmailTemplate(finalColabs, false)
+          const htmlContent = buildEmailTemplate(finalColabs)
 
           const senderAddress = $app.settings().meta.senderAddress || 'no-reply@viasudeste.com'
           const senderName = 'Via Sudeste — Gestão de CNH'
@@ -453,243 +447,3 @@ cronAdd('alert_cnh_expiration', '0 9 * * *', () => {
     console.log('alert_cnh_expiration cron erro ignorado:', String((err && err.message) || err))
   }
 })
-
-/**
- * Gatilho via hook de criação em cnh_email_logs:
- * Permite que um registro criado com tipo_aviso='teste' dispare imediatamente
- * o e-mail de teste com template real sem precisar aguardar o cron das 06:00 BRT.
- */
-onRecordCreate((e) => {
-  try {
-    const rec = e.record
-    const tipo = rec.getString('tipo_aviso')
-    if (tipo !== 'teste') {
-      return e.next()
-    }
-
-    const customDest = rec.getString('recipients') || 'alef.silva@viasudeste.com'
-    const targets = customDest
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-
-    console.log(`Disparando envio teste de e-mail CNH solicitado para: ${targets.join(', ')}`)
-
-    const escapeHtml = (str) => {
-      if (str === null || str === undefined) return ''
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-    }
-
-    const buildEmailTemplate = (colaboradores, isTest) => {
-      const qtd = colaboradores.length
-      const plural = qtd > 1
-
-      let rowsHtml = ''
-      for (let i = 0; i < colaboradores.length; i++) {
-        const c = colaboradores[i]
-        const bgRow = i % 2 === 0 ? '#ffffff' : '#f9fafb'
-        const diasTxt =
-          c.diasRestantes !== undefined && c.diasRestantes !== null
-            ? ` (~${c.diasRestantes} dias)`
-            : ''
-        const metaInfo = [c.funcao, c.filial].filter(Boolean).join(' · ')
-
-        rowsHtml += `
-          <tr style="background-color: ${bgRow}; border-bottom: 1px solid #e5e7eb;">
-            <td style="padding: 12px 14px; font-size: 14px; color: #111827; font-weight: 600;">
-              ${escapeHtml(c.name)}
-              ${metaInfo ? `<div style="font-size: 11px; font-weight: 400; color: #6b7280; margin-top: 2px;">${escapeHtml(metaInfo)}</div>` : ''}
-            </td>
-            <td style="padding: 12px 14px; font-size: 14px; color: #374151; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 600;">
-              ${escapeHtml(c.re)}
-            </td>
-            <td style="padding: 12px 14px; font-size: 14px; color: #b91c1c; font-weight: 700; white-space: nowrap;">
-              ${escapeHtml(c.validadeBr)}
-              <span style="font-size: 11px; font-weight: 500; color: #dc2626; display: block;">${diasTxt}</span>
-            </td>
-          </tr>
-        `
-      }
-
-      const testBanner = isTest
-        ? `
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; margin-bottom: 20px;">
-            <tr>
-              <td style="padding: 12px 16px; font-size: 13px; color: #92400e; font-weight: 600; text-align: center;">
-                🧪 E-MAIL DE TESTE DO SISTEMA — Validação do disparo automático e layout institucional
-              </td>
-            </tr>
-          </table>
-        `
-        : ''
-
-      return `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alerta CNH Via Sudeste</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1f2937; -webkit-font-smoothing: antialiased;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6; padding: 24px 12px;">
-    <tr>
-      <td align="center">
-        <!-- Container Principal -->
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 620px; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04); border: 1px solid #e5e7eb;">
-          
-          <!-- Cabeçalho Institucional Verde Via Sudeste -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #15803d 0%, #16a34a 100%); background-color: #16a34a; padding: 26px 28px; text-align: left;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                <tr>
-                  <td>
-                    <div style="font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #bbf7d0; margin-bottom: 4px;">
-                      VIA SUDESTE TRANSPORTES
-                    </div>
-                    <h1 style="margin: 0; font-size: 21px; line-height: 26px; font-weight: 700; color: #ffffff;">
-                      Alerta: CNH${plural ? 's' : ''} vencendo em 15 dias
-                    </h1>
-                    <div style="font-size: 13px; color: #dcfce7; margin-top: 6px;">
-                      Gestão de CNH &middot; Portal Recursos Humanos
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Corpo Principal -->
-          <tr>
-            <td style="padding: 26px 28px;">
-              ${testBanner}
-
-              <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 22px; color: #374151;">
-                Olá, equipe de Recursos Humanos e Administração,
-              </p>
-              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 22px; color: #4b5563;">
-                Identificamos <strong>${qtd} colaborador${plural ? 'es' : ''}</strong> cuja Carteira Nacional de Habilitação (CNH) atinge o marco de <strong>15 dias corridos para o vencimento</strong>. Favor verificar com antecedência a regularização ou abertura de processo cadastral.
-              </p>
-
-              <!-- Tabela de Colaboradores -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
-                <thead>
-                  <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left;">
-                    <th style="padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #475569;">
-                      Colaborador
-                    </th>
-                    <th style="padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #475569;">
-                      RE
-                    </th>
-                    <th style="padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #475569;">
-                      Vencimento CNH
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${rowsHtml}
-                </tbody>
-              </table>
-
-              <!-- Caixa Informativa de Ação -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 4px; margin-bottom: 22px;">
-                <tr>
-                  <td style="padding: 14px 16px;">
-                    <div style="font-size: 13px; line-height: 20px; color: #166534; font-weight: 600; margin-bottom: 2px;">
-                      Orientações de regularização:
-                    </div>
-                    <div style="font-size: 12px; line-height: 18px; color: #15803d;">
-                      Acompanhe pelo sistema Gestão de CNH se o colaborador já iniciou o processo de renovação ou entrega da documentação atualizada para evitar bloqueio operacional no tráfego.
-                    </div>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 0; font-size: 13px; line-height: 20px; color: #6b7280;">
-                Este e-mail é gerado de forma automática e consolidada a cada dia civil pelo monitor de CNHs.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Rodapé Institucional -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 20px 28px; border-top: 1px solid #e5e7eb; text-align: center;">
-              <div style="font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
-                Via Sudeste Transportes Urbanos Ltda.
-              </div>
-              <div style="font-size: 11px; color: #9ca3af; line-height: 16px;">
-                Portal RH &middot; Sistema de Gestão de CNH &middot; Mensagem automática, não responda este e-mail.
-              </div>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `
-    }
-
-    // Montar 3 colaboradores de exemplo representativos com base no sistema da Via Sudeste
-    const exemplos = [
-      {
-        name: 'CARLOS ALBERTO DE SOUZA',
-        re: '003210',
-        validadeBr: '05/11/2026',
-        validadeKey: '2026-11-05',
-        diasRestantes: 15,
-        filial: 'CURSINO',
-        funcao: 'Motorista',
-      },
-      {
-        name: 'MARIA APARECIDA DOS SANTOS',
-        re: '004521',
-        validadeBr: '05/11/2026',
-        validadeKey: '2026-11-05',
-        diasRestantes: 15,
-        filial: 'SAPOPEMBA',
-        funcao: 'Motorista',
-      },
-      {
-        name: 'JOSE NILTON DE JESUS GOMES',
-        re: '000454',
-        validadeBr: '05/11/2026',
-        validadeKey: '2026-11-05',
-        diasRestantes: 15,
-        filial: 'CURSINO',
-        funcao: 'Motorista',
-      },
-    ]
-
-    const subject = `[TESTE] Via Sudeste — CNHs vencendo em 15 dias (3 colaboradores)`
-    const htmlContent = buildEmailTemplate(exemplos, true)
-
-    const senderAddress = $app.settings().meta.senderAddress || 'no-reply@viasudeste.com'
-    const senderName = 'Via Sudeste — Gestão de CNH'
-
-    const mailTo = targets.map((addr) => ({ address: addr }))
-
-    const mailMessage = new MailerMessage({
-      from: { address: senderAddress, name: senderName },
-      to: mailTo,
-      subject: subject,
-      html: htmlContent,
-    })
-
-    $app.newMailClient().send(mailMessage)
-    console.log(`Envio teste de e-mail CNH concluído com sucesso para ${targets.join(', ')}.`)
-
-    rec.set('status', 'enviado_sucesso')
-  } catch (err) {
-    console.log('Erro no gatilho de teste de email cnh:', String((err && err.message) || err))
-    e.record.set('status', 'falha: ' + String((err && err.message) || err))
-  }
-  return e.next()
-}, 'cnh_email_logs')
