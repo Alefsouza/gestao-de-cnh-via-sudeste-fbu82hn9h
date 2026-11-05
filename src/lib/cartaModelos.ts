@@ -2,8 +2,10 @@
  * Modelos de CARTAS oficiais enviadas pela Via Sudeste à SPTrans.
  *
  * Cada modelo gera um documento HTML completo em formato A4 (pronto para
- * impressão / "Salvar em PDF" pelo navegador), reproduzindo o timbre,
- * endereço, data, numeração, destinatário, corpo e fecho com assinatura.
+ * impressão / "Salvar em PDF" pelo navegador), reproduzindo fielmente os
+ * documentos originais fornecidos pelo usuário (PRAT, ATUALIZAÇÃO e
+ * EXCLUSÃO): timbre completo com endereço da Filial 03, data/numeração,
+ * destinatário, assunto, corpo, título da tabela e assinatura.
  *
  * Arquitetura aberta: para adicionar um novo modelo, basta acrescentar uma
  * entrada em CARTA_MODELOS e a função geradora correspondente aqui — o fluxo
@@ -44,7 +46,7 @@ export const CARTA_MODELOS: CartaModeloDef[] = [
     id: 'prat',
     nome: 'PRAT — Acidente de Trânsito',
     descricao:
-      'Comunicação formal de acidente de trânsito com menção aos anexos (psicotécnico, direção defensiva e atestado de sanidade).',
+      'Comunicação formal ao Coordenador CCI de acidente de trânsito (Artigo 36-A da Portaria 168/07-SMTGAB), com pedido de desbloqueio do condutor.',
     multiplicidade: 'single',
   },
   {
@@ -89,7 +91,7 @@ export interface CartaColaboradorDados {
   /** id do employee no banco, quando a linha veio do cadastro. */
   employeeId?: string
   nome: string
-  /** Reg. (Retorno) ou RE (Afastados). */
+  /** Reg. (Retorno/Atualização) ou RE (Afastados). */
   registro: string
   funcao: string
   cpf: string
@@ -101,7 +103,7 @@ export interface CartaColaboradorDados {
 
 export interface CartaGeradaDados {
   modelo: CartaModeloId
-  /** Número da carta, ex.: "289/26" ou "RH 276/22" (texto livre). */
+  /** Número da carta, ex.: "289/26", "RH 276/22" ou "333/26" (texto livre). */
   numeroCarta: string
   colaboradores: CartaColaboradorDados[]
   /** Data de retorno ao trabalho (modelo Retorno). */
@@ -145,10 +147,10 @@ function toBrDate(value?: string | null): string {
   return `${dd}/${mm}/${d.getFullYear()}`
 }
 
-/** "São Paulo, 05 de fevereiro de 2026." */
+/** "São Paulo, 5 de fevereiro de 2026." (como no original, sem zero à esquerda). */
 function dataExtensoHoje(): string {
   const d = new Date()
-  return `São Paulo, ${String(d.getDate()).padStart(2, '0')} de ${MESES[d.getMonth()]} de ${d.getFullYear()}.`
+  return `São Paulo, ${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}.`
 }
 
 function esc(value?: string | null): string {
@@ -180,30 +182,27 @@ const ESTILO_BASE = `
   body { font-family: Arial, Helvetica, sans-serif; color: #1a2418; }
   .page {
     width: 210mm; min-height: 297mm; margin: 0 auto;
-    padding: 16mm 20mm 20mm 20mm; background: #ffffff;
+    padding: 14mm 20mm 20mm 20mm; background: #ffffff;
   }
   @media print {
     html, body { background: #ffffff; }
     .page { width: auto; min-height: auto; margin: 0; box-shadow: none; }
     .no-print { display: none !important; }
   }
-  .timbre { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-  .marca { display: flex; align-items: center; gap: 10px; }
-  .marca-sigla {
-    width: 46px; height: 46px; border-radius: 8px; background: #1e7d3c;
-    color: #ffffff; font-weight: 800; font-size: 15px; letter-spacing: 0.5px;
-    display: flex; align-items: center; justify-content: center; flex: none;
-  }
-  .marca-nome { font-weight: 800; font-size: 19px; color: #1e7d3c; letter-spacing: 1px; }
+  .timbre { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .marca-nome { font-weight: 800; font-size: 20px; color: #1e7d3c; letter-spacing: 1px; }
   .marca-sub { font-size: 9px; color: #5b6b58; letter-spacing: 3px; text-transform: uppercase; margin-top: 2px; }
-  .timbre-end { font-size: 9.5px; color: #5b6b58; text-align: right; line-height: 1.45; }
+  .timbre-end { font-size: 9px; color: #5b6b58; text-align: right; line-height: 1.5; }
   .timbre-linha { border: 0; border-top: 2px solid #1e7d3c; margin: 8px 0 0 0; }
   .numero-carta { margin-top: 14px; font-size: 12px; font-weight: 700; text-align: right; }
   .data-doc { margin-top: 4px; font-size: 12px; text-align: right; color: #1a2418; }
+  .data-doc .num { font-weight: 700; }
   .destinatario { margin-top: 26px; font-size: 12px; line-height: 1.5; }
-  .corpo { margin-top: 20px; font-size: 12px; line-height: 1.7; text-align: justify; }
+  .assunto { margin-top: 16px; font-size: 12px; }
+  .corpo { margin-top: 18px; font-size: 12px; line-height: 1.7; text-align: justify; }
   .corpo p { margin: 0 0 10px 0; }
-  table.dados { width: 100%; border-collapse: collapse; margin: 12px 0 14px 0; font-size: 10.5px; }
+  .tabela-titulo { font-weight: 700; font-size: 11px; text-align: center; letter-spacing: 0.3px; margin: 14px 0 6px 0; }
+  table.dados { width: 100%; border-collapse: collapse; margin: 8px 0 14px 0; font-size: 10.5px; }
   table.dados th, table.dados td { border: 1px solid #4b5563; padding: 5px 7px; text-align: left; vertical-align: top; }
   table.dados th { background: #eef4ee; font-weight: 700; }
   .fecho { margin-top: 26px; font-size: 12px; line-height: 1.6; }
@@ -211,31 +210,49 @@ const ESTILO_BASE = `
   .assinatura-linha { border-top: 1px solid #1a2418; }
   .assinatura-nome { font-weight: 700; font-size: 12px; margin-top: 4px; }
   .assinatura-empresa { font-size: 10.5px; color: #5b6b58; }
-  .rodape { margin-top: 34px; border-top: 1px solid #d5ded5; padding-top: 6px; font-size: 8.5px; color: #8a968a; text-align: center; }
+  .rodape { margin-top: 34px; border-top: 1px solid #d5ded5; padding-top: 6px; font-size: 8px; color: #8a968a; text-align: center; line-height: 1.5; }
 `
 
-function cabecalho(numeroCarta: string, prefixoNumero: string, ac?: string): string {
+/** Bloco de endereço do timbre — igual ao original (Filial 03). */
+const ENDERECO_TIMBRE = [
+  'Avenida do Cursino, nº5797 / Vila Moraes',
+  'São Paulo • SP',
+  'CEP 04169-000 • Filial 03',
+  'Tel (11) 2133 5665',
+  'www.viasudeste.com',
+].join('<br />')
+
+/** Timbre completo do original: nome da empresa + bloco de endereço. */
+function timbre(): string {
   return `
   <div class="timbre">
     <div class="marca">
-      <div class="marca-sigla">VS</div>
       <div>
         <div class="marca-nome">VIA SUDESTE</div>
         <div class="marca-sub">Transporte Urbano</div>
       </div>
     </div>
-    <div class="timbre-end">
-      Avenida do Cursino, nº 5.797 – São Paulo/SP<br />
-      Recursos Humanos
-    </div>
+    <div class="timbre-end">${ENDERECO_TIMBRE}</div>
   </div>
-  <hr class="timbre-linha" />
-  <div class="numero-carta">${esc(prefixoNumero)}${esc(numeroCarta)}</div>
-  <div class="data-doc">${esc(dataExtensoHoje())}</div>
+  <hr class="timbre-linha" />`
+}
+
+/**
+ * Data e numeração na MESMA linha, como nos originais de RH:
+ * "São Paulo, 5 de novembro de 2026. RH 332/26".
+ */
+function dataComNumeroLinha(numeroCarta: string, prefixo: string): string {
+  const numero = `${prefixoNumero(numeroCarta, prefixo)}${(numeroCarta || '').trim()}`
+  return `
+  <div class="data-doc">${esc(dataExtensoHoje())} <span class="num">${esc(numero)}</span></div>`
+}
+
+function destinatarioSptrans(ac: string): string {
+  return `
   <div class="destinatario">
     À<br />
-    <strong>SPTrans – São Paulo Transporte S/A</strong><br />
-    São Paulo – SP${ac ? `<br />A/C: ${esc(ac)}` : ''}
+    <strong>São Paulo Transporte S/A – SPTRANS</strong><br />
+    A/C: ${esc(ac)}
   </div>`
 }
 
@@ -246,10 +263,10 @@ function assinatura(): string {
     <div class="assinatura">
       <div class="assinatura-linha"></div>
       <div class="assinatura-nome">Leandro Pires Ferraz</div>
-      <div class="assinatura-empresa">Via Sudeste – Recursos Humanos</div>
+      <div class="assinatura-empresa">Via Sudeste Transportes</div>
     </div>
   </div>
-  <div class="rodape">Via Sudeste – Transporte Urbano · Avenida do Cursino, nº 5.797 – São Paulo/SP</div>`
+  <div class="rodape">Avenida do Cursino, nº5797 / Vila Moraes • São Paulo • SP • CEP 04169-000 • Filial 03 • Tel (11) 2133 5665 • www.viasudeste.com</div>`
 }
 
 function documentoHtml(conteudo: string): string {
@@ -287,7 +304,13 @@ function corpoInssRetorno(dados: CartaGeradaDados): string {
     .join('')
 
   return `
-  ${cabecalho(dados.numeroCarta, '')}
+  ${timbre()}
+  <div class="numero-carta">${esc((dados.numeroCarta || '').trim())}</div>
+  <div class="data-doc">${esc(dataExtensoHoje())}</div>
+  <div class="destinatario">
+    À<br />
+    <strong>São Paulo Transporte S/A – SPTRANS</strong>
+  </div>
   <div class="corpo">
     <p>Prezados Senhores,</p>
     <p>
@@ -338,7 +361,13 @@ function corpoInssAfastados(dados: CartaGeradaDados): string {
     .join('')
 
   return `
-  ${cabecalho(dados.numeroCarta, '')}
+  ${timbre()}
+  <div class="numero-carta">${esc((dados.numeroCarta || '').trim())}</div>
+  <div class="data-doc">${esc(dataExtensoHoje())}</div>
+  <div class="destinatario">
+    À<br />
+    <strong>São Paulo Transporte S/A – SPTRANS</strong>
+  </div>
   <div class="corpo">
     <p>Prezados Senhores,</p>
     <p>
@@ -367,6 +396,9 @@ function corpoInssAfastados(dados: CartaGeradaDados): string {
 
 /* ------------------------------------------------------------------ */
 /* Modelo 3 — PRAT (acidente de trânsito)                              */
+/* Estrutura própria do original: destinatário nominal (Coordenador    */
+/* CCI), Assunto, saudação, Artigo 36-A da Portaria 168/07-SMTGAB,     */
+/* parágrafo do desbloqueio do condutor e fecho de cumprimento.        */
 /* ------------------------------------------------------------------ */
 
 function corpoPrat(dados: CartaGeradaDados): string {
@@ -380,24 +412,35 @@ function corpoPrat(dados: CartaGeradaDados): string {
   const prefixo = (dados.prefixoVeiculo ?? '').trim()
 
   return `
-  ${cabecalho(dados.numeroCarta, 'Carta nº ')}
+  ${timbre()}
+  <div class="numero-carta">Carta nº ${esc((dados.numeroCarta || '').trim())}</div>
+  <div class="data-doc">${esc(dataExtensoHoje())}</div>
+  <div class="destinatario">
+    À<br />
+    <strong>Sr. Vicente Barella</strong><br />
+    Coordenador CCI – SPTrans
+  </div>
+  <div class="assunto"><strong>Assunto:</strong> Acidente de trânsito</div>
   <div class="corpo">
-    <p>Prezados Senhores,</p>
+    <p>Prezado Senhor,</p>
     <p>
-      Vimos pela presente comunicar a V.Sas. que no dia <strong>${esc(dataSinistro || '____/____/______')}</strong>,
-      o colaborador <strong>${esc(c.nome)}</strong>, portador do CPF nº <strong>${esc(formatarCpf(c.cpf))}</strong>,
+      Em conformidade com o Artigo 36-A da Portaria 168/07-SMTGAB, informamos a V.Sas. que no dia
+      <strong>${esc(dataSinistro || '____/____/______')}</strong>, o condutor
+      <strong>${esc(c.nome)}</strong>, portador do CPF nº <strong>${esc(formatarCpf(c.cpf))}</strong>,
       registro ${esc(c.registro || '—')}, função ${esc(c.funcao || '—')},
-      sofreu um acidente de trânsito na condução do veículo de prefixo
-      <strong>${esc(prefixo || '______')}</strong>, durante a prestação de serviços a esta empresa.
+      envolvido em ocorrência de sinistro com o veículo de prefixo
+      <strong>${esc(prefixo || '______')}</strong>, encontra-se afastado de suas atividades.
     </p>
     <p>
-      Informamos, ainda, que segu${
-        dados.colaboradores.length > 1 ? 'em' : 'e'
-      } em anexo a esta carta os seguintes documentos
-      referentes ao colaborador acima mencionado: laudo de exame psicotécnico, certificado de
-      direção defensiva e atestado de sanidade física e mental.
+      Conforme determinação da Portaria em supra, encaminhamos em anexo os documentos exigidos
+      referentes ao condutor acima mencionado (laudo de exame psicotécnico, certificado de direção
+      defensiva e atestado de sanidade física e mental) e foi solicitado o desbloqueio do condutor
+      junto ao sistema, para que o mesmo retome suas atividades operacionais.
     </p>
-    <p>Colocamo-nos à disposição para quaisquer esclarecimentos adicionais que se façam necessários.</p>
+    <p>
+      Aproveitamos a oportunidade para cumprimentá-lo e nos colocamos à disposição para quaisquer
+      esclarecimentos que se façam necessários.
+    </p>
   </div>
   ${assinatura()}`
 }
@@ -409,7 +452,6 @@ function corpoPrat(dados: CartaGeradaDados): string {
 /* ------------------------------------------------------------------ */
 
 function corpoAtualizacaoCadastral(dados: CartaGeradaDados): string {
-  const plural = dados.colaboradores.length > 1
   const linhas = dados.colaboradores
     .map(
       (c) => `
@@ -423,15 +465,13 @@ function corpoAtualizacaoCadastral(dados: CartaGeradaDados): string {
     .join('')
 
   return `
-  ${cabecalho(dados.numeroCarta, prefixoNumero(dados.numeroCarta, 'RH '), 'Cadastro de Frota')}
+  ${timbre()}
+  ${dataComNumeroLinha(dados.numeroCarta, 'RH ')}
+  ${destinatarioSptrans('Cadastro de Frota')}
+  <div class="assunto"><strong>Assunto:</strong> Atualização cadastral de operadores</div>
   <div class="corpo">
-    <p>Prezados Senhores,</p>
-    <p>
-      Vimos pela presente encaminhar a V.Sas. a atualização cadastral do${
-        plural ? 's' : ''
-      } operador${plural ? 'es' : ''} abaixo relacionado${plural ? 's' : ''}, para as devidas
-      anotações no sistema.
-    </p>
+    <p>Seguem os dados dos operadores para atualização cadastral.</p>
+    <p class="tabela-titulo">DADOS PARA ATUALIZAÇÃO DE MOTORISTAS, COBRADORES E FISCAIS</p>
     <table class="dados">
       <thead>
         <tr>
@@ -453,7 +493,6 @@ function corpoAtualizacaoCadastral(dados: CartaGeradaDados): string {
 /* ------------------------------------------------------------------ */
 
 function corpoExclusaoCondubus(dados: CartaGeradaDados): string {
-  const plural = dados.colaboradores.length > 1
   const linhas = dados.colaboradores
     .map(
       (c) => `
@@ -466,14 +505,13 @@ function corpoExclusaoCondubus(dados: CartaGeradaDados): string {
     .join('')
 
   return `
-  ${cabecalho(dados.numeroCarta, prefixoNumero(dados.numeroCarta, 'RH '), 'Cadastro de Frota')}
+  ${timbre()}
+  ${dataComNumeroLinha(dados.numeroCarta, 'RH ')}
+  ${destinatarioSptrans('Cadastro de Frota')}
+  <div class="assunto"><strong>Assunto:</strong> Exclusão cadastral de operadores</div>
   <div class="corpo">
-    <p>Prezados Senhores,</p>
-    <p>
-      Vimos pela presente solicitar a V.Sas. a exclusão cadastral no sistema CONDUBUS d${
-        plural ? 'os' : 'o'
-      } operador${plural ? 'es' : ''} abaixo relacionado${plural ? 's' : ''}.
-    </p>
+    <p>Seguem os dados dos operadores para exclusão cadastral.</p>
+    <p class="tabela-titulo">DADOS PARA EXCLUSÃO DE MOTORISTAS, COBRADORES E FISCAIS</p>
     <table class="dados">
       <thead>
         <tr>
