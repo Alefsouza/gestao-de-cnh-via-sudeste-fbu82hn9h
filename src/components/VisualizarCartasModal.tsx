@@ -66,8 +66,8 @@ import {
 interface VisualizarCartasModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Abre o modal de gerar carta (modelos oficiais para a SPTrans). */
-  onGerarCarta?: () => void
+  /** Abre o modal de gerar carta sobre a carta registrada selecionada (sem tela de escolha). */
+  onGerarCarta?: (carta: CartaRecord, linhasDaCarta: CartaRecord[]) => void
 }
 
 const DOCUMENT_FIELDS: { key: keyof CartaRecord; label: string }[] = [
@@ -394,14 +394,27 @@ export default function VisualizarCartasModal({
             Consulte as cartas emitidas no sistema, os colaboradores vinculados e visualize os
             documentos comprobatórios anexados de cada colaborador.
           </DialogDescription>
-          {/* Gerar Carta: dentro da área de Cartas Emitidas (oculto para o perfil Tráfego) */}
+          {/* Gerar Carta: dentro da área de Cartas Emitidas (oculto para o perfil Tráfego).
+              Opera sobre a carta selecionada: deriva Tipo/Número/colaboradores dela,
+              sem nenhuma tela de escolha — abre direto a pré-visualização. */}
           {!isTrafego && onGerarCarta && (
             <Button
               type="button"
               size="sm"
-              onClick={onGerarCarta}
+              disabled={!selectedNumeroCarta}
+              onClick={() => {
+                const linhas = cartas.filter(
+                  (c) => (c.numero_carta || '').trim() === selectedNumeroCarta,
+                )
+                const primeira = linhas[0]
+                if (!primeira) {
+                  toast.error('Selecione uma carta na listagem para gerar o documento.')
+                  return
+                }
+                onGerarCarta(primeira, linhas)
+              }}
               className="mt-1 inline-flex w-fit items-center gap-2"
-              title="Gerar carta oficial (Retorno INSS, Afastados INSS ou PRAT)"
+              title="Gera o documento da carta selecionada com os dados registrados"
             >
               <FileText className="h-4 w-4" />
               Gerar Carta

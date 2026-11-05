@@ -28,6 +28,7 @@ import * as XLSX from 'xlsx'
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import VisualizarCartasModal from '@/components/VisualizarCartasModal'
 import GerarCartaModal from '@/components/GerarCartaModal'
+import type { CartaRecord } from '@/services/cartas'
 import CartaProcessoModal, { type CartaColaboradorInfo } from '@/components/CartaProcessoModal'
 import { ProcessoDetalhesTimelineModal } from '@/components/ProcessoDetalhesTimelineModal'
 import {
@@ -230,6 +231,8 @@ export default function ProcessosCadastrais() {
   // Estado para o modal de Carta do Processo pós-registro ou reabertura
   const [cartaProcessoModalOpen, setCartaProcessoModalOpen] = useState(false)
   const [gerarCartaModalOpen, setGerarCartaModalOpen] = useState(false)
+  const [cartaParaGerar, setCartaParaGerar] = useState<CartaRecord | null>(null)
+  const [linhasDaCartaParaGerar, setLinhasDaCartaParaGerar] = useState<CartaRecord[]>([])
   const [cartaProcessoColaboradores, setCartaProcessoColaboradores] = useState<
     CartaColaboradorInfo[]
   >([])
@@ -1655,14 +1658,26 @@ export default function ProcessosCadastrais() {
       <VisualizarCartasModal
         open={cartasModalOpen}
         onOpenChange={setCartasModalOpen}
-        onGerarCarta={() => setGerarCartaModalOpen(true)}
+        onGerarCarta={(carta, linhas) => {
+          setCartaParaGerar(carta)
+          setLinhasDaCartaParaGerar(linhas)
+          setGerarCartaModalOpen(true)
+        }}
       />
 
-      {/* Modal Gerar Carta (modelos oficiais para SPTrans), aberto de dentro da área de Cartas */}
+      {/* Modal Gerar Carta (modelos oficiais para SPTrans), aberto de dentro da área de Cartas.
+          Sem tela de escolha: deriva Tipo/Número/colaboradores da carta registrada. */}
       <GerarCartaModal
         open={gerarCartaModalOpen}
-        onOpenChange={setGerarCartaModalOpen}
-        employees={employees}
+        onOpenChange={(open) => {
+          setGerarCartaModalOpen(open)
+          if (!open) {
+            setCartaParaGerar(null)
+            setLinhasDaCartaParaGerar([])
+          }
+        }}
+        carta={cartaParaGerar}
+        linhasDaCarta={linhasDaCartaParaGerar}
         processos={processos}
         onSuccess={() => {
           void carregarProcessos()
