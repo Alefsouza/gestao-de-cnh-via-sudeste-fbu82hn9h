@@ -225,22 +225,20 @@ const ENDERECO_TIMBRE = [
 ].join('<br />')
 
 /**
- * Logo oficial da Via Sudeste, recriado em vetor a partir da arte oficial:
- * símbolo "VS" com dois chevrons verdes formando um V estilizado, tipografia
- * "Via Sudeste" em negrito verde e "Transportes S/A" menor abaixo.
+ * Logo oficial da Via Sudeste, desenhado em vetor: V verde grosso com traço
+ * interno duplo, "Via Sudeste" em verde escuro ao lado e "Transportes S/A"
+ * centralizado abaixo. Sem textLength fixo (não distorce a tipografia).
  * SVG inline (nítido em tela e na impressão, sem dependência de arquivo externo).
  */
-const LOGO_VIA_SUDESTE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 92" style="height:48px;width:auto;display:block;" role="img" aria-label="Via Sudeste Transportes S/A">
-  <g fill="#00A64B">
-    <!-- Chevron externo do símbolo "VS" -->
-    <path d="M 4 12 L 40 82 L 55 82 L 91 12 L 75 12 L 47.5 65.5 L 20 12 Z" />
-    <!-- Chevron interno (segunda seta) aninhado no V -->
-    <path d="M 30 12 L 47.5 44 L 65 12 L 54 12 L 47.5 25 L 41 12 Z" />
-  </g>
-  <!-- Tipografia 'Via Sudeste' -->
-  <text x="104" y="50" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-weight="900" font-size="44" letter-spacing="-1" fill="#00A64B" textLength="282">Via Sudeste</text>
-  <!-- Subtítulo 'Transportes S/A' -->
-  <text x="245" y="78" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="15" letter-spacing="1" fill="#00A64B" textLength="148">Transportes S/A</text>
+const LOGO_VIA_SUDESTE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 90" style="height:56px;width:auto;display:block;" role="img" aria-label="Via Sudeste Transportes S/A">
+  <!-- Símbolo V: contorno grosso verde -->
+  <polygon fill="#00A651" points="2,6 20,6 36,42 52,6 70,6 36,80" />
+  <!-- Traço interno duplo: sulco branco que separa os dois traços do V -->
+  <path fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linejoin="round" d="M 11 8 L 36 62 L 61 8" />
+  <!-- Tipografia 'Via Sudeste' em verde escuro -->
+  <text x="84" y="50" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="40" fill="#007A3D">Via Sudeste</text>
+  <!-- Subtítulo 'Transportes S/A' centralizado abaixo do nome -->
+  <text x="199" y="72" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="14" letter-spacing="2" fill="#00A651">Transportes S/A</text>
 </svg>`
 
 /** Timbre completo oficial: Logo da Via Sudeste + bloco de endereço Filial 03. */
