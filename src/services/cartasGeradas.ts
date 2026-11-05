@@ -1,90 +1,66 @@
 import pb from '@/lib/pocketbase/client'
-import type { CartaModeloId } from '@/lib/cartaModelos'
-import { labelTipoCartaParaModelo } from '@/lib/cartaModelos'
 import { createTimelineItem } from '@/services/processoTimeline'
-import type { ProcessoCadastralRecord, UserRole } from '@/lib/types'
-import type { SendOptionsWithSignal } from '@/lib/modalNet'
+import type { UserRole } from '@/lib/types'
 
 /**
- * Serviço de persistência das CARTAS GERADAS (modelos de texto → SPTrans).
- * Grava uma linha na coleção `cartas` existente por colaborador, com
- * tipo_carta identificando o modelo usado (Retorno INSS / Afastados INSS / PRAT),
- * de modo que a carta aparece na área "Cartas Emitidas" reutilizando a
- * numeração sequencial já existente (getProximoNumeroCartaSequencial).
+ * Registro do evento "Carta criada" na timeline dos processos vinculados.
+ *
+ * IMPORTANTE: desde a correção das duplicatas (nov/2026), GERAR a carta de um
+ * registro já existente em "Cartas Emitidas" NÃO grava nada na coleção `cartas`
+ * — o botão "Gerar Carta" apenas renderiza o documento (pré-visualização A4).
+ * Novas linhas na coleção `cartas` só nascem no fluxo original de criação da
+ * carta (CartaProcessoModal). Aqui fica apenas o registro idempotente na
+ * timeline: se o processo já tem o evento "Carta criada" da mesma numeração,
+ * nada é criado de novo.
  */
-export interface PersistirCartaGeradaInput {
-  modelo: CartaModeloId
-  numeroCarta: string
-  colaboradores: Array<{
-    employeeId?: string
-    nome: string
-    registro: string
-    funcao: string
-    cpf: string
-    grupo?: string
-    dataAfastamento?: string
-  }>
-  dataRetorno?: string
-  prefixoVeiculo?: string
-  dataSinistro?: string
+
+/** Texto canônico do evento — o mesmo gravado pelo hook de criação de cartas. */
+export function observacoesCartaCriada(numeroCarta: string): string {
+  return `Carta N.º ${numeroCarta || '—'} criada — todos os documentos anexados (5): CNH, Prontuário, Comprovante de Residência, Atestado, Doc. Assinado pela Gestora.`
 }
 
-/** Opções de envio do PocketBase (inclui signal para abort de timeout). */
-type CartaCreateOptions = SendOptionsWithSignal
-
-export async function persistirCartaGerada(
-  input: PersistirCartaGeradaInput,
-  options: { sendOptions?: CartaCreateOptions } = {},
-): Promise<string> {
-  const tipoCarta = labelTipoCartaParaModelo(input.modelo)
-  const numeroCarta = input.numeroCarta.trim()
-
-  // Campos contextuais para rastreio (retornados para uso opcional pela chamada)
-  const detalheExtra = [
-    input.modelo === 'prat' && input.prefixoVeiculo
-      ? `Veículo prefixo ${input.prefixoVeiculo}`
-      : '',
-    input.modelo === 'prat' && input.dataSinistro ? `Sinistro em ${input.dataSinistro}` : '',
-    input.modelo === 'inss_retorno' && input.dataRetorno ? `Retorno em ${input.dataRetorno}` : '',
-    input.modelo === 'inss_afastados'
-      ? `Afastamento em ${input.colaboradores.map((c) => c.dataAfastamento || '—').join(', ')}`
-      : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
-
-  for (const colab of input.colaboradores) {
-    await pb.collection('cartas').create(
-      {
-        numero_carta: numeroCarta,
-        colaborador: colab.nome,
-        matricula: colab.registro,
-        funcao_carta: colab.funcao || '',
-        tipo_carta: tipoCarta,
-      },
-      options.sendOptions,
-    )
-  }
-  return detalheExtra
+function escaparFiltro(valor: string): string {
+  return valor.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
-/** Registra um evento na timeline de um processo (usado pela tela de processos). */
+/**
+ * Registra o evento "Carta criada" na timeline do processo, UMA única vez por
+ * (processo, número da carta). Se o evento já existir (gravado pelo hook na
+ * criação da carta ou por uma geração anterior), não duplica.
+ */
 export async function registrarCartaNaTimeline(
-  processo: Pick<ProcessoCadastralRecord, 'id' | 'matricula' | 'colaborador'>,
-  tipoCarta: string,
+  processoId: string,
   numeroCarta: string,
-  detalhe?: string,
 ): Promise<void> {
+  const num = (numeroCarta || '').trim()
   try {
+    const filtro = num
+      ? `processo = "${escaparFiltro(processoId)}" && etapa = "Carta criada" && observacoes ~ "Carta N.º ${escaparFiltro(num)}"`
+      : `processo = "${escaparFiltro(processoId)}" && etapa = "Carta criada"`
+    const existentes = await pb.collection('processo_timeline').getList(1, 1, { filter: filtro })
+    if (existentes.items.length > 0) return
+
+    const record = pb.authStore.record
     await createTimelineItem({
-      processo: processo.id,
+      processo: processoId,
       etapa: 'Carta criada',
       data_hora: new Date().toISOString(),
-      responsavel_nome: pb.authStore.record?.name || pb.authStore.record?.email || 'Analista RH',
-      responsavel_perfil: ((pb.authStore.record?.role as string) || 'RH') as UserRole,
-      observacoes: `Carta ${tipoCarta} N.º ${numeroCarta} gerada e enviada à SPTrans${detalhe ? ` (${detalhe})` : ''}`,
+      responsavel_nome: record?.name || record?.email || 'Emissão de Carta',
+      responsavel_perfil: ((record?.role as string) || 'RH') as UserRole,
+      observacoes: observacoesCartaCriada(num),
+      documentos_recebidos: [
+        'CNH',
+        'Prontuário',
+        'Comprovante de Residência',
+        'Atestado',
+        'Doc. Assinado pela Gestora',
+      ],
+      documentos_pendentes: [],
+      status_documentacao: 'Documentação completa (5/5)',
     })
   } catch (err) {
-    console.warn('Erro ao registrar timeline da carta gerada:', err)
+    // A timeline é registro auxiliar: uma falha aqui não pode impedir a
+    // pré-visualização/impressão da carta — apenas avisa no console.
+    console.warn('Erro ao registrar evento "Carta criada" na timeline:', err)
   }
 }

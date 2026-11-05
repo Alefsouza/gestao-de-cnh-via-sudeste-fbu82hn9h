@@ -13,8 +13,8 @@ import {
 } from '@/components/ui/dialog'
 import type { Employee } from '@/lib/types'
 import { listAllEmployees } from '@/services/employees'
-import { persistirCartaGerada, registrarCartaNaTimeline } from '@/services/cartasGeradas'
-import { withModalRetry, withTimeout, MODAL_TIMEOUT_MS, TimeoutError } from '@/lib/modalNet'
+import { registrarCartaNaTimeline } from '@/services/cartasGeradas'
+import { withModalRetry, MODAL_TIMEOUT_MS, TimeoutError } from '@/lib/modalNet'
 import { gerarCartaHtml, type CartaGeradaDados, type CartaModeloId } from '@/lib/cartaModelos'
 import {
   derivarDadosDaCarta,
@@ -48,10 +48,6 @@ const MODELO_NOMES: Record<CartaModeloId, string> = {
   exclusao_condubus: 'Exclusão Cadastral — CONDUBUS',
 }
 
-function labelOf(modelo: CartaModeloId): string {
-  return MODELO_NOMES[modelo]
-}
-
 /** Monta os dados no formato do gerador de modelos a partir da carta derivada. */
 function montarDadosGerados(dados: CartaDerivada): CartaGeradaDados {
   return {
@@ -73,7 +69,6 @@ export default function GerarCartaModal({
   onSuccess,
 }: GerarCartaModalProps) {
   const [etapa, setEtapa] = useState<Etapa>('gerando')
-  const [saving, setSaving] = useState(false)
   const [htmlPreview, setHtmlPreview] = useState('')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [derivada, setDerivada] = useState<CartaDerivada | null>(null)
@@ -82,10 +77,17 @@ export default function GerarCartaModal({
   const [tipoSemModelo, setTipoSemModelo] = useState<string | null>(null)
   const [cadastroEstado, setCadastroEstado] = useState<CadastroEstado>('carregando')
   const [tentativa, setTentativa] = useState(0)
-  /** id da carta já persistida — evita duplicar linhas quando o efeito reenriquece a pré-visualização. */
-  const persistiuRef = useRef<string | null>(null)
+  /**
+   * Nada é gravado na coleção `cartas` aqui: este modal apenas RENDERIZA o
+   * documento da carta JÁ REGISTRADA. Gerar várias vezes não cria linhas novas
+   * nem duplica colaboradores em Cartas Emitidas. O único efeito colateral é o
+   * evento "Carta criada" na timeline dos processos vinculados (idempotente —
+   * ver cartasGeradas.ts).
+   */
   /** true quando a última tentativa estourou o timeout de rede (~15s). */
   const [porTimeout, setPorTimeout] = useState(false)
+  /** Timeline já registrada nesta sessão de geração (evita refazer a cada reenriquecimento). */
+  const timelineRef = useRef<string | null>(null)
 
   const linhas = useMemo<CartaRecord[]>(
     () => linhasDaCarta ?? (carta ? [carta] : []),
@@ -101,9 +103,9 @@ export default function GerarCartaModal({
     setPorTimeout(false)
     setHtmlPreview('')
     setDerivada(null)
-    setSaving(false)
     setCadastroEstado('carregando')
     setTentativa(0)
+    timelineRef.current = null
   }, [open])
 
   // Carrega o cadastro para COMPLETAR CPF/GRUPO/datas — nunca como pré-condição
@@ -136,11 +138,11 @@ export default function GerarCartaModal({
   }, [open, cadastroEstado])
 
   // Deriva tudo da carta registrada e gera a pré-visualização direto — sem
-  // nenhuma tela de escolha de tipo/número/colaboradores. O cadastro, quando
-  // disponível, só completa CPF/GRUPO/datas; nome, matrícula e função vêm da carta.
+  // nenhuma tela de escolha de tipo/número/colaboradores e SEM gravar na
+  // coleção `cartas`. O cadastro, quando disponível, só completa CPF/GRUPO/datas;
+  // nome, matrícula e função vêm da carta.
   useEffect(() => {
     if (!open || !carta || cadastroEstado === 'carregando') return
-    let cancelled = false
 
     const tipo = carta.tipo_carta || ''
     const modeloId = modeloIdParaTipoCarta(tipo)
@@ -165,87 +167,31 @@ export default function GerarCartaModal({
 
     // Avisos de dados faltantes só na primeira geração (evita toast duplicado
     // a cada reenriquecimento/retry).
-    if (dados.avisos.length > 0 && persistiuRef.current !== carta.id) {
+    if (dados.avisos.length > 0 && timelineRef.current !== carta.id) {
       for (const aviso of dados.avisos) toast.warning(aviso)
     }
 
+    setErro(null)
+    setTipoSemModelo(null)
     setDerivada(dados)
     setHtmlPreview(gerarCartaHtml(montarDadosGerados(dados)))
     setEtapa('gerada')
 
-    // Persiste uma única vez por carta: grava na coleção `cartas`, registra a
-    // timeline e exibe a pré-visualização. Reenriquecimentos do cadastro não
-    // regravam as linhas (persistiuRef = null libera nova gravação após erro).
-    if (persistiuRef.current === carta.id) {
-      return
-    }
-    persistiuRef.current = carta.id
-    setErro(null)
-    setTipoSemModelo(null)
-    void (async () => {
-      setSaving(true)
-      try {
-        // Teto de ~15s na gravação: se a rede travar, o modal mostra erro com
-        // "Tentar de novo" em vez de ficar em "Registrando…" para sempre.
-        const detalhe = await withModalRetry(
-          (sendOptions) =>
-            persistirCartaGerada(
-              {
-                modelo: dados.modelo,
-                numeroCarta: dados.numeroCarta,
-                colaboradores: dados.colaboradores,
-                dataRetorno: dados.dataRetorno,
-                prefixoVeiculo: dados.prefixoVeiculo,
-                dataSinistro: dados.dataSinistro,
-              },
-              { sendOptions },
-            ),
-          { timeoutMs: MODAL_TIMEOUT_MS },
-        )
-
-        const tipoCartaLabel = labelOf(dados.modelo)
-        for (const l of dados.colaboradores) {
-          const proc = processos?.find(
-            (p) => p.matricula === l.registro || p.colaborador === l.nome,
-          )
-          if (proc) {
-            await registrarCartaNaTimeline(
-              proc,
-              tipoCartaLabel,
-              dados.numeroCarta,
-              detalhe || undefined,
-            )
-          }
+    // Evento "Carta criada" na timeline dos processos vinculados — uma única
+    // vez por carta nesta sessão (e idempotente no servidor por processo/número).
+    if (timelineRef.current !== carta.id) {
+      timelineRef.current = carta.id
+      for (const l of dados.colaboradores) {
+        const proc = processos?.find((p) => p.matricula === l.registro || p.colaborador === l.nome)
+        if (proc) {
+          void registrarCartaNaTimeline(proc.id, dados.numeroCarta)
         }
-
-        toast.success(`Carta ${dados.numeroCarta} registrada em Cartas Emitidas.`)
-        onSuccess?.()
-        if (!cancelled) setEtapa('gerada')
-      } catch (err) {
-        // Libera a carta para nova tentativa de gravação.
-        persistiuRef.current = null
-        console.error('Erro ao salvar carta gerada:', err)
-        if (!cancelled) {
-          const msg =
-            err instanceof TimeoutError
-              ? 'A gravação da carta não respondeu em 15 segundos (rede instável). Nada foi registrado — tente novamente.'
-              : 'Não foi possível registrar a carta. Tente novamente.'
-          setPorTimeout(err instanceof TimeoutError)
-          setErro(msg)
-          toast.error(msg)
-        }
-      } finally {
-        if (!cancelled) setSaving(false)
       }
-    })()
-
-    return () => {
-      cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, carta, employees, cadastroEstado, tentativa])
 
-  /** "Tentar de novo": refaz o carregamento do cadastro ou a gravação da carta. */
+  /** "Tentar de novo": refaz o carregamento do cadastro ou a derivação dos dados. */
   function tentarNovamente() {
     if (cadastroEstado === 'erro') {
       // Refaz o carregamento; se der certo, o efeito reenriquece a pré-visualização.
@@ -336,7 +282,7 @@ export default function GerarCartaModal({
               variant="outline"
               className="mt-3"
               onClick={tentarNovamente}
-              disabled={cadastroEstado === 'carregando' || saving}
+              disabled={cadastroEstado === 'carregando'}
             >
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
               Tentar de novo
@@ -351,12 +297,6 @@ export default function GerarCartaModal({
           etapa === 'gerada' &&
           derivada && (
             <div className="flex min-h-0 flex-1 flex-col gap-2">
-              {saving && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Registrando a carta em Cartas Emitidas…
-                </div>
-              )}
               <iframe
                 title="Pré-visualização da carta"
                 srcDoc={htmlPreview}
@@ -372,16 +312,11 @@ export default function GerarCartaModal({
         )}
 
         <DialogFooter className="gap-2 sm:justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={saving}
-          >
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Fechar
           </Button>
           {etapa === 'gerada' && !erro && !tipoSemModelo && (
-            <Button type="button" onClick={imprimirCarta} disabled={saving || !htmlPreview}>
+            <Button type="button" onClick={imprimirCarta} disabled={!htmlPreview}>
               <Printer className="mr-1.5 h-4 w-4" />
               Imprimir / Salvar PDF
             </Button>
