@@ -116,11 +116,13 @@ describe('derivação e geração de carta para Regularização de CNH', () => {
     expect(html).toContain('<th>Nome</th>')
     expect(html).toContain('<th>CPF</th>')
 
-    // 4. Timbre completo, data e número "RH xxx/" e assinatura padrão
-    expect(html).toContain('VIA SUDESTE')
+    // 4. Timbre completo com logo da Via Sudeste, data e número "RH xxx/" e assinatura da Sabrina Trombini
+    expect(html).toContain('Via Sudeste')
+    expect(html).toContain('Transportes S/A')
     expect(html).toContain('RH 309')
-    expect(html).toContain('Leandro Pires Ferraz')
-    expect(html).toContain('Via Sudeste Transportes')
+    expect(html).toContain('Sabrina Trombini')
+    expect(html).toContain('Recursos Humanos')
+    expect(html).not.toContain('Leandro Pires Ferraz')
 
     // 5. Dados do colaborador formatados
     expect(html).toContain('006236')

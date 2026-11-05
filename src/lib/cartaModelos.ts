@@ -190,8 +190,8 @@ const ESTILO_BASE = `
     .no-print { display: none !important; }
   }
   .timbre { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  .marca-nome { font-weight: 800; font-size: 20px; color: #1e7d3c; letter-spacing: 1px; }
-  .marca-sub { font-size: 9px; color: #5b6b58; letter-spacing: 3px; text-transform: uppercase; margin-top: 2px; }
+  .timbre-logo { display: flex; align-items: center; }
+  .timbre-logo img { height: 48px; max-width: 220px; object-fit: contain; display: block; }
   .timbre-end { font-size: 9px; color: #5b6b58; text-align: right; line-height: 1.5; }
   .timbre-linha { border: 0; border-top: 2px solid #1e7d3c; margin: 8px 0 0 0; }
   .numero-carta { margin-top: 14px; font-size: 12px; font-weight: 700; text-align: right; }
@@ -222,15 +222,40 @@ const ENDERECO_TIMBRE = [
   'www.viasudeste.com',
 ].join('<br />')
 
-/** Timbre completo do original: nome da empresa + bloco de endereço. */
+/**
+ * Logo oficial da Via Sudeste.
+ * Logo nítido com símbolo estilizado VS e tipografia oficial.
+ * Usa SVG vetorial inline com fallback para imagem pública.
+ */
+const LOGO_VIA_SUDESTE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 84" style="height:48px;width:auto;display:block;" role="img" aria-label="Via Sudeste Transportes S/A">
+  <defs>
+    <style>
+      .vs-g { fill: #00A825; }
+      .vs-t { font-family: 'Arial Black', Arial, Helvetica, sans-serif; font-weight: 900; }
+      .vs-s { font-family: Arial, Helvetica, sans-serif; font-weight: 700; letter-spacing: 1.2px; }
+    </style>
+  </defs>
+  <!-- Símbolo estilizado 'VS' (faixa dupla dinâmica) -->
+  <g class="vs-g">
+    <!-- Faixa externa do V e curva superior do S -->
+    <path d="M 4 14 L 38 78 L 47 78 L 19 24 L 32 24 L 54 66 L 68 38 C 73 28 81 22 93 20 C 103 18 112 21 118 27 L 111 34 C 107 29 101 27 94 28 C 85 29 80 34 76 42 L 58 78 L 33 78 L 0 14 Z" />
+    <!-- Faixa interna do V -->
+    <path d="M 23 14 L 46 58 L 41 68 L 14 14 Z" />
+    <!-- Curva e loop estilizado do S -->
+    <path d="M 43 14 C 54 14 62 17 68 22 L 61 29 C 56 25 50 22 43 22 L 31 22 L 50 60 L 59 42 C 63 34 71 28 82 26 L 80 18 C 67 20 57 27 51 38 L 40 14 Z" />
+  </g>
+  <!-- Tipografia 'Via Sudeste' -->
+  <text x="100" y="52" class="vs-g vs-t" font-size="44" letter-spacing="-0.5">Via Sudeste</text>
+  <!-- Subtítulo 'Transportes S/A' -->
+  <text x="136" y="74" class="vs-g vs-s" font-size="13">Transportes S/A</text>
+</svg>`
+
+/** Timbre completo oficial: Logo da Via Sudeste + bloco de endereço Filial 03. */
 function timbre(): string {
   return `
   <div class="timbre">
-    <div class="marca">
-      <div>
-        <div class="marca-nome">VIA SUDESTE</div>
-        <div class="marca-sub">Transporte Urbano</div>
-      </div>
+    <div class="timbre-logo">
+      ${LOGO_VIA_SUDESTE_SVG}
     </div>
     <div class="timbre-end">${ENDERECO_TIMBRE}</div>
   </div>
@@ -256,14 +281,24 @@ function destinatarioSptrans(ac: string): string {
   </div>`
 }
 
-function assinatura(): string {
+export type AssinanteCarta = 'leandro' | 'sabrina'
+
+/**
+ * Assinatura do documento:
+ * - Sabrina Trombini (SABRINA TROMBINI PERDIGAO / Recursos Humanos) exclusiva para Atualização Cadastral / Regularização de CNH
+ * - Leandro Pires Ferraz (Via Sudeste Transportes) para todos os demais modelos (PRAT, Exclusão/CONDUBUS, Retorno de INSS, Afastados pelo INSS)
+ */
+function assinatura(tipo: AssinanteCarta = 'leandro'): string {
+  const nome = tipo === 'sabrina' ? 'Sabrina Trombini' : 'Leandro Pires Ferraz'
+  const cargoEmpresa = tipo === 'sabrina' ? 'Recursos Humanos' : 'Via Sudeste Transportes'
+
   return `
   <div class="fecho">
     <p>Atenciosamente,</p>
     <div class="assinatura">
       <div class="assinatura-linha"></div>
-      <div class="assinatura-nome">Leandro Pires Ferraz</div>
-      <div class="assinatura-empresa">Via Sudeste Transportes</div>
+      <div class="assinatura-nome">${esc(nome)}</div>
+      <div class="assinatura-empresa">${esc(cargoEmpresa)}</div>
     </div>
   </div>
   <div class="rodape">Avenida do Cursino, nº5797 / Vila Moraes • São Paulo • SP • CEP 04169-000 • Filial 03 • Tel (11) 2133 5665 • www.viasudeste.com</div>`
@@ -485,7 +520,7 @@ function corpoAtualizacaoCadastral(dados: CartaGeradaDados): string {
     </table>
     <p>Colocamo-nos à disposição para quaisquer esclarecimentos adicionais que se façam necessários.</p>
   </div>
-  ${assinatura()}`
+  ${assinatura('sabrina')}`
 }
 
 /* ------------------------------------------------------------------ */
