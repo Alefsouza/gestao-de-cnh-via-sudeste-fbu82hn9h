@@ -31,6 +31,14 @@ describe('Modelos de carta - Logo Via Sudeste e Assinaturas específicas', () =>
       expect(html).toContain('Via Sudeste')
       expect(html).toContain('Transportes S/A')
 
+      // Logo oficial vetorial: dois chevrons verdes (#00A64B) formando o "VS"
+      expect(html).toContain('fill="#00A64B"')
+      expect(html).toContain('Chevron externo')
+      expect(html).toContain('Chevron interno')
+      // A aproximação antiga (verde #00A825 e curvas do "S" desenhadas à mão) não deve mais existir
+      expect(html).not.toContain('#00A825')
+      expect(html).not.toContain('Faixa externa do V')
+
       // Endereço completo preservado no timbre
       expect(html).toContain('Avenida do Cursino, nº5797 / Vila Moraes')
       expect(html).toContain('São Paulo • SP')
