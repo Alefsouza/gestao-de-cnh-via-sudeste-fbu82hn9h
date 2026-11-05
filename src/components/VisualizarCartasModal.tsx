@@ -66,6 +66,8 @@ import {
 interface VisualizarCartasModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Abre o modal de gerar carta (modelos oficiais para a SPTrans). */
+  onGerarCarta?: () => void
 }
 
 const DOCUMENT_FIELDS: { key: keyof CartaRecord; label: string }[] = [
@@ -85,7 +87,11 @@ const TIPOS_CARTA_PADRAO = [
   'Atualização',
 ] as const
 
-export default function VisualizarCartasModal({ open, onOpenChange }: VisualizarCartasModalProps) {
+export default function VisualizarCartasModal({
+  open,
+  onOpenChange,
+  onGerarCarta,
+}: VisualizarCartasModalProps) {
   const { user } = useAuth()
   const userRole = ((user?.role as string) || 'Admin').toLowerCase()
   const isTrafego = userRole === 'tráfego' || userRole === 'trafego'
@@ -388,6 +394,19 @@ export default function VisualizarCartasModal({ open, onOpenChange }: Visualizar
             Consulte as cartas emitidas no sistema, os colaboradores vinculados e visualize os
             documentos comprobatórios anexados de cada colaborador.
           </DialogDescription>
+          {/* Gerar Carta: dentro da área de Cartas Emitidas (oculto para o perfil Tráfego) */}
+          {!isTrafego && onGerarCarta && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onGerarCarta}
+              className="mt-1 inline-flex w-fit items-center gap-2"
+              title="Gerar carta oficial (Retorno INSS, Afastados INSS ou PRAT)"
+            >
+              <FileText className="h-4 w-4" />
+              Gerar Carta
+            </Button>
+          )}
         </DialogHeader>
 
         {loading ? (

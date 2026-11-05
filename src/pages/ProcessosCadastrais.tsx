@@ -1093,17 +1093,6 @@ export default function ProcessosCadastrais() {
             type="button"
             variant="outline"
             size="default"
-            onClick={() => setGerarCartaModalOpen(true)}
-            className="inline-flex h-10 items-center gap-2 border-primary/30 text-primary hover:bg-primary/10"
-            title="Gerar carta oficial (Retorno INSS, Afastados INSS ou PRAT)"
-          >
-            <FileText className="h-4 w-4" />
-            Gerar Carta
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="default"
             onClick={handleExportXlsx}
             disabled={filteredProcessos.length === 0}
             className="inline-flex h-10 items-center gap-2"
@@ -1662,10 +1651,14 @@ export default function ProcessosCadastrais() {
         }}
       />
 
-      {/* Modal Visualizar Cartas (Admin e RH) */}
-      <VisualizarCartasModal open={cartasModalOpen} onOpenChange={setCartasModalOpen} />
+      {/* Modal Visualizar Cartas (Admin e RH) — o botão Gerar Carta fica dentro dele */}
+      <VisualizarCartasModal
+        open={cartasModalOpen}
+        onOpenChange={setCartasModalOpen}
+        onGerarCarta={() => setGerarCartaModalOpen(true)}
+      />
 
-      {/* Modal Gerar Carta (modelos oficiais para SPTrans) */}
+      {/* Modal Gerar Carta (modelos oficiais para SPTrans), aberto de dentro da área de Cartas */}
       <GerarCartaModal
         open={gerarCartaModalOpen}
         onOpenChange={setGerarCartaModalOpen}
@@ -1673,6 +1666,7 @@ export default function ProcessosCadastrais() {
         processos={processos}
         onSuccess={() => {
           void carregarProcessos()
+          setCartasModalOpen(true)
         }}
       />
 

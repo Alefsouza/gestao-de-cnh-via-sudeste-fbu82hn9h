@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileText, Loader2, Printer, Save, Search, Users, X } from 'lucide-react'
+import { FileText, Loader2, Printer, RotateCcw, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -13,15 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { formatDate } from '@/lib/format'
 import type { Employee } from '@/lib/types'
 import { listAllEmployees } from '@/services/employees'
 import { getProximoNumeroCartaSequencial } from '@/services/cartas'
@@ -32,7 +24,6 @@ import {
   CARTA_MODELOS,
   gerarCartaHtml,
   getCartaModelo,
-  nomeArquivoCarta,
   type CartaGeradaDados,
   type CartaModeloId,
 } from '@/lib/cartaModelos'
@@ -47,7 +38,14 @@ interface GerarCartaModalProps {
   onSuccess?: () => void
 }
 
-type Etapa = 'tipo' | 'colaboradores' | 'campos' | 'preview'
+type Etapa = 'tipo' | 'campos' | 'gerada'
+
+/** Modelos que exigem uma etapa compacta de campos antes de gerar. */
+const MODELO_EXIGE_CAMPOS: Record<CartaModeloId, boolean> = {
+  inss_retorno: false,
+  inss_afastados: true,
+  prat: true,
+}
 
 interface LinhaColaborador {
   employeeId?: string
@@ -90,6 +88,9 @@ export default function GerarCartaModal({
   const [saving, setSaving] = useState(false)
   const [htmlPreview, setHtmlPreview] = useState('')
 
+  const modelo = modeloId ? getCartaModelo(modeloId) : null
+  const exigeCampos = modeloId ? MODELO_EXIGE_CAMPOS[modeloId] : false
+
   // Reset quando abre/fecha
   useEffect(() => {
     if (open) {
@@ -127,8 +128,6 @@ export default function GerarCartaModal({
     }
   }, [open, employees])
 
-  const modelo = modeloId ? getCartaModelo(modeloId) : null
-
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase()
     if (!q) return baseColaboradores.slice(0, 30)
@@ -143,15 +142,21 @@ export default function GerarCartaModal({
       .slice(0, 30)
   }, [baseColaboradores, busca])
 
-  const podeAvancar =
-    etapa === 'tipo'
-      ? !!modeloId
-      : etapa === 'colaboradores'
-        ? selecionadas.length > 0 &&
-          (modelo?.multiplicidade === 'multi' ? true : selecionadas.length === 1)
-        : etapa === 'campos'
-          ? !!numeroCarta.trim()
-          : true
+  /** Validação da etapa compacta de campos (Afastados INSS / PRAT). */
+  const camposValidos = useMemo(() => {
+    if (!exigeCampos) return true
+    if (selecionadas.length === 0) return false
+    if (modelo?.multiplicidade === 'single' && selecionadas.length !== 1) return false
+    if (modeloId === 'inss_afastados') {
+      return selecionadas.every((l) => !!l.dataAfastamento.trim())
+    }
+    if (modeloId === 'prat') {
+      return !!prefixoVeiculo.trim() && !!dataSinistro.trim()
+    }
+    return true
+  }, [exigeCampos, selecionadas, modelo, modeloId, prefixoVeiculo, dataSinistro])
+
+  const podeGerar = !!modeloId && (!exigeCampos || camposValidos)
 
   function toggleColaborador(e: Employee) {
     const linha = employeeParaLinha(e)
@@ -190,14 +195,51 @@ export default function GerarCartaModal({
     }
   }
 
-  function irParaPreview() {
-    setHtmlPreview(gerarCartaHtml(montarDados()))
-    setEtapa('preview')
+  /** Gera (e registra) a carta: grava na coleção `cartas`, atualiza timelines
+   *  e exibe a pré-visualização A4 com o botão de imprimir. */
+  async function gerarCarta() {
+    if (!modeloId || !podeGerar || saving) return
+    setSaving(true)
+    try {
+      const dados = montarDados()
+      setHtmlPreview(gerarCartaHtml(dados))
+
+      const detalhe = await persistirCartaGerada({
+        modelo: modeloId,
+        numeroCarta: dados.numeroCarta,
+        colaboradores: dados.colaboradores,
+        dataRetorno: dataRetorno || undefined,
+        prefixoVeiculo: prefixoVeiculo || undefined,
+        dataSinistro: dataSinistro || undefined,
+      })
+
+      // Integração: registra a carta gerada na timeline dos processos do colaborador
+      const tipoCartaLabel = labelTipoCartaParaModelo(modeloId)
+      for (const l of selecionadas) {
+        const proc = processos?.find((p) => p.matricula === l.registro || p.colaborador === l.nome)
+        if (proc) {
+          await registrarCartaNaTimeline(
+            proc,
+            tipoCartaLabel,
+            dados.numeroCarta,
+            detalhe || undefined,
+          )
+        }
+      }
+
+      toast.success(`Carta ${dados.numeroCarta} registrada em Cartas Emitidas.`)
+      onSuccess?.()
+      setEtapa('gerada')
+    } catch (err) {
+      console.error('Erro ao salvar carta gerada:', err)
+      toast.error('Não foi possível registrar a carta. Tente novamente.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function imprimirCarta() {
-    const dados = montarDados()
-    const html = htmlPreview || gerarCartaHtml(dados)
+    const html = htmlPreview || gerarCartaHtml(montarDados())
     const win = window.open('', '_blank', 'width=900,height=1000')
     if (!win) {
       toast.error('Permita pop-ups para visualizar e imprimir a carta.')
@@ -212,55 +254,10 @@ export default function GerarCartaModal({
     }, 300)
   }
 
-  async function salvarCarta() {
-    if (!modeloId) return
-    setSaving(true)
-    try {
-      const detalhe = await persistirCartaGerada({
-        modelo: modeloId,
-        numeroCarta: numeroCarta.trim(),
-        colaboradores: selecionadas.map((l) => ({
-          employeeId: l.employeeId,
-          nome: l.nome,
-          registro: l.registro,
-          funcao: l.funcao,
-          cpf: l.cpf,
-          grupo: l.filial,
-          dataAfastamento: l.dataAfastamento,
-        })),
-        dataRetorno: dataRetorno || undefined,
-        prefixoVeiculo: prefixoVeiculo || undefined,
-        dataSinistro: dataSinistro || undefined,
-      })
-      // Integração: registra a carta gerada na timeline dos processos do colaborador
-      const tipoCartaLabel = labelTipoCartaParaModelo(modeloId)
-      for (const l of selecionadas) {
-        const proc = processos?.find((p) => p.matricula === l.registro || p.colaborador === l.nome)
-        if (proc) {
-          await registrarCartaNaTimeline(
-            proc,
-            tipoCartaLabel,
-            numeroCarta.trim(),
-            detalhe || undefined,
-          )
-        }
-      }
-      toast.success('Carta registrada em Cartas Emitidas.')
-      onSuccess?.()
-      onOpenChange(false)
-    } catch (err) {
-      console.error('Erro ao salvar carta gerada:', err)
-      toast.error('Não foi possível registrar a carta. Tente novamente.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const tituloEtapa: Record<Etapa, string> = {
-    tipo: 'Escolher o tipo de carta',
-    colaboradores: 'Selecionar colaborador(es)',
-    campos: 'Preencher dados da carta',
-    preview: 'Visualizar e imprimir',
+  const subtituloEtapa: Record<Etapa, string> = {
+    tipo: 'Escolha o tipo de carta',
+    campos: 'Dados da carta',
+    gerada: 'Carta gerada',
   }
 
   return (
@@ -269,15 +266,15 @@ export default function GerarCartaModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
-            Gerar Carta — {tituloEtapa[etapa]}
+            Gerar Carta{modelo ? ` — ${modelo.nome}` : ''}
           </DialogTitle>
           <DialogDescription>
-            Gera as cartas oficiais da Via Sudeste enviadas à SPTrans com os dados reais do
-            cadastro.
+            {subtituloEtapa[etapa]} · Gera as cartas oficiais da Via Sudeste enviadas à SPTrans com
+            os dados reais do cadastro.
           </DialogDescription>
         </DialogHeader>
 
-        {/* ETAPA 1 — Tipo de carta */}
+        {/* ETAPA 1 — Tipo de carta (único passo obrigatório) */}
         {etapa === 'tipo' && (
           <div className="grid gap-2 py-1">
             {CARTA_MODELOS.map((m) => (
@@ -299,12 +296,30 @@ export default function GerarCartaModal({
                 <p className="mt-0.5 text-xs text-muted-foreground">{m.descricao}</p>
               </button>
             ))}
+            <div className="mt-1 flex items-end justify-between gap-3">
+              <div className="w-56 space-y-1.5">
+                <Label htmlFor="numero-carta-gerada" className="text-xs font-semibold">
+                  Número da carta
+                </Label>
+                <Input
+                  id="numero-carta-gerada"
+                  value={numeroCarta}
+                  onChange={(e) => setNumeroCarta(e.target.value)}
+                  placeholder="Ex.: 289/26 ou RH 276/22"
+                  className="h-9"
+                />
+              </div>
+              <p className="pb-1 text-[11px] text-muted-foreground">
+                Numeração sequencial do sistema — pode ser editada (ex.: RH 276/22).
+              </p>
+            </div>
           </div>
         )}
 
-        {/* ETAPA 2 — Seleção de colaboradores */}
-        {etapa === 'colaboradores' && (
-          <div className="flex min-h-0 flex-1 flex-col gap-2">
+        {/* ETAPA 2 — Campos específicos (apenas para Afastados INSS e PRAT) */}
+        {etapa === 'campos' && (
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+            {/* Seleção compacta de colaboradores */}
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -314,14 +329,33 @@ export default function GerarCartaModal({
                 className="pl-9"
               />
             </div>
+
             {selecionadas.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="space-y-2 rounded-lg border p-2">
                 {selecionadas.map((l) => (
-                  <span
+                  <div
                     key={`${l.registro}-${l.nome}`}
-                    className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+                    className="flex items-center justify-between gap-2"
                   >
-                    {l.registro} — {l.nome}
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-foreground">
+                        {l.registro} — {l.nome}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {l.funcao || '—'} · CPF {l.cpf || '—'} · {l.filial || '—'}
+                      </p>
+                    </div>
+                    {modeloId === 'inss_afastados' && (
+                      <Input
+                        type="date"
+                        value={l.dataAfastamento}
+                        onChange={(e) =>
+                          atualizarLinha(l.registro, 'dataAfastamento', e.target.value)
+                        }
+                        className="h-8 w-36 flex-none"
+                        aria-label={`Data de afastamento de ${l.nome}`}
+                      />
+                    )}
                     <button
                       type="button"
                       onClick={() =>
@@ -329,15 +363,17 @@ export default function GerarCartaModal({
                           prev.filter((p) => !(p.registro === l.registro && p.nome === l.nome)),
                         )
                       }
+                      className="flex-none rounded p-1 text-muted-foreground hover:text-foreground"
                       aria-label={`Remover ${l.nome}`}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
-                  </span>
+                  </div>
                 ))}
               </div>
             )}
-            <div className="max-h-72 flex-1 overflow-y-auto rounded-lg border">
+
+            <div className="max-h-56 flex-1 overflow-y-auto rounded-lg border">
               {filtrados.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
                   Nenhum colaborador encontrado.
@@ -373,73 +409,10 @@ export default function GerarCartaModal({
                 })
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              {modelo?.multiplicidade === 'multi'
-                ? 'Este modelo aceita vários colaboradores na mesma carta.'
-                : 'Este modelo aceita apenas 1 colaborador por carta.'}
-            </p>
-          </div>
-        )}
 
-        {/* ETAPA 3 — Campos específicos do modelo */}
-        {etapa === 'campos' && (
-          <div className="grid gap-3 py-1">
-            <div className="space-y-1.5">
-              <Label htmlFor="numero-carta-gerada" className="text-xs font-semibold">
-                Número da carta
-              </Label>
-              <Input
-                id="numero-carta-gerada"
-                value={numeroCarta}
-                onChange={(e) => setNumeroCarta(e.target.value)}
-                placeholder="Ex.: 289/26 ou RH 276/22"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Numeração sequencial do sistema (inicia em 289). Edite se precisar usar outro
-                formato (ex.: RH 276/22).
-              </p>
-            </div>
-
-            {modeloId === 'inss_retorno' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="data-retorno-inss" className="text-xs font-semibold">
-                  Data de retorno ao trabalho
-                </Label>
-                <Input
-                  id="data-retorno-inss"
-                  type="date"
-                  value={dataRetorno}
-                  onChange={(e) => setDataRetorno(e.target.value)}
-                />
-              </div>
-            )}
-
-            {modeloId === 'inss_afastados' && (
-              <div className="space-y-2 rounded-lg border p-3">
-                <p className="text-xs font-semibold text-foreground">
-                  Data de afastamento de cada colaborador
-                </p>
-                {selecionadas.map((l) => (
-                  <div key={l.registro} className="grid grid-cols-[1fr_auto] items-end gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium text-foreground">{l.nome}</p>
-                      <p className="text-[11px] text-muted-foreground">Reg. {l.registro}</p>
-                    </div>
-                    <Input
-                      type="date"
-                      value={l.dataAfastamento}
-                      onChange={(e) =>
-                        atualizarLinha(l.registro, 'dataAfastamento', e.target.value)
-                      }
-                      className="h-9 w-40"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
+            {/* Campos do PRAT */}
             {modeloId === 'prat' && (
-              <>
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="prefixo-veiculo" className="text-xs font-semibold">
                     Prefixo do veículo
@@ -462,28 +435,26 @@ export default function GerarCartaModal({
                     onChange={(e) => setDataSinistro(e.target.value)}
                   />
                 </div>
-              </>
+              </div>
             )}
 
-            {/* Resumo dos colaboradores escolhidos */}
-            <div className="rounded-lg border bg-muted/30 p-3">
-              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Users className="h-3.5 w-3.5 text-primary" />
-                {selecionadas.length} colaborador(es) na carta
-              </div>
-              <div className="max-h-28 overflow-y-auto text-[11px] text-muted-foreground">
-                {selecionadas.map((l) => (
-                  <p key={`${l.registro}-resumo`} className="truncate">
-                    • {l.registro} — {l.nome} — {l.funcao} — CPF {l.cpf || '—'}
-                  </p>
-                ))}
-              </div>
-            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {modeloId === 'inss_afastados' && (
+                <>
+                  Informe a data de afastamento de cada colaborador selecionado. Este modelo aceita
+                  vários colaboradores na mesma carta.
+                </>
+              )}
+              {modeloId === 'prat' && (
+                <>Selecione 1 colaborador e informe o prefixo do veículo e a data do sinistro.</>
+              )}
+              {!exigeCampos && <>Preencha os dados e clique em Gerar Carta.</>}
+            </p>
           </div>
         )}
 
-        {/* ETAPA 4 — Pré-visualização + imprimir */}
-        {etapa === 'preview' && (
+        {/* ETAPA 3 — Pré-visualização A4 + imprimir (após gerar) */}
+        {etapa === 'gerada' && (
           <div className="flex min-h-0 flex-1 flex-col gap-2">
             <div
               className="min-h-0 flex-1 overflow-auto rounded-lg border bg-white p-2"
@@ -503,46 +474,84 @@ export default function GerarCartaModal({
           </div>
         )}
 
-        <DialogFooter className="gap-2">
-          {etapa !== 'tipo' && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                setEtapa(
-                  etapa === 'preview' ? 'campos' : etapa === 'campos' ? 'colaboradores' : 'tipo',
-                )
-              }
-              disabled={saving}
-            >
-              Voltar
-            </Button>
-          )}
-          {etapa !== 'preview' ? (
-            <Button
-              type="button"
-              disabled={!podeAvancar}
-              onClick={() => {
-                if (etapa === 'campos') irParaPreview()
-                else setEtapa(etapa === 'tipo' ? 'colaboradores' : 'campos')
-              }}
-            >
-              {etapa === 'campos' ? 'Visualizar carta' : 'Continuar'}
-            </Button>
-          ) : (
+        <DialogFooter className="gap-2 sm:justify-between">
+          {etapa === 'tipo' && (
             <>
-              <Button type="button" variant="outline" onClick={imprimirCarta} disabled={saving}>
-                <Printer className="mr-1.5 h-4 w-4" />
-                Imprimir / Salvar PDF
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={saving}
+              >
+                Fechar
               </Button>
-              <Button type="button" onClick={salvarCarta} disabled={saving}>
+              <Button type="button" onClick={gerarCarta} disabled={!modeloId || saving}>
                 {saving ? (
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                 ) : (
-                  <Save className="mr-1.5 h-4 w-4" />
+                  <FileText className="mr-1.5 h-4 w-4" />
                 )}
-                Registrar carta
+                Gerar Carta
               </Button>
+            </>
+          )}
+
+          {etapa === 'campos' && (
+            <>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEtapa('tipo')}
+                  disabled={saving}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={saving}
+                >
+                  Fechar
+                </Button>
+              </div>
+              <Button type="button" onClick={gerarCarta} disabled={!podeGerar || saving}>
+                {saving ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="mr-1.5 h-4 w-4" />
+                )}
+                Gerar Carta
+              </Button>
+            </>
+          )}
+
+          {etapa === 'gerada' && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEtapa('tipo')
+                  setModeloId(null)
+                  setSelecionadas([])
+                  setHtmlPreview('')
+                }}
+                disabled={saving}
+              >
+                <RotateCcw className="mr-1.5 h-4 w-4" />
+                Gerar outra carta
+              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={imprimirCarta} disabled={saving}>
+                  <Printer className="mr-1.5 h-4 w-4" />
+                  Imprimir / Salvar PDF
+                </Button>
+                <Button type="button" onClick={() => onOpenChange(false)} disabled={saving}>
+                  Fechar
+                </Button>
+              </div>
             </>
           )}
         </DialogFooter>
