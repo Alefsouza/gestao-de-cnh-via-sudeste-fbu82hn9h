@@ -130,12 +130,6 @@ export default function VisaoGeral() {
     }
   }, [])
 
-  const requestLoad = useCallback(() => {
-    if (loadInProgress.current) return
-    if (Date.now() - lastLoadedAt.current < RELOAD_THROTTLE_MS) return
-    void load()
-  }, [load])
-
   useEffect(() => {
     void load()
   }, [load])

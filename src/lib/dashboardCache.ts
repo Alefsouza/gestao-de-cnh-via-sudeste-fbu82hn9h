@@ -8,6 +8,15 @@
  */
 import { readCacheEntry, writeCacheEntry } from './cacheTypes'
 
+/**
+ * TTL do cache das métricas pesadas do Dashboard (Visão Geral): ~2 min.
+ * Invalidado antes disso por realtime de employees e pelo sync manual.
+ */
+export const DASHBOARD_CACHE_TTL_MS = 120_000
+
+/** TTL do cache do banner de controle de cartas: um pouco mais curto (90 s). */
+export const BANNER_CACHE_TTL_MS = 90_000
+
 const store = new Map<string, import('./cacheTypes').CacheEntry>()
 
 /** Retorna o valor em cache se ainda estiver dentro da validade; senão null. */
