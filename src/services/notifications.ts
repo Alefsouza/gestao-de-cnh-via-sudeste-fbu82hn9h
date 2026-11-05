@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import type { RecordSubscription } from 'pocketbase'
 import type { Notification } from '@/lib/types'
 
 const COLLECTION = 'notifications'
