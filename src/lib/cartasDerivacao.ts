@@ -1,9 +1,10 @@
 /**
  * Derivação dos dados de uma CARTA JÁ REGISTRADA (coleção `cartas`) para
  * gerar o documento oficial (modelos em cartaModelos.ts) SEM tela de escolha:
- * o Tipo da carta, o Número e os colaboradores vêm da própria carta; os dados
- * pessoais (nome, função, CPF, grupo) vêm SEMPRE do cadastro real (employees),
- * nunca dos exemplos dos modelos.
+ * o Tipo da carta, o Número e os colaboradores vêm da própria carta; o cadastro
+ * real (employees) serve apenas para COMPLETAR dados pessoais (CPF, grupo,
+ * datas) — nome, matrícula e função partem sempre da própria carta, de modo que
+ * um cadastro ausente/parcial não impede a geração.
  */
 import type { CartaModeloId, CartaColaboradorDados } from '@/lib/cartaModelos'
 import { labelTipoCartaParaModelo } from '@/lib/cartaModelos'

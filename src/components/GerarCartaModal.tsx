@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { FileText, Loader2, Printer } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, FileText, Loader2, Printer, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,8 @@ interface GerarCartaModalProps {
 }
 
 type Etapa = 'gerando' | 'gerada'
+/** Situação do carregamento do cadastro de colaboradores (enriquecimento). */
+type CadastroEstado = 'carregando' | 'ok' | 'erro'
 
 const MODELO_NOMES: Record<CartaModeloId, string> = {
   inss_retorno: 'Retorno de Afastamento pelo INSS',
@@ -73,36 +75,57 @@ export default function GerarCartaModal({
   const [employees, setEmployees] = useState<Employee[]>([])
   const [derivada, setDerivada] = useState<CartaDerivada | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-
-  // Garante a base do cadastro real (fonte dos dados pessoais) mesmo sem prop
-  useEffect(() => {
-    if (!open) return
-    let cancelled = false
-    listAllEmployees({ excludeDesligados: true })
-      .then((items) => {
-        if (!cancelled) setEmployees(items)
-      })
-      .catch(() => {
-        // silencioso
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open])
+  const [cadastroEstado, setCadastroEstado] = useState<CadastroEstado>('carregando')
+  const [tentativa, setTentativa] = useState(0)
+  /** id da carta já persistida — evita duplicar linhas quando o efeito reenriquece a pré-visualização. */
+  const persistiuRef = useRef<string | null>(null)
 
   const linhas = useMemo<CartaRecord[]>(
     () => linhasDaCarta ?? (carta ? [carta] : []),
     [linhasDaCarta, carta],
   )
 
-  // Deriva tudo da carta registrada e gera a pré-visualização direto — sem
-  // nenhuma tela de escolha de tipo/número/colaboradores.
+  // Reabrir o modal recomeça o fluxo (o carregamento do cadastro é refeito).
   useEffect(() => {
-    if (!open || !carta || employees.length === 0) return
-    let cancelled = false
+    if (open) return
     setEtapa('gerando')
     setErro(null)
     setHtmlPreview('')
+    setDerivada(null)
+    setSaving(false)
+    setCadastroEstado('carregando')
+    setTentativa(0)
+  }, [open])
+
+  // Carrega o cadastro para COMPLETAR CPF/GRUPO/datas — nunca como pré-condição
+  // da geração: se falhar (ou voltar vazio), a carta é gerada mesmo assim com
+  // os dados da própria carta registrada e o erro fica visível com "Tentar de novo".
+  useEffect(() => {
+    if (!open || cadastroEstado !== 'carregando') return
+    let cancelled = false
+    listAllEmployees({ excludeDesligados: true })
+      .then((items) => {
+        if (cancelled) return
+        setEmployees(items)
+        setCadastroEstado(items.length > 0 ? 'ok' : 'erro')
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEmployees([])
+          setCadastroEstado('erro')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, cadastroEstado])
+
+  // Deriva tudo da carta registrada e gera a pré-visualização direto — sem
+  // nenhuma tela de escolha de tipo/número/colaboradores. O cadastro, quando
+  // disponível, só completa CPF/GRUPO/datas; nome, matrícula e função vêm da carta.
+  useEffect(() => {
+    if (!open || !carta || cadastroEstado === 'carregando') return
+    let cancelled = false
 
     const tipo = carta.tipo_carta || ''
     const modeloId = modeloIdParaTipoCarta(tipo)
@@ -126,15 +149,25 @@ export default function GerarCartaModal({
       return
     }
 
-    if (dados.avisos.length > 0) {
+    // Avisos de dados faltantes só na primeira geração (evita toast duplicado
+    // a cada reenriquecimento/retry).
+    if (dados.avisos.length > 0 && persistiuRef.current !== carta.id) {
       for (const aviso of dados.avisos) toast.warning(aviso)
     }
 
     setDerivada(dados)
     setHtmlPreview(gerarCartaHtml(montarDadosGerados(dados)))
+    setEtapa('gerada')
 
-    // Persiste automaticamente: grava na coleção `cartas`, registra a timeline
-    // e exibe a pré-visualização A4.
+    // Persiste uma única vez por carta: grava na coleção `cartas`, registra a
+    // timeline e exibe a pré-visualização A4. Reenriquecimentos do cadastro não
+    // regravam as linhas.
+    if (persistiuRef.current === carta.id) {
+      return
+    }
+    persistiuRef.current = carta.id
+    setErro(null)
+
     void (async () => {
       setSaving(true)
       try {
@@ -166,6 +199,8 @@ export default function GerarCartaModal({
         onSuccess?.()
         if (!cancelled) setEtapa('gerada')
       } catch (err) {
+        // Libera a carta para nova tentativa de gravação.
+        persistiuRef.current = null
         console.error('Erro ao salvar carta gerada:', err)
         if (!cancelled) {
           setErro('Não foi possível registrar a carta. Tente novamente.')
@@ -180,7 +215,18 @@ export default function GerarCartaModal({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, carta, employees])
+  }, [open, carta, employees, cadastroEstado, tentativa])
+
+  /** "Tentar de novo": refaz o carregamento do cadastro ou a gravação da carta. */
+  function tentarNovamente() {
+    if (cadastroEstado === 'erro') {
+      // Refaz o carregamento; se der certo, o efeito reenriquece a pré-visualização.
+      setCadastroEstado('carregando')
+      return
+    }
+    setErro(null)
+    setTentativa((t) => t + 1)
+  }
 
   function imprimirCarta() {
     if (!htmlPreview) return
@@ -198,6 +244,8 @@ export default function GerarCartaModal({
     }, 300)
   }
 
+  const mostrarErroCadastro = cadastroEstado === 'erro'
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-3xl">
@@ -213,9 +261,34 @@ export default function GerarCartaModal({
           </DialogDescription>
         </DialogHeader>
 
-        {erro && (
+        {(erro || mostrarErroCadastro) && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-            {erro}
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="space-y-1">
+                <p>
+                  {erro ||
+                    'Não foi possível carregar o cadastro de colaboradores. Tente novamente.'}
+                </p>
+                {mostrarErroCadastro && !erro && (
+                  <p className="text-xs text-destructive/80">
+                    A carta será gerada com os dados da própria carta registrada (nome, matrícula e
+                    função); CPF, GRUPO e datas entram quando o cadastro carregar.
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={tentarNovamente}
+              disabled={cadastroEstado === 'carregando' || saving}
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Tentar de novo
+            </Button>
           </div>
         )}
 
@@ -228,6 +301,12 @@ export default function GerarCartaModal({
 
         {!erro && etapa === 'gerada' && derivada && (
           <div className="flex min-h-0 flex-1 flex-col gap-2">
+            {saving && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Registrando a carta em Cartas Emitidas…
+              </div>
+            )}
             <iframe
               title="Pré-visualização da carta"
               srcDoc={htmlPreview}
