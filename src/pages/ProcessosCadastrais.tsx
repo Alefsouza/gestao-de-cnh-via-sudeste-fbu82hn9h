@@ -27,6 +27,7 @@ import * as XLSX from 'xlsx'
 
 import NovaMovimentacaoModal from '@/components/NovaMovimentacaoModal'
 import VisualizarCartasModal from '@/components/VisualizarCartasModal'
+import GerarCartaModal from '@/components/GerarCartaModal'
 import CartaProcessoModal, { type CartaColaboradorInfo } from '@/components/CartaProcessoModal'
 import { ProcessoDetalhesTimelineModal } from '@/components/ProcessoDetalhesTimelineModal'
 import {
@@ -228,6 +229,7 @@ export default function ProcessosCadastrais() {
   })
   // Estado para o modal de Carta do Processo pós-registro ou reabertura
   const [cartaProcessoModalOpen, setCartaProcessoModalOpen] = useState(false)
+  const [gerarCartaModalOpen, setGerarCartaModalOpen] = useState(false)
   const [cartaProcessoColaboradores, setCartaProcessoColaboradores] = useState<
     CartaColaboradorInfo[]
   >([])
@@ -1091,6 +1093,17 @@ export default function ProcessosCadastrais() {
             type="button"
             variant="outline"
             size="default"
+            onClick={() => setGerarCartaModalOpen(true)}
+            className="inline-flex h-10 items-center gap-2 border-primary/30 text-primary hover:bg-primary/10"
+            title="Gerar carta oficial (Retorno INSS, Afastados INSS ou PRAT)"
+          >
+            <FileText className="h-4 w-4" />
+            Gerar Carta
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
             onClick={handleExportXlsx}
             disabled={filteredProcessos.length === 0}
             className="inline-flex h-10 items-center gap-2"
@@ -1651,6 +1664,17 @@ export default function ProcessosCadastrais() {
 
       {/* Modal Visualizar Cartas (Admin e RH) */}
       <VisualizarCartasModal open={cartasModalOpen} onOpenChange={setCartasModalOpen} />
+
+      {/* Modal Gerar Carta (modelos oficiais para SPTrans) */}
+      <GerarCartaModal
+        open={gerarCartaModalOpen}
+        onOpenChange={setGerarCartaModalOpen}
+        employees={employees}
+        processos={processos}
+        onSuccess={() => {
+          void carregarProcessos()
+        }}
+      />
 
       {/* Modal de Criação / Edição de Carta com lista de colaboradores minimizada e anexos expansíveis */}
       <CartaProcessoModal
