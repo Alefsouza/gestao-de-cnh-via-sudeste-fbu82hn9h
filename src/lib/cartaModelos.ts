@@ -207,6 +207,8 @@ const ESTILO_BASE = `
   table.dados th { background: #eef4ee; font-weight: 700; }
   .fecho { margin-top: 26px; font-size: 12px; line-height: 1.6; }
   .assinatura { margin-top: 42px; width: 78mm; }
+  /* Assinatura manual (Sabrina): espaço em branco antes da linha, como no original em papel */
+  .assinatura.assinatura-manual { margin-top: 96px; }
   .assinatura-linha { border-top: 1px solid #1a2418; }
   .assinatura-nome { font-weight: 700; font-size: 12px; margin-top: 4px; }
   .assinatura-empresa { font-size: 10.5px; color: #5b6b58; }
@@ -285,17 +287,19 @@ export type AssinanteCarta = 'leandro' | 'sabrina'
 
 /**
  * Assinatura do documento:
- * - Sabrina Trombini (SABRINA TROMBINI PERDIGAO / Recursos Humanos) exclusiva para Atualização Cadastral / Regularização de CNH
+ * - Sabrina Trombini (SABRINA TROMBINI PERDIGÃO / Recursos Humanos) exclusiva para Atualização Cadastral / Regularização de CNH,
+ *   com espaço vertical em branco para a assinatura manual sobre a linha (como no original em papel)
  * - Leandro Pires Ferraz (Via Sudeste Transportes) para todos os demais modelos (PRAT, Exclusão/CONDUBUS, Retorno de INSS, Afastados pelo INSS)
  */
 function assinatura(tipo: AssinanteCarta = 'leandro'): string {
-  const nome = tipo === 'sabrina' ? 'Sabrina Trombini' : 'Leandro Pires Ferraz'
+  const nome = tipo === 'sabrina' ? 'SABRINA TROMBINI PERDIGÃO' : 'Leandro Pires Ferraz'
   const cargoEmpresa = tipo === 'sabrina' ? 'Recursos Humanos' : 'Via Sudeste Transportes'
+  const classeExtra = tipo === 'sabrina' ? ' assinatura-manual' : ''
 
   return `
   <div class="fecho">
     <p>Atenciosamente,</p>
-    <div class="assinatura">
+  <div class="assinatura${classeExtra}">
       <div class="assinatura-linha"></div>
       <div class="assinatura-nome">${esc(nome)}</div>
       <div class="assinatura-empresa">${esc(cargoEmpresa)}</div>

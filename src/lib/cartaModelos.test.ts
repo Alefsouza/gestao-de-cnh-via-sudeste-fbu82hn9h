@@ -46,8 +46,10 @@ describe('Modelos de carta - Logo Via Sudeste e Assinaturas específicas', () =>
       modelo: 'atualizacao_cadastral',
     })
 
-    expect(html).toContain('Sabrina Trombini')
+    expect(html).toContain('Atenciosamente,')
+    expect(html).toContain('SABRINA TROMBINI PERDIGÃO')
     expect(html).toContain('Recursos Humanos')
+    expect(html).not.toContain('Sabrina Trombini')
     expect(html).not.toContain('Leandro Pires Ferraz')
   })
 

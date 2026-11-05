@@ -120,7 +120,7 @@ describe('derivação e geração de carta para Regularização de CNH', () => {
     expect(html).toContain('Via Sudeste')
     expect(html).toContain('Transportes S/A')
     expect(html).toContain('RH 309')
-    expect(html).toContain('Sabrina Trombini')
+    expect(html).toContain('SABRINA TROMBINI PERDIGÃO')
     expect(html).toContain('Recursos Humanos')
     expect(html).not.toContain('Leandro Pires Ferraz')
 
