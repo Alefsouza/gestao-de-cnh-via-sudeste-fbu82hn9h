@@ -51,11 +51,12 @@ export function modeloIdParaTipoCarta(tipoCarta?: string | null): CartaModeloId 
   if (t === 'prat' || t.includes('prat') || t.includes('acidente')) return 'prat'
   // Exclusão (inclusive "Exclusão / Desligamento") → carta de Exclusão CONDUBUS.
   if (t.includes('exclusao')) return 'exclusao_condubus'
-  // Atualização Cadastral também serve de base para Inclusão e Mudança de Função
-  // (mesmo formato de tabela de operadores).
+  // Atualização Cadastral também serve de base para Inclusão, Mudança de Função
+  // e Regularização de CNH (mesmo formato de tabela de operadores).
   if (t.includes('inclusao')) return 'atualizacao_cadastral'
   if (t.includes('mudanca')) return 'atualizacao_cadastral'
   if (t.includes('atualiza')) return 'atualizacao_cadastral'
+  if (t.includes('regulariza')) return 'atualizacao_cadastral'
   return null
 }
 

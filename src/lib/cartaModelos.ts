@@ -53,7 +53,7 @@ export const CARTA_MODELOS: CartaModeloDef[] = [
     id: 'atualizacao_cadastral',
     nome: 'Atualização Cadastral',
     descricao:
-      'Comunica à SPTrans (A/C Cadastro de Frota) a atualização cadastral de operadores. Tabela: Reg., Função, Nome e CPF. Usada também para Inclusão e Mudança de Função.',
+      'Comunica à SPTrans (A/C Cadastro de Frota) a atualização cadastral de operadores. Tabela: Reg., Função, Nome e CPF. Usada também para Inclusão, Mudança de Função e Regularização de CNH.',
     multiplicidade: 'multi',
   },
   {
