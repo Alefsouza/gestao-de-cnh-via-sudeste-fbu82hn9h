@@ -10,7 +10,12 @@
  * de "Gerar Carta" (GerarCartaModal) passa a exibi-lo automaticamente.
  */
 
-export type CartaModeloId = 'inss_retorno' | 'inss_afastados' | 'prat'
+export type CartaModeloId =
+  | 'inss_retorno'
+  | 'inss_afastados'
+  | 'prat'
+  | 'atualizacao_cadastral'
+  | 'exclusao_condubus'
 
 export interface CartaModeloDef {
   id: CartaModeloId
@@ -42,6 +47,20 @@ export const CARTA_MODELOS: CartaModeloDef[] = [
       'Comunicação formal de acidente de trânsito com menção aos anexos (psicotécnico, direção defensiva e atestado de sanidade).',
     multiplicidade: 'single',
   },
+  {
+    id: 'atualizacao_cadastral',
+    nome: 'Atualização Cadastral',
+    descricao:
+      'Comunica à SPTrans (A/C Cadastro de Frota) a atualização cadastral de operadores. Tabela: Reg., Função, Nome e CPF. Usada também para Inclusão e Mudança de Função.',
+    multiplicidade: 'multi',
+  },
+  {
+    id: 'exclusao_condubus',
+    nome: 'Exclusão Cadastral — CONDUBUS',
+    descricao:
+      'Comunica à SPTrans (A/C Cadastro de Frota) a exclusão cadastral de operadores no sistema CONDUBUS. Tabela: Função, Nome e C.P.F.',
+    multiplicidade: 'multi',
+  },
 ]
 
 export function getCartaModelo(id: CartaModeloId): CartaModeloDef {
@@ -57,6 +76,10 @@ export function labelTipoCartaParaModelo(id: CartaModeloId): string {
       return 'Afastados INSS'
     case 'prat':
       return 'PRAT'
+    case 'atualizacao_cadastral':
+      return 'Atualização'
+    case 'exclusao_condubus':
+      return 'Exclusão'
     default:
       return id
   }
@@ -191,7 +214,7 @@ const ESTILO_BASE = `
   .rodape { margin-top: 34px; border-top: 1px solid #d5ded5; padding-top: 6px; font-size: 8.5px; color: #8a968a; text-align: center; }
 `
 
-function cabecalho(numeroCarta: string, prefixoNumero: string): string {
+function cabecalho(numeroCarta: string, prefixoNumero: string, ac?: string): string {
   return `
   <div class="timbre">
     <div class="marca">
@@ -212,7 +235,7 @@ function cabecalho(numeroCarta: string, prefixoNumero: string): string {
   <div class="destinatario">
     À<br />
     <strong>SPTrans – São Paulo Transporte S/A</strong><br />
-    São Paulo – SP
+    São Paulo – SP${ac ? `<br />A/C: ${esc(ac)}` : ''}
   </div>`
 }
 
@@ -380,8 +403,100 @@ function corpoPrat(dados: CartaGeradaDados): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Modelo 4 — Atualização Cadastral (RH 332/26)                        */
+/* Também serve de base para Inclusão e Mudança de Função              */
+/* (mesmo formato de tabela de operadores).                            */
+/* ------------------------------------------------------------------ */
+
+function corpoAtualizacaoCadastral(dados: CartaGeradaDados): string {
+  const plural = dados.colaboradores.length > 1
+  const linhas = dados.colaboradores
+    .map(
+      (c) => `
+      <tr>
+        <td style="width:14%">${esc(c.registro)}</td>
+        <td style="width:22%">${esc(c.funcao)}</td>
+        <td style="width:40%">${esc(c.nome)}</td>
+        <td style="width:24%">${esc(formatarCpf(c.cpf))}</td>
+      </tr>`,
+    )
+    .join('')
+
+  return `
+  ${cabecalho(dados.numeroCarta, prefixoNumero(dados.numeroCarta, 'RH '), 'Cadastro de Frota')}
+  <div class="corpo">
+    <p>Prezados Senhores,</p>
+    <p>
+      Vimos pela presente encaminhar a V.Sas. a atualização cadastral do${
+        plural ? 's' : ''
+      } operador${plural ? 'es' : ''} abaixo relacionado${plural ? 's' : ''}, para as devidas
+      anotações no sistema.
+    </p>
+    <table class="dados">
+      <thead>
+        <tr>
+          <th>Reg.</th>
+          <th>Função</th>
+          <th>Nome</th>
+          <th>CPF</th>
+        </tr>
+      </thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    <p>Colocamo-nos à disposição para quaisquer esclarecimentos adicionais que se façam necessários.</p>
+  </div>
+  ${assinatura()}`
+}
+
+/* ------------------------------------------------------------------ */
+/* Modelo 5 — Exclusão Cadastral CONDUBUS (RH 304/26)                  */
+/* ------------------------------------------------------------------ */
+
+function corpoExclusaoCondubus(dados: CartaGeradaDados): string {
+  const plural = dados.colaboradores.length > 1
+  const linhas = dados.colaboradores
+    .map(
+      (c) => `
+      <tr>
+        <td style="width:26%">${esc(c.funcao)}</td>
+        <td style="width:46%">${esc(c.nome)}</td>
+        <td style="width:28%">${esc(formatarCpf(c.cpf))}</td>
+      </tr>`,
+    )
+    .join('')
+
+  return `
+  ${cabecalho(dados.numeroCarta, prefixoNumero(dados.numeroCarta, 'RH '), 'Cadastro de Frota')}
+  <div class="corpo">
+    <p>Prezados Senhores,</p>
+    <p>
+      Vimos pela presente solicitar a V.Sas. a exclusão cadastral no sistema CONDUBUS d${
+        plural ? 'os' : 'o'
+      } operador${plural ? 'es' : ''} abaixo relacionado${plural ? 's' : ''}.
+    </p>
+    <table class="dados">
+      <thead>
+        <tr>
+          <th>Função</th>
+          <th>Nome</th>
+          <th>C.P.F.</th>
+        </tr>
+      </thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    <p>Colocamo-nos à disposição para quaisquer esclarecimentos adicionais que se façam necessários.</p>
+  </div>
+  ${assinatura()}`
+}
+
+/* ------------------------------------------------------------------ */
 /* Gerador principal                                                   */
 /* ------------------------------------------------------------------ */
+
+/** Prefixo do número ("RH "), evitando duplicar quando já vem na numeração. */
+function prefixoNumero(numeroCarta: string, prefixo: string): string {
+  return /^RH\s?\d/i.test((numeroCarta || '').trim()) ? '' : prefixo
+}
 
 /** Gera o documento HTML completo (A4, pronto para imprimir/salvar em PDF). */
 export function gerarCartaHtml(dados: CartaGeradaDados): string {
@@ -392,6 +507,10 @@ export function gerarCartaHtml(dados: CartaGeradaDados): string {
       return documentoHtml(corpoInssAfastados(dados))
     case 'prat':
       return documentoHtml(corpoPrat(dados))
+    case 'atualizacao_cadastral':
+      return documentoHtml(corpoAtualizacaoCadastral(dados))
+    case 'exclusao_condubus':
+      return documentoHtml(corpoExclusaoCondubus(dados))
     default:
       return documentoHtml(corpoInssRetorno(dados))
   }

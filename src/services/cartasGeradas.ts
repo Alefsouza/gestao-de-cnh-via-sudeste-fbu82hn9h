@@ -3,6 +3,7 @@ import type { CartaModeloId } from '@/lib/cartaModelos'
 import { labelTipoCartaParaModelo } from '@/lib/cartaModelos'
 import { createTimelineItem } from '@/services/processoTimeline'
 import type { ProcessoCadastralRecord, UserRole } from '@/lib/types'
+import type { SendOptionsWithSignal } from '@/lib/modalNet'
 
 /**
  * Serviço de persistência das CARTAS GERADAS (modelos de texto → SPTrans).
@@ -28,7 +29,13 @@ export interface PersistirCartaGeradaInput {
   dataSinistro?: string
 }
 
-export async function persistirCartaGerada(input: PersistirCartaGeradaInput): Promise<string> {
+/** Opções de envio do PocketBase (inclui signal para abort de timeout). */
+type CartaCreateOptions = SendOptionsWithSignal
+
+export async function persistirCartaGerada(
+  input: PersistirCartaGeradaInput,
+  options: { sendOptions?: CartaCreateOptions } = {},
+): Promise<string> {
   const tipoCarta = labelTipoCartaParaModelo(input.modelo)
   const numeroCarta = input.numeroCarta.trim()
 
@@ -47,13 +54,16 @@ export async function persistirCartaGerada(input: PersistirCartaGeradaInput): Pr
     .join(' · ')
 
   for (const colab of input.colaboradores) {
-    await pb.collection('cartas').create({
-      numero_carta: numeroCarta,
-      colaborador: colab.nome,
-      matricula: colab.registro,
-      funcao_carta: colab.funcao || '',
-      tipo_carta: tipoCarta,
-    })
+    await pb.collection('cartas').create(
+      {
+        numero_carta: numeroCarta,
+        colaborador: colab.nome,
+        matricula: colab.registro,
+        funcao_carta: colab.funcao || '',
+        tipo_carta: tipoCarta,
+      },
+      options.sendOptions,
+    )
   }
   return detalheExtra
 }

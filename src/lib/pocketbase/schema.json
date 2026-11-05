@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-05T12:29:08.614Z",
+  "generatedAt": "2026-11-05T13:44:49.682Z",
   "collections": [
     {
       "name": "users",
@@ -368,7 +368,10 @@
           "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": ["CREATE INDEX idx_notifications_user ON notifications (user)"]
+      "indexes": [
+        "CREATE INDEX idx_notifications_user ON notifications (user)",
+        "CREATE INDEX `idx_notifications_user_created` ON `notifications` (`user`, `created` DESC)"
+      ]
     },
     {
       "name": "sync_runs",

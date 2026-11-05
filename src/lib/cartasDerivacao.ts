@@ -35,9 +35,7 @@ export function mesmaMatricula(a?: string | null, b?: string | null): boolean {
 
 /**
  * Mapeia o tipo_carta gravado na coleção `cartas` para o id do modelo oficial
- * usado na geração do documento. Tipos que não correspondem a um dos 3 modelos
- * oficiais (Inclusão, Mudança de Função, Exclusão…) retornam null — para eles
- * a geração automática não se aplica.
+ * usado na geração do documento. Tipos sem modelo implementado retornam null.
  */
 export function modeloIdParaTipoCarta(tipoCarta?: string | null): CartaModeloId | null {
   const t = (tipoCarta || '')
@@ -51,6 +49,13 @@ export function modeloIdParaTipoCarta(tipoCarta?: string | null): CartaModeloId 
   if (t.includes('retorno')) return 'inss_retorno'
   if (t.includes('afast')) return 'inss_afastados'
   if (t === 'prat' || t.includes('prat') || t.includes('acidente')) return 'prat'
+  // Exclusão (inclusive "Exclusão / Desligamento") → carta de Exclusão CONDUBUS.
+  if (t.includes('exclusao')) return 'exclusao_condubus'
+  // Atualização Cadastral também serve de base para Inclusão e Mudança de Função
+  // (mesmo formato de tabela de operadores).
+  if (t.includes('inclusao')) return 'atualizacao_cadastral'
+  if (t.includes('mudanca')) return 'atualizacao_cadastral'
+  if (t.includes('atualiza')) return 'atualizacao_cadastral'
   return null
 }
 
@@ -177,6 +182,17 @@ export function derivarDadosDaCarta(input: CartaDerivadaInput): CartaDerivada {
   const numeroCarta = (carta.numero_carta || '').trim()
   const modelo = modeloIdParaTipoCarta(carta.tipo_carta) ?? 'inss_afastados'
   const avisos: string[] = []
+
+  if (modelo === 'atualizacao_cadastral') {
+    avisos.push(
+      'Revisar dados antes de imprimir: a função exibida vem do cadastro/carta e o CPF, quando ausente no cadastro, aparece em branco.',
+    )
+  }
+  if (modelo === 'exclusao_condubus') {
+    avisos.push(
+      'Revisar dados antes de imprimir: a função exibida vem do cadastro/carta e o CPF, quando ausente no cadastro, aparece em branco.',
+    )
+  }
 
   const colaboradores: CartaColaboradorDados[] = linhasDaCarta.map((linha) => {
     const emp = procurarEmployee(linha.matricula || '', linha.colaborador || '', employees)

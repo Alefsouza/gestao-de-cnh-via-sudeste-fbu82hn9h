@@ -125,15 +125,24 @@ export async function listEmployeesPage(page: number, perPage: number) {
 }
 
 /**
- * Filtro padrão para identificar CNHs vencidas no backend PocketBase:
- * 1) situacao_cnh = 'Vencida' OU 'Vencida CNH'
- * 2) OU situacao_cnh != 'Sem CNH' E validade_cnh preenchida e anterior à data/hora atual.
+ * Filtro padrão para identificar colaboradores com CNH registrada no backend PocketBase.
  */
 export const CNH_VALIDA_FIELD_FILTER =
   'cnh_numero != "" && situacao_cnh != "Sem CNH" && situacao_cnh != ""'
 
+/**
+ * Filtro padrão para identificar CNHs vencidas no backend PocketBase:
+ * situacao_cnh em ('Vencida', 'Vencida CNH') OU validade_cnh preenchida e anterior à data/hora atual
+ * (excluindo quem não tem CNH e desligados).
+ *
+ * Escrito para o índice composto idx_employees_dashboard_cnh (situacao_cnh, validade_cnh, situacao):
+ * em vez de um OR entre valores distintos de situacao_cnh (que impede o uso do índice), usa
+ * `situacao_cnh > "" && situacao_cnh != "Sem CNH"` (um único intervalo contínuo no índice) e
+ * todas as demais condições em `&&` — o que deixa o SQLite varrer uma única faixa de
+ * situacao_cnh aplicando validade_cnh e situacao como condições de índice.
+ */
 export const CNH_VENCIDA_FILTER =
-  '(situacao_cnh = "Vencida" || situacao_cnh = "Vencida CNH" || (situacao_cnh != "Sem CNH" && validade_cnh != "" && validade_cnh < @now)) && situacao != "Desligado"'
+  'situacao_cnh > "" && situacao_cnh != "Sem CNH" && (validade_cnh != "" && validade_cnh < @now || situacao_cnh ~ "Vencida") && situacao != "Desligado"'
 
 /**
  * Retorna a contagem de registros que atendem a um determinado filtro,
