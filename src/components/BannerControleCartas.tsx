@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, FileText, Plus } from 'lucide-react'
-import { extrairNumeroSequencialCarta, listCartas } from '@/services/cartas'
+import { extrairNumeroSequencialCarta, listCartasFields } from '@/services/cartas'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
+import {
+  BANNER_CACHE_TTL_MS,
+  getCachedData,
+  invalidateDashboardCache,
+  setCachedData,
+} from '@/lib/dashboardCache'
 
 interface BannerControleCartasProps {
   className?: string
@@ -18,54 +24,71 @@ export function BannerControleCartas({ className = '' }: BannerControleCartasPro
   const [ultimaCarta, setUltimaCarta] = useState<number>(BASE_INICIAL)
   const [loading, setLoading] = useState<boolean>(true)
 
-  const calcularNumeros = useCallback(async () => {
-    let maior = BASE_INICIAL
-
-    try {
-      // 1. Busca cartas registradas
-      const cartas = await listCartas()
-      for (const c of cartas) {
-        const num = extrairNumeroSequencialCarta(c.numero_carta)
-        if (num !== null && num > maior) {
-          maior = num
+  const calcularNumeros = useCallback(
+    async (force = false) => {
+      // Cache curto: revisitar o Dashboard em pouco tempo não refaz a listagem de cartas
+      if (!force) {
+        const cached = getCachedData<number>('banner-cartas:maior', BANNER_CACHE_TTL_MS)
+        if (cached !== null) {
+          setUltimaCarta(cached)
+          setLoading(false)
+          return
         }
       }
 
-      // 2. Cobertura adicional: processo_anexos com numero_carta
+      let maior = BASE_INICIAL
+
       try {
-        const anexos = await pb.collection('processo_anexos').getList(1, 100, {
-          filter: "numero_carta != ''",
-          sort: '-created',
-          fields: 'numero_carta',
-        })
-        for (const a of anexos.items) {
-          const num = extrairNumeroSequencialCarta(a.numero_carta)
+        // 1. Busca cartas registradas (apenas o campo numero_carta, consulta leve)
+        const cartas = await listCartasFields()
+        for (const c of cartas) {
+          const num = extrairNumeroSequencialCarta(c.numero_carta)
           if (num !== null && num > maior) {
             maior = num
           }
         }
-      } catch {
-        // silencioso
+
+        // 2. Cobertura adicional: processo_anexos com numero_carta
+        try {
+          const anexos = await pb.collection('processo_anexos').getList(1, 100, {
+            filter: "numero_carta != ''",
+            sort: '-created',
+            fields: 'numero_carta',
+          })
+          for (const a of anexos.items) {
+            const num = extrairNumeroSequencialCarta(a.numero_carta)
+            if (num !== null && num > maior) {
+              maior = num
+            }
+          }
+        } catch {
+          // silencioso
+        }
+      } catch (err) {
+        console.warn('Erro ao calcular números das cartas para o banner:', err)
+      } finally {
+        setUltimaCarta(maior)
+        setLoading(false)
+        setCachedData('banner-cartas:maior', maior)
       }
-    } catch (err) {
-      console.warn('Erro ao calcular números das cartas para o banner:', err)
-    } finally {
-      setUltimaCarta(maior)
-      setLoading(false)
-    }
-  }, [BASE_INICIAL])
+    },
+    [BASE_INICIAL],
+  )
 
   useEffect(() => {
     void calcularNumeros()
   }, [calcularNumeros])
 
   // Recalcula em tempo real caso uma nova carta ou anexo de processo seja registrado
+  // (realtime invalida o cache curto e força o recálculo)
   useRealtime('cartas', () => {
-    void calcularNumeros()
+    invalidateDashboardCache('banner-cartas:')
+    void calcularNumeros(true)
   })
 
   useRealtime('processo_anexos', () => {
-    void calcularNumeros()
+    invalidateDashboardCache('banner-cartas:')
+    void calcularNumeros(true)
   })
 
   const proximaCarta = ultimaCarta + 1

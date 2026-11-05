@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-05T12:11:02.225Z",
+  "generatedAt": "2026-11-05T12:29:08.614Z",
   "collections": [
     {
       "name": "users",
@@ -236,7 +236,8 @@
         "CREATE INDEX idx_employees_situacao_cnh ON employees (situacao_cnh)",
         "CREATE INDEX idx_employees_situacao ON employees (situacao)",
         "CREATE INDEX idx_employees_validade_cnh ON employees (validade_cnh)",
-        "CREATE INDEX `idx_employees_registro` ON `employees` (registro)"
+        "CREATE INDEX `idx_employees_registro` ON `employees` (registro)",
+        "CREATE INDEX `idx_employees_dashboard_cnh` ON `employees` (`situacao_cnh`, `validade_cnh`, `situacao`)"
       ]
     },
     {

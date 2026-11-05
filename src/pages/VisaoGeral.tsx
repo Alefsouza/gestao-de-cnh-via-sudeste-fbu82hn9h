@@ -19,7 +19,9 @@ import StatCard from '@/components/StatCard'
 import StatusBadge from '@/components/StatusBadge'
 import { useRealtime } from '@/hooks/use-realtime'
 import { formatDate, formatCnh, relativeDayLabel } from '@/lib/format'
-import { getVisaoGeralStats, listCnhsVencidasTop, type VisaoGeralStats } from '@/services/employees'
+import type { VisaoGeralStats } from '@/services/employees'
+import { invalidateDashboardCache } from '@/lib/dashboardCache'
+import { loadVisaoGeralMetrics, type VisaoGeralMetrics } from '@/lib/visaoGeralMetrics'
 import { triggerSync } from '@/lib/sync'
 import type { Employee } from '@/lib/types'
 import { normalizeEmployees } from '@/lib/normalize'
@@ -94,42 +96,23 @@ export default function VisaoGeral() {
   const lastLoadedAt = useRef(0)
 
   /**
-   * Carrega os contadores e os 5 primeiros registros de CNHs vencidas
-   * sem baixar a base inteira, usando contagens pontuais no backend PocketBase.
+   * Carrega os contadores e os 5 primeiros registros de CNHs vencidas.
+   * Usa cache curto em memória (2 min): revisitar o Dashboard logo depois não
+   * refaz as consultas pesadas do zero. As duas consultas rodam em paralelo.
    */
-  const load = useCallback(async () => {
+  const load = useCallback(async (options: { forceReload?: boolean } = {}) => {
     const runId = ++loadRunId.current
     loadInProgress.current = true
-    setLoading(true)
     setLoadError(false)
     try {
-      const [statsResult, cnhsResult] = await Promise.allSettled([
-        getVisaoGeralStats(),
-        listCnhsVencidasTop(5),
-      ])
+      const metrics: VisaoGeralMetrics = await loadVisaoGeralMetrics(options)
 
       if (runId !== loadRunId.current) return
 
-      let hasFailure = false
+      setStats(metrics.stats)
+      setVencidasRaw(metrics.vencidas)
 
-      if (statsResult.status === 'fulfilled') {
-        setStats(statsResult.value.stats)
-        if (statsResult.value.hasError) {
-          hasFailure = true
-        }
-      } else {
-        hasFailure = true
-        console.error('Erro ao buscar estatísticas da Visão Geral:', statsResult.reason)
-      }
-
-      if (cnhsResult.status === 'fulfilled') {
-        setVencidasRaw(cnhsResult.value)
-      } else {
-        hasFailure = true
-        console.error('Erro ao buscar CNHs vencidas:', cnhsResult.reason)
-      }
-
-      if (hasFailure && statsResult.status === 'rejected' && cnhsResult.status === 'rejected') {
+      if (metrics.hasError) {
         setLoadError(true)
         toast.error('Não foi possível carregar os dados da matriz')
       }
@@ -157,8 +140,10 @@ export default function VisaoGeral() {
     void load()
   }, [load])
 
+  // Realtime de employees invalida o cache e força a recarga das métricas
   useRealtime('employees', () => {
-    requestLoad()
+    invalidateDashboardCache('visao-geral:')
+    void load({ forceReload: true })
   })
 
   // Normalização leve aplicada apenas aos 5 registros trazidos para a tabela
@@ -182,7 +167,8 @@ export default function VisaoGeral() {
         toast.error(result.error || 'A sincronização falhou — verifique a conexão com a matriz')
       }
       setLastSync(new Date().toISOString())
-      await load()
+      invalidateDashboardCache('visao-geral:')
+      await load({ forceReload: true })
     } catch {
       toast.error('Não foi possível disparar a sincronização da matriz')
     } finally {

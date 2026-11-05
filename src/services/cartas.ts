@@ -325,6 +325,25 @@ export async function listCartas(): Promise<CartaRecord[]> {
 }
 
 /**
+ * Versão leve de listCartas: busca APENAS o campo numero_carta (sem arquivos
+ * e demais colunas), para cálculos de sequência (banner, próximo número).
+ * Usa skipTotal para evitar a contagem extra no backend.
+ */
+export async function listCartasFields(fields = 'numero_carta'): Promise<CartaRecord[]> {
+  const records = await withRetry(
+    () =>
+      pb.collection('cartas').getList<CartaRecord>(1, 500, {
+        sort: '-created',
+        fields,
+        skipTotal: true,
+        requestKey: null,
+      }),
+    { maxRetries: 3 },
+  )
+  return records.items
+}
+
+/**
  * Extrai o número sequencial numérico de uma string de número de carta.
  * Suporta formatos simples como "289", "290", bem como com sufixos comuns
  * como "289/2026", "Nº 289", "Carta 289", "289/76".

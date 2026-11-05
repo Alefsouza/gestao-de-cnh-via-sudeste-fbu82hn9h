@@ -326,6 +326,9 @@ export async function listCnhsVencidasTop(limit = 5): Promise<Employee[]> {
     const res = await pb.collection<Employee>(COLLECTION).getList(1, limit, {
       filter: `${CNH_VENCIDA_FILTER} && situacao != "Desligado"`,
       sort: 'validade_cnh,chapa',
+      // Apenas os campos exibidos na tabela do Dashboard (mantém a consulta leve)
+      fields:
+        'id,name,chapa,company,funcao,filial,situacao,situacao_cnh,validade_cnh,cnh_categoria,cnh_numero,registro',
       requestKey: null,
     })
     return res.items

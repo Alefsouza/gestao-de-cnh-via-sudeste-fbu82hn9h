@@ -8,10 +8,25 @@ const COLLECTION = 'notifications'
 export async function listNotifications(): Promise<Notification[]> {
   const currentUserId = pb.authStore.record?.id
   const filter = currentUserId ? `user = "" || user = "${currentUserId}"` : ''
-  return pb.collection<Notification>(COLLECTION).getFullList({
+  // Paginado (3 x 200): evita o getFullList com perPage=1000 repetido em rajada,
+  // que provocava 429 e lentidão no carregamento das telas.
+  const pages: Notification[] = []
+  const first = await pb.collection<Notification>(COLLECTION).getList(1, 200, {
     sort: '-created',
     ...(filter ? { filter } : {}),
+    requestKey: null,
   })
+  pages.push(...first.items)
+  const totalPages = Math.min(first.totalPages, 3)
+  for (let page = 2; page <= totalPages; page++) {
+    const res = await pb.collection<Notification>(COLLECTION).getList(page, 200, {
+      sort: '-created',
+      ...(filter ? { filter } : {}),
+      requestKey: null,
+    })
+    pages.push(...res.items)
+  }
+  return pages
 }
 
 export async function markNotificationRead(id: string): Promise<Notification> {
