@@ -99,6 +99,8 @@ export default function VisualizarCartasModal({
 
   const [cartas, setCartas] = useState<CartaRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [erroCartas, setErroCartas] = useState(false)
+  const [tentativaCartas, setTentativaCartas] = useState(0)
   const [selectedNumeroCarta, setSelectedNumeroCarta] = useState<string>('')
   const [selectedTipoCarta, setSelectedTipoCarta] = useState<string>('todos')
   const [searchQuery, setSearchQuery] = useState<string>('')
@@ -124,6 +126,7 @@ export default function VisualizarCartasModal({
     setExpandedIds({})
     let active = true
     setLoading(true)
+    setErroCartas(false)
     listCartas()
       .then((records) => {
         if (!active) return
@@ -131,7 +134,7 @@ export default function VisualizarCartasModal({
       })
       .catch((err) => {
         console.error('Erro ao listar cartas:', err)
-        toast.error('Não foi possível carregar a lista de cartas.')
+        if (active) setErroCartas(true)
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -140,7 +143,7 @@ export default function VisualizarCartasModal({
     return () => {
       active = false
     }
-  }, [open])
+  }, [open, tentativaCartas])
 
   // Recarrega as cartas do banco
   const refreshCartas = useCallback(async () => {
@@ -426,6 +429,18 @@ export default function VisualizarCartasModal({
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             Carregando cartas…
+          </div>
+        ) : erroCartas ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center text-sm text-muted-foreground">
+            <p>Não foi possível carregar as cartas. Verifique a conexão e tente novamente.</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setTentativaCartas((t) => t + 1)}
+            >
+              Tentar de novo
+            </Button>
           </div>
         ) : cartas.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">

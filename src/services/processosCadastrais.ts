@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import type { ProcessoCadastralRecord, ProcessoSituacao } from '@/lib/types'
+import { withRetry } from '@/services/employees'
 
 export interface ListProcessosOptions {
   filter?: string
@@ -19,10 +20,15 @@ export interface ListProcessosResult {
 export async function listProcessosCadastrais(
   options?: ListProcessosOptions,
 ): Promise<ProcessoCadastralRecord[]> {
-  const records = await pb.collection('processos_cadastrais').getFullList<ProcessoCadastralRecord>({
-    sort: options?.sort ?? '-created',
-    filter: options?.filter,
-  })
+  // Repete em falha transitória de rede/5xx ("Failed to fetch") antes de desistir.
+  const records = await withRetry(
+    () =>
+      pb.collection('processos_cadastrais').getFullList<ProcessoCadastralRecord>({
+        sort: options?.sort ?? '-created',
+        filter: options?.filter,
+      }),
+    { maxRetries: 3 },
+  )
   return records
 }
 

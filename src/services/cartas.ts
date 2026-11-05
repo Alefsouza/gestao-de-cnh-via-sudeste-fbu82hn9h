@@ -17,6 +17,7 @@ export interface CartaRecord {
 }
 
 import { createTimelineItem } from '@/services/processoTimeline'
+import { withRetry } from '@/services/employees'
 import type { UserRole } from '@/lib/types'
 
 export interface CreateCartaInput {
@@ -312,9 +313,14 @@ export async function deleteCartaCompleta(numeroCarta: string): Promise<void> {
  * Retorna a lista de todas as cartas cadastradas, ordenadas pelas mais recentes.
  */
 export async function listCartas(): Promise<CartaRecord[]> {
-  const records = await pb.collection('cartas').getFullList<CartaRecord>({
-    sort: '-created',
-  })
+  // Repete em falha transitória de rede/5xx ("Failed to fetch") antes de desistir.
+  const records = await withRetry(
+    () =>
+      pb.collection('cartas').getFullList<CartaRecord>({
+        sort: '-created',
+      }),
+    { maxRetries: 3 },
+  )
   return records
 }
 

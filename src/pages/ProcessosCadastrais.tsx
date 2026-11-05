@@ -211,6 +211,7 @@ export default function ProcessosCadastrais() {
 
   // Se veio redirecionado com estado ou query para abrir controle de cartas
   const [loading, setLoading] = useState(true)
+  const [erroProcessos, setErroProcessos] = useState(false)
   const [modalOpen, setModalOpen] = useState(() => {
     try {
       const search = window.location.search
@@ -285,6 +286,7 @@ export default function ProcessosCadastrais() {
   }, [isTrafego, userGaragem, viewRegulares])
 
   const carregarProcessos = useCallback(async () => {
+    setErroProcessos(false)
     try {
       const records = await listProcessosCadastrais({
         filter: backendFilter,
@@ -323,6 +325,7 @@ export default function ProcessosCadastrais() {
     } catch (err) {
       console.error('Erro ao carregar processos:', err)
       setProcessos([])
+      setErroProcessos(true)
     } finally {
       setLoading(false)
     }
@@ -1285,6 +1288,21 @@ export default function ProcessosCadastrais() {
             <Loader2 className="h-4 w-4 animate-spin" />
             Carregando…
           </div>
+        ) : erroProcessos ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center text-sm text-muted-foreground">
+            <p>Não foi possível carregar os processos. Verifique a conexão e tente novamente.</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLoading(true)
+                void carregarProcessos()
+              }}
+            >
+              Tentar de novo
+            </Button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-left text-sm">
@@ -1521,7 +1539,7 @@ export default function ProcessosCadastrais() {
             </table>
           </div>
         )}
-        {!loading && filteredProcessos.length === 0 && (
+        {!loading && !erroProcessos && filteredProcessos.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">
             {viewRegulares
               ? hasActiveFilters
@@ -1567,7 +1585,7 @@ export default function ProcessosCadastrais() {
         )}
 
         {/* Paginação */}
-        {!loading && filteredProcessos.length > 0 && (
+        {!loading && !erroProcessos && filteredProcessos.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 bg-muted/10 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
               <span>Linhas por página:</span>

@@ -42,7 +42,7 @@ function wait(ms: number) {
  * Repete a chamada em caso de 429/5xx/rede com backoff exponencial + jitter,
  * até MAX_RETRIES tentativas extras. Outros erros são propagados direto.
  */
-async function withRetry<T>(
+export async function withRetry<T>(
   fn: () => Promise<T>,
   options: {
     maxRetries?: number
